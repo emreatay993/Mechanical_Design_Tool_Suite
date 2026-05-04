@@ -1,11 +1,10 @@
-﻿"""Benchmark the decoded Steady-State Condition bolt interaction curve calculation.
+﻿"""Benchmark the ExampleScenario bolt interaction curve calculation.
 
-This script validates the row-level interaction table against screen-visible
-reference values from the Excel workbook screenshots.
+This script validates the row-level interaction table against reference values.
 
 Run from the repository root:
 
-    python scripts/benchmark_steady_state_interaction_curve.py
+    python scripts/benchmark_example_scenario_interaction_curve.py
 """
 
 from __future__ import annotations
@@ -75,14 +74,14 @@ class InteractionResult:
         return round(self.margin * 100.0)
 
 
-# Spreadsheet context:
+# Reference context:
 # - Bolt size = ".2500-28"
 # - Margin basis = "MINOR"
-# - T24 = INCO718 BAR Steady-State Condition 0.02% yield strength = 708.65 MPa
+# - T24 = INCO718 BAR ExampleScenario 0.02% yield strength = 708.65 MPa
 # - T26 = T24 / sqrt(3)
 #
-# The workbook displays the bolt thread area as 21.60 mm2, but the previous Steady-State Condition
-# benchmark showed that the visible results are more closely reproduced by the
+# The bolt thread area is displayed as 21.60 mm2, but the ExampleScenario
+# benchmark showed that the reference results are more closely reproduced by the
 # inferred hidden precision value 11600 / 537.12.
 CONSTANTS = Constants(
     bolt_size=".2500-28",
@@ -358,7 +357,7 @@ def validate_case(case: InteractionCase, result: InteractionResult) -> None:
 
 
 def print_header(constants: Constants) -> None:
-    print("Steady-State Condition bolt interaction benchmark")
+    print("ExampleScenario bolt interaction benchmark")
     print(f"  bolt_size: {constants.bolt_size}")
     print(f"  margin_basis: {constants.margin_basis}")
     print(f"  bolt_thread_area_mm2: {constants.bolt_thread_area_mm2:.10f}")
@@ -398,9 +397,13 @@ def main() -> None:
         validate_case(case, result)
 
     print()
-    print("All Steady-State Condition interaction benchmark checks passed.")
+    print("All ExampleScenario interaction benchmark checks passed.")
 
 
 if __name__ == "__main__":
     main()
+
+
+
+
 

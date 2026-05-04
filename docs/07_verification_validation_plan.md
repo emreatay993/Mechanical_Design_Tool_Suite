@@ -1,22 +1,22 @@
 ﻿# Verification And Validation Plan
 
-This plan defines how to verify a future implementation of the decoded
-`BOLT_STRENGTH.xlsx` `Steady-State Condition` calculation.
+This plan defines how to verify a future implementation of the documented
+`ExampleScenario` calculation.
 
 ## Validation Objective
 
-The implementation shall reproduce the workbook's `Steady-State Condition` circumferential flange
+The implementation shall reproduce the `ExampleScenario` circumferential flange
 bolt results for:
 
 ```text
 bolt size = .2500-28
 margin basis = MINOR
-load case = Steady-State Condition
+load case = ExampleScenario
 source load sheet = L1
 ```
 
-The first validation target is numeric agreement with the screen-visible
-workbook values documented in `04_reference_test_cases.md`.
+The first validation target is numeric agreement with the reference
+reference values documented in `04_reference_test_cases.md`.
 
 ## Verification Levels
 
@@ -70,7 +70,7 @@ Pass criteria:
 - Life labels match exactly.
 - The implementation uses `N*mm` moments, not `N*m`, unless it explicitly
   converts from `N*m` to `N*mm`.
-- Interaction margin percentages match the rounded workbook percentages.
+- Interaction margin percentages match the rounded reference percentages.
 
 ### Level 3: GUI Integration Tests
 
@@ -86,7 +86,7 @@ When the GUI exists, test that:
 
 ### Hidden Precision
 
-Screenshots show rounded values. For example, the workbook displays:
+Reference values are rounded. For example:
 
 ```text
 bolt_thread_area = 21.60 mm^2
@@ -100,25 +100,25 @@ bolt_thread_area = 11600 / 537.12 = 21.5966636878 mm^2
 walker_coefficient = 0.6384
 ```
 
-Those inferred values reproduce the screen-visible output more closely. If the
-original workbook is available later, export exact cell values and update the
+Those inferred values reproduce the reference output more closely. If the
+exact source values are available later, export exact cell values and update the
 benchmark constants.
 
 ### Excel VLOOKUP Behavior
 
-The decoded workbook formulas use `VLOOKUP` without the fourth argument:
+The documented reference calculation formulas use `VLOOKUP` without the fourth argument:
 
 ```excel
 =VLOOKUP(..., ..., column,)
 ```
 
 Excel treats this as approximate match. For a future GUI, exact dictionary
-lookups by bolt size are recommended unless exact workbook compatibility is
+lookups by bolt size are recommended unless exact reference compatibility is
 required.
 
 ### Moment Units
 
-The workbook treats `MX` and `MY` as values compatible with `mm` geometry. The
+The reference calculation treats `MX` and `MY` as values compatible with `mm` geometry. The
 benchmark therefore uses N*mm. If user input is N*m, multiply by `1000` before
 calculating bending stress.
 
@@ -135,14 +135,18 @@ Before accepting a future calculation change:
 Command:
 
 ```powershell
-python scripts\benchmark_steady_state_bolt_strength.py
-python scripts\benchmark_steady_state_interaction_curve.py
+python scripts\benchmark_example_scenario_bolt_strength.py
+python scripts\benchmark_example_scenario_interaction_curve.py
 ```
 
 Expected result:
 
 ```text
-All Steady-State Condition benchmark checks passed.
-All Steady-State Condition interaction benchmark checks passed.
+All ExampleScenario benchmark checks passed.
+All ExampleScenario interaction benchmark checks passed.
 ```
+
+
+
+
 

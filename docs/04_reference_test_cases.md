@@ -1,15 +1,13 @@
 ﻿# Reference Test Cases
 
-This document records benchmark cases decoded from the screenshots of
-`BOLT_STRENGTH.xlsx`. These cases are intended to validate a future GUI or
-calculation backend against the current workbook behavior.
+This document records benchmark cases for validating a future GUI or calculation backend against the documented reference behavior.
 
-## Benchmark Set: Steady-State Condition Circumferential Flange
+## Benchmark Set: ExampleScenario Circumferential Flange
 
 Scope:
 
 ```text
-load case = Steady-State Condition
+load case = ExampleScenario
 source load sheet = L1
 bolt size = .2500-28
 margin basis = MINOR
@@ -20,23 +18,23 @@ Constants used by the executable benchmark:
 
 | Name | Value | Notes |
 | --- | ---: | --- |
-| `bolt_thread_area_mm2` | `21.5966636878` | Inferred from `11600 / 537.12`; workbook displays `21.60` |
-| `bolt_radius_mm` | `sqrt(area / pi)` | Workbook displays `2.62` |
-| `moment_of_inertia_mm4` | `pi * radius^4 / 4` | Workbook displays `37.12` |
+| `bolt_thread_area_mm2` | `21.5966636878` | Inferred from `11600 / 537.12`; displayed as `21.60` |
+| `bolt_radius_mm` | `sqrt(area / pi)` | displayed as `2.62` |
+| `moment_of_inertia_mm4` | `pi * radius^4 / 4` | displayed as `37.12` |
 | `bolt_hole_countersink_dia_mm` | `7.90` | Cell `O17` |
 | `bolt_head_dia_mm` | `11.13` | Cell `O18` |
-| `bolt_contact_crush_area_mm2` | `48.2759903697` | Workbook displays `48.28` |
+| `bolt_contact_crush_area_mm2` | `48.2759903697` | displayed as `48.28` |
 | `nut_contact_crush_area_min_mm2` | `46.58` | Cell `O21` |
 | `assembly_tensile_stress_mpa` | `537.12` | Cell `O22` |
-| `walker_coefficient` | `0.6384` | Inferred hidden precision; workbook displays `0.64` |
+| `walker_coefficient` | `0.6384` | Inferred hidden precision; displayed as `0.64` |
 
-If exact workbook values are exported later, update these constants and tighten
+If exact source values are exported later, update these constants and tighten
 the tolerances in the executable benchmark.
 
 ## Input Cases
 
-The first nine bolt rows visible in the `L1` sheet are used as benchmark input.
-Only `FZ`, `MX`, and `MY` are used by the decoded `Steady-State Condition` stress formulas.
+The first nine benchmark rows in the `L1` sheet are used as benchmark input.
+Only `FZ`, `MX`, and `MY` are used by the documented `ExampleScenario` stress formulas.
 
 | Bolt | `FZ` N | `MX` N*mm | `MY` N*mm |
 | --- | ---: | ---: | ---: |
@@ -50,10 +48,9 @@ Only `FZ`, `MX`, and `MY` are used by the decoded `Steady-State Condition` stres
 | BOLT08 | 10708 | 46 | 153 |
 | BOLT09 | 10632 | 31 | 148 |
 
-## Expected Screen-Visible Outputs
+## Expected Outputs
 
-The expected values below are the one-decimal values visible in the workbook
-screenshots.
+The expected values below are the one-decimal displayed reference values.
 
 | Bolt | Tensile stress MPa | Fiber stress MPa | LCF sigma_alt MPa | Life | Crush bolt MPa | Crush nut MPa |
 | --- | ---: | ---: | ---: | --- | ---: | ---: |
@@ -79,8 +76,8 @@ Recommended initial tolerances:
 | Crush stress | `0.15 MPa` |
 | Life label | exact string match |
 
-These tolerances are intentionally small but not zero because the screenshots
-show rounded cells. If exact workbook cell values become available, use tighter
+These tolerances are intentionally small but not zero because the reference data
+show rounded cells. If exact reference calculation cell values become available, use tighter
 tolerances.
 
 ## Executable Benchmark
@@ -88,24 +85,24 @@ tolerances.
 Run:
 
 ```powershell
-python scripts\benchmark_steady_state_bolt_strength.py
+python scripts\benchmark_example_scenario_bolt_strength.py
 ```
 
 Expected result:
 
 ```text
-All Steady-State Condition benchmark checks passed.
+All ExampleScenario benchmark checks passed.
 ```
 
 The script prints every calculated value and compares it against the expected
-screen-visible workbook values.
+reference values.
 
-## Benchmark Set: Steady-State Condition Interaction Curve
+## Benchmark Set: ExampleScenario Interaction Curve
 
 Scope:
 
 ```text
-load case = Steady-State Condition
+load case = ExampleScenario
 source load sheet = L1
 bolt size = .2500-28
 margin basis = MINOR
@@ -116,16 +113,16 @@ Constants used by the executable interaction benchmark:
 
 | Name | Value | Notes |
 | --- | ---: | --- |
-| `bolt_thread_area_mm2` | `21.5966636878` | Inferred from `11600 / 537.12`; workbook displays `21.60` |
-| `bolt_radius_mm` | `sqrt(area / pi)` | Workbook displays `2.62` |
-| `moment_of_inertia_mm4` | `pi * radius^4 / 4` | Workbook displays `37.12` |
-| `polar_moment_of_inertia_mm4` | `2 * moment_of_inertia` | Workbook displays `74.23` |
-| `yield_002_mpa` | `708.65` | Material Properties Steady-State Condition value, displayed as `708.7` |
-| `shear_strength_mpa` | `yield_002 / sqrt(3)` | Workbook displays `409.1` |
+| `bolt_thread_area_mm2` | `21.5966636878` | Inferred from `11600 / 537.12`; displayed as `21.60` |
+| `bolt_radius_mm` | `sqrt(area / pi)` | displayed as `2.62` |
+| `moment_of_inertia_mm4` | `pi * radius^4 / 4` | displayed as `37.12` |
+| `polar_moment_of_inertia_mm4` | `2 * moment_of_inertia` | displayed as `74.23` |
+| `yield_002_mpa` | `708.65` | Material Properties ExampleScenario value, displayed as `708.7` |
+| `shear_strength_mpa` | `yield_002 / sqrt(3)` | displayed as `409.1` |
 
 ## Interaction Input Cases
 
-The first nine visible interaction rows are used as benchmark input.
+The first nine benchmark interaction rows are used as benchmark input.
 
 | Bolt | `FX` N | `FY` N | `FZ` N | `MX` N*mm | `MY` N*mm | `MZ` N*mm |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -141,7 +138,7 @@ The first nine visible interaction rows are used as benchmark input.
 
 ## Expected Interaction Outputs
 
-The expected values below are the screen-visible workbook values.
+The expected values below are the displayed reference values.
 
 | Bolt | PLUG N | SHEAR N | BENDING N*mm | Torsion N*mm | Rt | Rb | Rs | Rst | Margin |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -155,7 +152,7 @@ The expected values below are the screen-visible workbook values.
 | BOLT08 | 10708 | 96.1 | 159.8 | 81.0 | 0.700 | 0.016 | 0.011 | 0.007 | 40% |
 | BOLT09 | 10632 | 64.1 | 151.5 | 70.8 | 0.700 | 0.015 | 0.007 | 0.006 | 41% |
 
-The workbook display rounds most `Rt` values to one decimal, so values shown as
+The reference calculation display rounds most `Rt` values to one decimal, so values shown as
 `0.700` in this table are validated with a wider tolerance than the `BOLT01`
 `0.709` value.
 
@@ -176,12 +173,15 @@ Recommended interaction tolerances:
 Executable benchmark:
 
 ```powershell
-python scripts\benchmark_steady_state_interaction_curve.py
+python scripts\benchmark_example_scenario_interaction_curve.py
 ```
 
 Expected result:
 
 ```text
-All Steady-State Condition interaction benchmark checks passed.
+All ExampleScenario interaction benchmark checks passed.
 ```
+
+
+
 

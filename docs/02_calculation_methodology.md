@@ -1,17 +1,15 @@
-﻿# Steady-State Condition Bolt Strength Calculation Methodology
+﻿# ExampleScenario Bolt Strength Calculation Methodology
 
-This document captures the calculation logic reverse-engineered from the
-`BOLT_STRENGTH.xlsx` screenshots for the `Steady-State Condition` steady-state load case. The
-current scope is only the `Steady-State Condition` block for circumferential flange bolts.
+This document defines the calculation logic for the `ExampleScenario` load case. The current scope is the `ExampleScenario` block for circumferential flange bolts.
 
-The goal is to preserve the workbook algorithm in implementation-ready form so
+The goal is to preserve the calculation algorithm in implementation-ready form so
 a future GUI can reproduce and validate the same results.
 
-## Decoded Workbook Scope
+## Calculation Scope
 
-The visible `Steady-State Condition` output table contains these calculated columns:
+The reference `ExampleScenario` output table contains these calculated columns:
 
-| Output column | Meaning | Workbook cell pattern |
+| Output column | Meaning | Cell pattern |
 | --- | --- | --- |
 | `Tensile Stress` | Direct axial tensile stress from `FZ` | `D6:D...` |
 | `Fiber Stress` | Direct stress plus bending stress from `MX`/`MY` | `E6:E...` |
@@ -20,7 +18,7 @@ The visible `Steady-State Condition` output table contains these calculated colu
 | `Flange Crush Stress, Bolt` | Bearing/crush stress under bolt head | `I6:I...` |
 | `Flange Crush Stress, Nut` | Bearing/crush stress under nut | `J6:J...` |
 
-The `Steady-State Condition` loads are read from the `L1` sheet:
+The `ExampleScenario` loads are read from the `L1` sheet:
 
 | `L1` column | Name in sheet | Used by this calculation |
 | --- | --- | --- |
@@ -28,10 +26,10 @@ The `Steady-State Condition` loads are read from the `L1` sheet:
 | `F` | `MX` | Bending moment about X, treated as N*mm |
 | `G` | `MY` | Bending moment about Y, treated as N*mm |
 
-The workbook does not use `FX`, `FY`, or `MZ` in the decoded `Steady-State Condition` stress
+The reference calculation does not use `FX`, `FY`, or `MZ` in the documented `ExampleScenario` stress
 columns.
 
-The visible `Steady-State Condition` interaction table contains these calculated columns:
+The reference `ExampleScenario` interaction table contains these calculated columns:
 
 | Output column | Meaning |
 | --- | --- |
@@ -59,7 +57,7 @@ For the interaction table, all six `L1` load columns are used:
 | Quantity | Unit |
 | --- | --- |
 | Force `FZ` | N |
-| Moments `MX`, `MY` | N*mm as used by the workbook |
+| Moments `MX`, `MY` | N*mm as used by the reference calculation |
 | Areas | mm^2 |
 | Radius / diameters | mm |
 | Moment of inertia | mm^4 |
@@ -67,7 +65,7 @@ For the interaction table, all six `L1` load columns are used:
 | Stress | MPa, equivalent to N/mm^2 |
 
 If `MX` and `MY` were interpreted as N*m, the bending stress would be 1000
-times larger and would not match the workbook. Therefore the implementation
+times larger and would not match the reference calculation. Therefore the implementation
 must use the moment values as N*mm, or convert them to N*mm before applying the
 formula.
 
@@ -75,7 +73,7 @@ formula.
 
 ### Bolt Size
 
-Cell `N6` is the bolt size input. The benchmark screenshots use:
+Cell `N6` is the bolt size input. The benchmark reference data use:
 
 ```text
 bolt_size = ".2500-28"
@@ -119,7 +117,7 @@ Cell `O12`, the bolt thread stress area used in calculations:
 =IF(N10="MINOR",N7,IF(N10="STRESS AREA",N8))
 ```
 
-For the decoded benchmark:
+For the documented benchmark:
 
 ```text
 margin_basis = "MINOR"
@@ -127,8 +125,8 @@ bolt_thread_area = minor_thread_area
 ```
 
 The displayed value is `21.60 mm^2`. Some reference calculations in this repo
-use `11600 / 537.12 = 21.5966636878 mm^2` to reproduce the rounded spreadsheet
-outputs more closely, because the workbook likely carries hidden precision
+use `11600 / 537.12 = 21.5966636878 mm^2` to reproduce the rounded reference
+outputs more closely, because the reference calculation likely carries hidden precision
 behind the displayed `21.60`.
 
 ### Section Properties
@@ -164,7 +162,7 @@ bolt_radius = 2.62 mm
 moment_of_inertia = 37.12 mm^4
 ```
 
-Cell `O15`, `Bending Distance, c`, is displayed as `2.62 mm`. The decoded row
+Cell `O15`, `Bending Distance, c`, is displayed as `2.62 mm`. The documented row
 formula for fiber stress uses `O13` directly, not `O15`. For the benchmark they
 are numerically the same.
 
@@ -242,7 +240,7 @@ Cell `O21`, nut contact crush area minimum:
 =VLOOKUP(N6,Ref!O15:S18,5,)
 ```
 
-The visible reference table is the AS27820 minimum-area table. For `.2500-28`:
+The reference table is the AS27820 minimum-area table. For `.2500-28`:
 
 ```text
 nut_contact_crush_area_min = 46.58 mm^2
@@ -293,15 +291,15 @@ walker_coefficient = 0.64
 ```
 
 The benchmark script uses `0.6384` as an inferred hidden-precision value because
-it reproduces the screen-visible `LCF sigma_alt` values more closely. If the
-original workbook is available later, replace this inferred value with the exact
+it reproduces the reference `LCF sigma_alt` values more closely. If the
+exact source values are available later, replace this inferred value with the exact
 cell value from `LCF!L54:M56`.
 
 ### Material Strengths For Interaction
 
-The interaction table uses the INCO718 BAR `Steady-State Condition` material properties at `250 C`.
+The interaction table uses the INCO718 BAR `ExampleScenario` material properties at `250 C`.
 
-The visible material-property lookup for the 0.02% yield strength is:
+The reference material-property lookup for the 0.02% yield strength is:
 
 ```excel
 =VLOOKUP(T23,'Material Properties'!P5:R6,3,)
@@ -311,10 +309,10 @@ From the `Material Properties` sheet:
 
 | Load case | Temperature K | 0.02% yield strength MPa |
 | --- | ---: | ---: |
-| `Steady-State Condition` | 523 | 708.65 |
+| `ExampleScenario` | 523 | 708.65 |
 | `CDP` | 340 | 773.39 |
 
-The visible `Crc1_N_BJ` table displays this as:
+The reference `Crc1_N_BJ` table displays this as:
 
 ```text
 0.02% Yield Strength = 708.7 MPa
@@ -341,11 +339,11 @@ shear_strength = 409.14 MPa
 
 The interaction ratio formulas also display 0.2% yield strength and minimum
 tensile strength in the material table, but those values are not used in the
-decoded `Rt`, `Rb`, `Rs`, `Rst`, or `Margin` formulas.
+documented `Rt`, `Rb`, `Rs`, `Rst`, or `Margin` formulas.
 
 ## Row-Level Formulas
 
-For the first bolt row, the workbook uses row `19` from the `L1` sheet:
+For the first bolt row, the reference calculation uses row `19` from the `L1` sheet:
 
 ```text
 FZ = 'L1'!E19
@@ -417,7 +415,7 @@ else:
 
 ### Fatigue Life Bucket
 
-The visible INCO718 bar alternating pseudo-life table at `573K` is:
+The reference INCO718 bar alternating pseudo-life table at `573K` is:
 
 | Stress limit, MPa | Life label |
 | ---: | --- |
@@ -468,7 +466,7 @@ Python:
 flange_crush_stress_bolt = fz_n / bolt_contact_crush_area
 ```
 
-The workbook formula does not use `ABS()` here, so a negative `FZ` would produce
+The reference calculation formula does not use `ABS()` here, so a negative `FZ` would produce
 a negative crush stress.
 
 ### Flange Crush Stress, Nut Side
@@ -485,7 +483,7 @@ Python:
 flange_crush_stress_nut = fz_n / nut_contact_crush_area_min
 ```
 
-## Steady-State Condition Interaction Curve Formulas
+## ExampleScenario Interaction Curve Formulas
 
 The interaction table first reduces the six load components into four scalar
 components.
@@ -516,7 +514,7 @@ torsion = abs(mz_nmm)
 
 ### Tensile / Plug Ratio, Rt
 
-Visible formula:
+reference formula:
 
 ```excel
 =(I6/$U$10)/$T$24
@@ -530,7 +528,7 @@ rt = (plug / bolt_thread_area) / yield_002
 
 ### Bending Ratio, Rb
 
-Visible formula:
+reference formula:
 
 ```excel
 =(K6*$U$11/$U$12)/$T$24
@@ -544,7 +542,7 @@ rb = (bending * bolt_radius / moment_of_inertia) / yield_002
 
 ### Direct Shear Ratio, Rs
 
-Visible formula:
+reference formula:
 
 ```excel
 =(J6/$U$10)/$T$26
@@ -558,7 +556,7 @@ rs = (shear / bolt_thread_area) / shear_strength
 
 ### Torsional Shear Ratio, Rst
 
-Visible formula:
+reference formula:
 
 ```excel
 =(L6*$U$11/$U$14)/$T$26
@@ -572,7 +570,7 @@ rst = (torsion * bolt_radius / polar_moment_of_inertia) / shear_strength
 
 ### Interaction Margin
 
-Visible formula:
+reference formula:
 
 ```excel
 =-1+1/SQRT((M6+N6)^2+(O6+P6)^2)
@@ -616,7 +614,7 @@ Look up/contact geometry and crush areas
 Calculate assembly tensile stress and Walker coefficient
         |
         v
-For each Steady-State Condition bolt row:
+For each ExampleScenario bolt row:
     read FZ, MX, MY from L1
     calculate tensile stress
     calculate bending stress
@@ -625,7 +623,7 @@ For each Steady-State Condition bolt row:
     assign fatigue life bucket
     calculate bolt-side and nut-side crush stresses
 
-For each Steady-State Condition interaction row:
+For each ExampleScenario interaction row:
     read FX, FY, FZ, MX, MY, MZ from L1
     calculate PLUG, SHEAR, BENDING, and Torsion resultants
     calculate Rt, Rb, Rs, and Rst
@@ -635,7 +633,7 @@ For each Steady-State Condition interaction row:
 
 ## Reference Calculation: BOLT01
 
-Visible `L1` inputs for `BOLT01`:
+reference `L1` inputs for `BOLT01`:
 
 ```text
 FZ = 10856 N
@@ -689,7 +687,7 @@ flange_crush_stress_nut = 10856 / 46.58
 
 ## Reference Interaction Calculation: BOLT01
 
-Visible interaction inputs for `BOLT01`:
+Reference interaction inputs for `BOLT01`:
 
 ```text
 FX = -16.7 N
@@ -757,17 +755,20 @@ margin = 1 / 0.7325 - 1
 - Preserve the branch logic in the Walker correction. The formula changes
   depending on whether `fiber_stress` is below or above
   `assembly_tensile_stress`.
-- Preserve the life-bucket boundaries exactly. The workbook uses inclusive
+- Preserve the life-bucket boundaries exactly. The reference calculation uses inclusive
   upper bounds.
-- The workbook `VLOOKUP` formulas omit the fourth argument, so Excel performs
+- The source `VLOOKUP` formulas omit the fourth argument, so Excel performs
   approximate matching. A future implementation should use exact dictionary
-  lookups by bolt size unless approximate Excel behavior is deliberately needed
+  lookups by bolt size unless approximate lookup behavior is deliberately needed
   for compatibility testing.
-- Several visible workbook values are rounded. Validation should compare
-  displayed values to a tolerance unless exact workbook cell values are
+- Several reference values are rounded. Validation should compare
+  displayed values to a tolerance unless exact source cell values are
   available.
-- The visible lower-right `Normal / Limit / Ultimate` table is not used by the
-  decoded row-level interaction margin formulas. It may be chart/reference data
-  for plotted curves and should be decoded separately if chart reproduction is
+- The reference lower-right `Normal / Limit / Ultimate` table is not used by the
+  documented row-level interaction margin formulas. It may be chart/reference data
+  for plotted curves and should be documented separately if chart reproduction is
   required.
+
+
+
 

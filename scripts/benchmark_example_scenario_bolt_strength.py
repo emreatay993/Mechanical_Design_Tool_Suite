@@ -1,12 +1,11 @@
-﻿"""Benchmark the decoded Steady-State Condition bolt strength calculation.
+﻿"""Benchmark the ExampleScenario bolt strength calculation.
 
-This script is intentionally standalone. It documents the formulas decoded from
-the Excel workbook screenshots and validates them against screen-visible
-reference values for the first nine Steady-State Condition bolt rows.
+This script is intentionally standalone. It documents the formulas and validates
+them against reference values for the first nine ExampleScenario bolt rows.
 
 Run from the repository root:
 
-    python scripts/benchmark_steady_state_bolt_strength.py
+    python scripts/benchmark_example_scenario_bolt_strength.py
 """
 
 from __future__ import annotations
@@ -70,18 +69,18 @@ class BoltResult:
     crush_nut_mpa: float
 
 
-# Spreadsheet context:
+# Reference context:
 # - N6 = ".2500-28"
 # - N10 = "MINOR"
 # - O22 displays 537.12 MPa.
 #
-# The workbook displays O12 as 21.60 mm2, but 11600 / 537.12 gives
+# O12 is displayed as 21.60 mm2, but 11600 / 537.12 gives
 # 21.5966636878 mm2. Using that inferred hidden-precision area reproduces the
-# visible workbook rows better than using rounded 21.60.
+# reference rows better than using rounded 21.60.
 #
-# N44 displays 0.64. The exact LCF lookup value is not visible in the screenshots;
-# 0.6384 is inferred from the visible LCF outputs. Replace it with the exported
-# workbook value when the original spreadsheet is available.
+# N44 displays 0.64. The exact LCF lookup value is not available in the current
+# reference data; 0.6384 is inferred from the reference LCF outputs. Replace it
+# with the exported source value when available.
 CONSTANTS = Constants(
     bolt_size=".2500-28",
     margin_basis="MINOR",
@@ -117,7 +116,7 @@ TOLERANCES = {
 
 
 def fatigue_life_bucket(lcf_alt_mpa: float) -> str:
-    """Return the workbook life bucket for the INCO718 573K table."""
+    """Return the reference calculation life bucket for the INCO718 573K table."""
     if lcf_alt_mpa <= 167.0:
         return "Infinite"
     if lcf_alt_mpa <= 206.2:
@@ -136,7 +135,7 @@ def walker_corrected_alt_stress(
     assembly_tensile_stress_mpa: float,
     walker_coefficient: float,
 ) -> float:
-    """Replicate the Excel IF branch used for the LCF alternating stress."""
+    """Replicate the source IF branch used for the LCF alternating stress."""
     scale_factor = 2.5 / 2.0
 
     if fiber_stress_mpa < assembly_tensile_stress_mpa:
@@ -231,7 +230,7 @@ def validate_case(case: BoltCase, result: BoltResult) -> None:
 
 
 def print_header(constants: Constants) -> None:
-    print("Steady-State Condition bolt strength benchmark")
+    print("ExampleScenario bolt strength benchmark")
     print(f"  bolt_size: {constants.bolt_size}")
     print(f"  margin_basis: {constants.margin_basis}")
     print(f"  bolt_thread_area_mm2: {constants.bolt_thread_area_mm2:.10f}")
@@ -274,9 +273,13 @@ def main() -> None:
         validate_case(case, result)
 
     print()
-    print("All Steady-State Condition benchmark checks passed.")
+    print("All ExampleScenario benchmark checks passed.")
 
 
 if __name__ == "__main__":
     main()
+
+
+
+
 
