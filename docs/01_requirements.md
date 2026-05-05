@@ -89,12 +89,12 @@ Priority values:
 | REQ-HEADER-004 | P0 | Proposed | The import parser shall recognize common moment component headers including `MX`, `MY`, `MZ`, `Mx`, `My`, and `Mz`. |
 | REQ-HEADER-005 | P0 | Proposed | The import parser shall recognize coordinate headers `X`, `Y`, and `Z`. |
 | REQ-HEADER-006 | P0 | Proposed | The import parser shall support similar practical header variations for node identifiers, force components, moment components, and coordinates. |
-| REQ-HEADER-007 | P0 | Proposed | Force, moment, and coordinate headers may include unit labels. |
-| REQ-HEADER-008 | P0 | Proposed | Unit labels may be attached directly to the header name, such as `FX[N]`. |
-| REQ-HEADER-009 | P0 | Proposed | Unit labels may be separated from the header name by whitespace, such as `FX [N]`. |
-| REQ-HEADER-010 | P0 | Proposed | Coordinate columns shall support unit labels `[m]`, `[cm]`, and `[mm]`. |
-| REQ-HEADER-011 | P0 | Proposed | Force columns shall support unit labels `[N]` and `[kN]`. |
-| REQ-HEADER-012 | P0 | Proposed | Moment columns shall support unit labels `[N.m]`, `[N*m]`, `[kN.m]`, `[kN*m]`, `[N.mm]`, and `[N*mm]`. |
+| REQ-HEADER-007 | P0 | Proposed | Force, moment, and coordinate headers may include unit specifiers enclosed in square brackets or parentheses. |
+| REQ-HEADER-008 | P0 | Proposed | Unit specifiers may be attached directly to the header name, such as `FX[N]` or `FX(N)`. |
+| REQ-HEADER-009 | P0 | Proposed | Unit specifiers may be separated from the header name by whitespace, such as `FX [N]` or `FX (N)`. |
+| REQ-HEADER-010 | P0 | Proposed | Coordinate columns shall support units `m`, `cm`, and `mm` when written in square brackets or parentheses. |
+| REQ-HEADER-011 | P0 | Proposed | Force columns shall support units `N` and `kN` when written in square brackets or parentheses. |
+| REQ-HEADER-012 | P0 | Proposed | Moment columns shall support units `N.m`, `N*m`, `kN.m`, `kN*m`, `N.mm`, and `N*mm` when written in square brackets or parentheses. |
 | REQ-HEADER-013 | P0 | Proposed | The import parser shall convert recognized column units into the active internal unit system before calculation. |
 | REQ-HEADER-014 | P0 | Proposed | Optional node identifier columns shall be retained for later use when supplied. |
 | REQ-HEADER-015 | P0 | Proposed | The import workflow shall report unrecognized, missing, duplicate, or ambiguous headers before calculation. |
