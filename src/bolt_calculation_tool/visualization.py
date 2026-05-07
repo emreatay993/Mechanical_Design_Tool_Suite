@@ -1,10 +1,14 @@
-"""Optional PyVista visualization for node-based bolt results."""
+"""PyVista visualization for node-based bolt results."""
 
 from __future__ import annotations
 
+from math import isfinite
 from typing import Iterable
 
 from .calculations import BoltCalculationResult
+
+
+VISUALIZATION_CMAP = "jet"
 
 
 SCALAR_CHOICES = {
@@ -18,6 +22,31 @@ SCALAR_CHOICES = {
     "Interaction Ratio": lambda result: result.interaction.interaction_ratio,
     "Margin": lambda result: result.interaction.margin,
 }
+
+
+def scalar_values_for_results(
+    results: list[BoltCalculationResult],
+    scalar_name: str,
+) -> list[float]:
+    """Return plotted scalar values for the current result set."""
+    if scalar_name not in SCALAR_CHOICES:
+        choices = ", ".join(SCALAR_CHOICES)
+        raise ValueError(f"Unknown scalar {scalar_name!r}. Choices: {choices}")
+    return [float(SCALAR_CHOICES[scalar_name](result)) for result in results]
+
+
+def local_scalar_range(values: Iterable[float]) -> tuple[float, float]:
+    """Return a scalar range based only on finite values being plotted."""
+    finite_values = [value for value in values if isfinite(value)]
+    if not finite_values:
+        raise ValueError("Cannot visualize a scalar with no finite values.")
+
+    minimum = min(finite_values)
+    maximum = max(finite_values)
+    if minimum == maximum:
+        padding = max(abs(minimum) * 1.0e-6, 1.0e-12)
+        return minimum - padding, maximum + padding
+    return minimum, maximum
 
 
 def results_have_coordinates(results: Iterable[BoltCalculationResult]) -> bool:
@@ -38,9 +67,8 @@ def open_pyvista_plot(
         raise ValueError("Calculate results before opening visualization.")
     if not results_have_coordinates(results):
         raise ValueError("All rows need X, Y, and Z coordinates for visualization.")
-    if scalar_name not in SCALAR_CHOICES:
-        choices = ", ".join(SCALAR_CHOICES)
-        raise ValueError(f"Unknown scalar {scalar_name!r}. Choices: {choices}")
+    selected_values = scalar_values_for_results(results, scalar_name)
+    scalar_range = local_scalar_range(selected_values)
 
     try:
         import pyvista as pv
@@ -64,10 +92,12 @@ def open_pyvista_plot(
         scalars=scalar_name,
         render_points_as_spheres=True,
         point_size=22,
-        cmap="viridis",
+        cmap=VISUALIZATION_CMAP,
+        clim=scalar_range,
+        show_scalar_bar=False,
     )
     plotter.add_point_labels(points, [result.load.name for result in results], font_size=11)
     plotter.add_axes()
     plotter.show_grid()
-    plotter.add_scalar_bar(title=scalar_name)
+    plotter.add_scalar_bar(title=scalar_name, n_labels=5)
     plotter.show()
