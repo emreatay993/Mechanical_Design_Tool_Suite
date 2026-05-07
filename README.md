@@ -1,13 +1,14 @@
 # Bolt Calculation Tool
 
-Prototype GUI and calculation backend for the documented `ExampleScenario`
-circumferential flange bolt checks.
+Prototype PyQt6 Fusion light GUI and calculation backend for the documented
+`ExampleScenario` circumferential flange bolt checks.
 
 ## Run The GUI
 
 From the repository root:
 
 ```powershell
+python -m pip install -e .
 python scripts\run_gui.py
 ```
 

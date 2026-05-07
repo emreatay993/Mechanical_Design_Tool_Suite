@@ -1,12 +1,44 @@
-"""Tkinter prototype GUI for the ExampleScenario bolt calculation tool."""
+"""Qt Fusion prototype GUI for the ExampleScenario bolt calculation tool."""
 
 from __future__ import annotations
 
 import csv
 import sys
-import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+
+try:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QColor, QFont, QPalette
+    from PyQt6.QtWidgets import (
+        QAbstractItemView,
+        QApplication,
+        QComboBox,
+        QFileDialog,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QHeaderView,
+        QLabel,
+        QMainWindow,
+        QMessageBox,
+        QPlainTextEdit,
+        QPushButton,
+        QSizePolicy,
+        QSplitter,
+        QStatusBar,
+        QStyle,
+        QStyleFactory,
+        QTabWidget,
+        QTableWidget,
+        QTableWidgetItem,
+        QVBoxLayout,
+        QWidget,
+    )
+except ImportError as exc:  # pragma: no cover - exercised only without GUI deps.
+    raise RuntimeError(
+        "The Qt GUI requires PyQt6. Install the package with "
+        "`python -m pip install -e .` before launching the GUI."
+    ) from exc
 
 from .calculations import (
     MARGIN_BASIS_MINOR,
@@ -21,150 +53,126 @@ from .sample_data import example_scenario_table_text
 from .visualization import SCALAR_CHOICES, open_pyvista_plot, results_have_coordinates
 
 
-class BoltCalculationApp(tk.Tk):
+CRITERIA_LABEL = "ExampleScenario / INCO718 BAR / 250 C"
+
+
+class BoltCalculationApp(QMainWindow):
+    """Main window for the prototype desktop application."""
+
     def __init__(self) -> None:
         super().__init__()
-        self.title("Bolt Calculation Tool Prototype")
-        self.geometry("1320x820")
-        self.minsize(980, 640)
-
         self.results: list[BoltCalculationResult] = []
         self.parsed_table: ParsedTable | None = None
 
-        self.bolt_size = tk.StringVar(value=available_bolt_sizes()[0])
-        self.margin_basis = tk.StringVar(value=MARGIN_BASIS_MINOR)
-        self.design_path = tk.StringVar(value="ExampleScenario / INCO718 BAR / 250 C")
-        self.coordinate_system = tk.StringVar(value="Local bolt coordinates")
-        self.scalar_choice = tk.StringVar(value="Margin")
-        self.status_text = tk.StringVar(value="Load the example table or paste your own load table.")
+        self.setWindowTitle("Bolt Calculation Tool Prototype")
+        self.resize(1360, 840)
+        self.setMinimumSize(1060, 680)
 
-        self._configure_style()
         self._build_layout()
         self._load_example()
 
-    def _configure_style(self) -> None:
-        style = ttk.Style(self)
-        if sys.platform == "win32":
-            style.theme_use("vista")
-        style.configure("Status.TLabel", font=("Segoe UI", 10, "bold"))
-        style.configure("Small.TLabel", font=("Segoe UI", 9))
-        style.configure("Treeview", rowheight=24)
-
     def _build_layout(self) -> None:
-        root = ttk.Frame(self, padding=10)
-        root.pack(fill=tk.BOTH, expand=True)
+        central = QWidget()
+        self.setCentralWidget(central)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(14, 14, 14, 10)
+        root.setSpacing(10)
 
-        toolbar = ttk.Frame(root)
-        toolbar.pack(fill=tk.X)
+        top_bar = QFrame()
+        top_bar.setObjectName("TopBar")
+        top_layout = QGridLayout(top_bar)
+        top_layout.setContentsMargins(14, 12, 14, 12)
+        top_layout.setHorizontalSpacing(10)
+        top_layout.setVerticalSpacing(8)
 
-        self._labeled_combo(
-            toolbar,
-            "Bolt size",
-            self.bolt_size,
-            available_bolt_sizes(),
-            width=12,
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        self._labeled_combo(
-            toolbar,
-            "Margin basis",
-            self.margin_basis,
-            list(SUPPORTED_MARGIN_BASES),
-            width=14,
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        self._labeled_combo(
-            toolbar,
-            "Criteria",
-            self.design_path,
-            ["ExampleScenario / INCO718 BAR / 250 C"],
-            width=34,
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        self._labeled_combo(
-            toolbar,
-            "Coordinates",
-            self.coordinate_system,
-            ["Local bolt coordinates", "Global coordinates"],
-            width=22,
-        ).pack(side=tk.LEFT, padx=(0, 10))
+        title = QLabel("Bolt Calculation Tool")
+        title.setObjectName("AppTitle")
+        subtitle = QLabel("ExampleScenario strength, fatigue, crush, and interaction checks")
+        subtitle.setObjectName("Subtitle")
+        top_layout.addWidget(title, 0, 0, 1, 4)
+        top_layout.addWidget(subtitle, 1, 0, 1, 4)
 
-        ttk.Button(toolbar, text="Load Example", command=self._load_example).pack(
-            side=tk.LEFT, padx=(4, 0)
+        self.bolt_size_combo = self._combo(available_bolt_sizes())
+        self.bolt_size_combo.setCurrentText(available_bolt_sizes()[0])
+        self.margin_basis_combo = self._combo(list(SUPPORTED_MARGIN_BASES))
+        self.margin_basis_combo.setCurrentText(MARGIN_BASIS_MINOR)
+        self.criteria_combo = self._combo([CRITERIA_LABEL])
+        self.coordinate_combo = self._combo(["Local bolt coordinates", "Global coordinates"])
+
+        top_layout.addWidget(self._control("Bolt size", self.bolt_size_combo), 2, 0)
+        top_layout.addWidget(self._control("Margin basis", self.margin_basis_combo), 2, 1)
+        top_layout.addWidget(self._control("Criteria", self.criteria_combo), 2, 2)
+        top_layout.addWidget(self._control("Coordinates", self.coordinate_combo), 2, 3)
+        top_layout.setColumnStretch(2, 1)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        button_row.addWidget(
+            self._button(
+                "Load Example",
+                QStyle.StandardPixmap.SP_FileDialogDetailedView,
+                self._load_example,
+            )
         )
-        ttk.Button(toolbar, text="Paste", command=self._paste_clipboard).pack(
-            side=tk.LEFT, padx=(4, 0)
+        button_row.addWidget(
+            self._button("Paste", QStyle.StandardPixmap.SP_FileDialogContentsView, self._paste_clipboard)
         )
-        ttk.Button(toolbar, text="Import", command=self._import_table).pack(
-            side=tk.LEFT, padx=(4, 0)
+        button_row.addWidget(
+            self._button("Import", QStyle.StandardPixmap.SP_DialogOpenButton, self._import_table)
         )
-        ttk.Button(toolbar, text="Calculate", command=self._calculate).pack(
-            side=tk.LEFT, padx=(4, 0)
+        button_row.addWidget(
+            self._button("Calculate", QStyle.StandardPixmap.SP_DialogApplyButton, self._calculate)
         )
-        ttk.Button(toolbar, text="Export", command=self._export_results).pack(
-            side=tk.LEFT, padx=(4, 0)
+        button_row.addWidget(
+            self._button("Export", QStyle.StandardPixmap.SP_DialogSaveButton, self._export_results)
         )
+        button_row.addStretch(1)
 
-        viz_frame = ttk.Frame(toolbar)
-        viz_frame.pack(side=tk.RIGHT)
-        ttk.Label(viz_frame, text="Contour").pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Combobox(
-            viz_frame,
-            textvariable=self.scalar_choice,
-            values=list(SCALAR_CHOICES),
-            state="readonly",
-            width=18,
-        ).pack(side=tk.LEFT)
-        ttk.Button(viz_frame, text="Visualize", command=self._visualize).pack(
-            side=tk.LEFT, padx=(4, 0)
+        self.scalar_combo = self._combo(list(SCALAR_CHOICES))
+        self.scalar_combo.setCurrentText("Margin")
+        button_row.addWidget(QLabel("Contour"))
+        button_row.addWidget(self.scalar_combo)
+        button_row.addWidget(
+            self._button("Visualize", QStyle.StandardPixmap.SP_DesktopIcon, self._visualize)
         )
+        top_layout.addLayout(button_row, 3, 0, 1, 4)
+        root.addWidget(top_bar)
 
-        ttk.Label(root, textvariable=self.status_text, style="Status.TLabel").pack(
-            fill=tk.X, pady=(10, 8)
+        summary = QFrame()
+        summary.setObjectName("SummaryBand")
+        summary_layout = QHBoxLayout(summary)
+        summary_layout.setContentsMargins(12, 8, 12, 8)
+        summary_layout.setSpacing(16)
+        self.status_label = QLabel("Load the example table or paste your own load table.")
+        self.status_label.setObjectName("StatusLabel")
+        self.rows_label = QLabel("Rows: -")
+        self.fail_label = QLabel("Failures: -")
+        self.governing_label = QLabel("Governing: -")
+        summary_layout.addWidget(self.status_label, 1)
+        summary_layout.addWidget(self.rows_label)
+        summary_layout.addWidget(self.fail_label)
+        summary_layout.addWidget(self.governing_label)
+        root.addWidget(summary)
+
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
+        root.addWidget(splitter, 1)
+
+        input_tabs = QTabWidget()
+        input_tabs.setDocumentMode(True)
+        self.input_text = QPlainTextEdit()
+        self.input_text.setFont(QFont("Consolas", 10))
+        self.input_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        input_tabs.addTab(self.input_text, "Input Table")
+
+        self.preview_table = self._table(
+            ("Bolt", "X", "Y", "Z", "FX", "FY", "FZ", "MX", "MY", "MZ")
         )
+        input_tabs.addTab(self.preview_table, "Parsed Loads")
 
-        paned = ttk.PanedWindow(root, orient=tk.VERTICAL)
-        paned.pack(fill=tk.BOTH, expand=True)
-
-        input_frame = ttk.Frame(paned)
-        output_frame = ttk.Frame(paned)
-        paned.add(input_frame, weight=2)
-        paned.add(output_frame, weight=3)
-
-        input_tabs = ttk.Notebook(input_frame)
-        input_tabs.pack(fill=tk.BOTH, expand=True)
-
-        paste_frame = ttk.Frame(input_tabs, padding=4)
-        preview_frame = ttk.Frame(input_tabs, padding=4)
-        input_tabs.add(paste_frame, text="Input Table")
-        input_tabs.add(preview_frame, text="Parsed Loads")
-
-        self.input_text = tk.Text(
-            paste_frame,
-            height=12,
-            wrap="none",
-            undo=True,
-            font=("Consolas", 10),
-        )
-        self.input_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        input_y = ttk.Scrollbar(paste_frame, orient=tk.VERTICAL, command=self.input_text.yview)
-        input_x = ttk.Scrollbar(paste_frame, orient=tk.HORIZONTAL, command=self.input_text.xview)
-        self.input_text.configure(yscrollcommand=input_y.set, xscrollcommand=input_x.set)
-        input_y.pack(side=tk.RIGHT, fill=tk.Y)
-        input_x.pack(side=tk.BOTTOM, fill=tk.X)
-
-        self.preview_tree = self._tree(
-            preview_frame,
-            ("Bolt", "X", "Y", "Z", "FX", "FY", "FZ", "MX", "MY", "MZ"),
-        )
-
-        output_tabs = ttk.Notebook(output_frame)
-        output_tabs.pack(fill=tk.BOTH, expand=True)
-
-        results_frame = ttk.Frame(output_tabs, padding=4)
-        trace_frame = ttk.Frame(output_tabs, padding=4)
-        output_tabs.add(results_frame, text="Results")
-        output_tabs.add(trace_frame, text="Trace")
-
-        self.results_tree = self._tree(
-            results_frame,
+        output_tabs = QTabWidget()
+        output_tabs.setDocumentMode(True)
+        self.results_table = self._table(
             (
                 "Bolt",
                 "Tensile",
@@ -184,106 +192,123 @@ class BoltCalculationApp(tk.Tk):
                 "Margin",
                 "Status",
                 "Governing",
-            ),
+            )
         )
+        output_tabs.addTab(self.results_table, "Results")
 
-        self.trace_text = tk.Text(
-            trace_frame,
-            wrap="word",
-            state="disabled",
-            font=("Consolas", 10),
-        )
-        self.trace_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        trace_scroll = ttk.Scrollbar(trace_frame, orient=tk.VERTICAL, command=self.trace_text.yview)
-        self.trace_text.configure(yscrollcommand=trace_scroll.set)
-        trace_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.trace_text = QPlainTextEdit()
+        self.trace_text.setReadOnly(True)
+        self.trace_text.setFont(QFont("Consolas", 10))
+        output_tabs.addTab(self.trace_text, "Trace")
 
-    def _labeled_combo(
-        self,
-        parent: ttk.Frame,
-        label: str,
-        variable: tk.StringVar,
-        values: list[str],
-        width: int,
-    ) -> ttk.Frame:
-        frame = ttk.Frame(parent)
-        ttk.Label(frame, text=label, style="Small.TLabel").pack(anchor=tk.W)
-        ttk.Combobox(
-            frame,
-            textvariable=variable,
-            values=values,
-            state="readonly",
-            width=width,
-        ).pack(fill=tk.X)
+        splitter.addWidget(input_tabs)
+        splitter.addWidget(output_tabs)
+        splitter.setSizes([300, 470])
+
+        status_bar = QStatusBar()
+        status_bar.showMessage("Qt Fusion light style active")
+        self.setStatusBar(status_bar)
+
+    def _combo(self, values: list[str]) -> QComboBox:
+        combo = QComboBox()
+        combo.addItems(values)
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        combo.setMinimumHeight(30)
+        return combo
+
+    def _control(self, label: str, widget: QWidget) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("ControlBlock")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+        control_label = QLabel(label)
+        control_label.setObjectName("ControlLabel")
+        layout.addWidget(control_label)
+        layout.addWidget(widget)
         return frame
 
-    def _tree(self, parent: ttk.Frame, columns: tuple[str, ...]) -> ttk.Treeview:
-        wrapper = ttk.Frame(parent)
-        wrapper.pack(fill=tk.BOTH, expand=True)
-        tree = ttk.Treeview(wrapper, columns=columns, show="headings")
-        for column in columns:
-            tree.heading(column, text=column)
-            tree.column(column, width=self._column_width(column), anchor=tk.E)
-        tree.column(columns[0], anchor=tk.W)
-        y_scroll = ttk.Scrollbar(wrapper, orient=tk.VERTICAL, command=tree.yview)
-        x_scroll = ttk.Scrollbar(wrapper, orient=tk.HORIZONTAL, command=tree.xview)
-        tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        y_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        x_scroll.pack(side=tk.BOTTOM, fill=tk.X)
-        return tree
+    def _button(
+        self,
+        text: str,
+        icon_id: QStyle.StandardPixmap,
+        callback,
+    ) -> QPushButton:
+        button = QPushButton(text)
+        button.setIcon(self.style().standardIcon(icon_id))
+        button.setMinimumHeight(32)
+        button.clicked.connect(callback)
+        return button
 
-    def _column_width(self, column: str) -> int:
+    def _table(self, headers: tuple[str, ...]) -> QTableWidget:
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setShowGrid(True)
+        table.setSortingEnabled(False)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(24)
+        table.horizontalHeader().setStretchLastSection(False)
+        table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
         widths = {
-            "Bolt": 90,
-            "Life": 80,
-            "Status": 70,
-            "Governing": 130,
-            "Margin": 90,
+            "Bolt": 100,
+            "Life": 86,
+            "Status": 78,
+            "Governing": 150,
+            "Margin": 86,
         }
-        return widths.get(column, 92)
+        for index, header in enumerate(headers):
+            table.setColumnWidth(index, widths.get(header, 94))
+            table.horizontalHeader().setSectionResizeMode(
+                index,
+                QHeaderView.ResizeMode.Interactive,
+            )
+        return table
 
     def _load_example(self) -> None:
-        self.input_text.delete("1.0", tk.END)
-        self.input_text.insert("1.0", example_scenario_table_text())
-        self.status_text.set("ExampleScenario rows loaded. Click Calculate to refresh results.")
+        self.input_text.setPlainText(example_scenario_table_text())
+        self._set_status("ExampleScenario rows loaded. Click Calculate to refresh results.")
 
     def _paste_clipboard(self) -> None:
-        try:
-            text = self.clipboard_get()
-        except tk.TclError:
-            messagebox.showerror("Paste failed", "The clipboard does not contain text.")
+        text = QApplication.clipboard().text()
+        if not text.strip():
+            QMessageBox.warning(self, "Paste failed", "The clipboard does not contain text.")
             return
-        self.input_text.delete("1.0", tk.END)
-        self.input_text.insert("1.0", text)
-        self.status_text.set("Clipboard table pasted. Click Calculate to validate headers and run.")
+        self.input_text.setPlainText(text)
+        self._set_status("Clipboard table pasted. Click Calculate to validate headers and run.")
 
     def _import_table(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Import load table",
-            filetypes=[
-                ("Delimited tables", "*.csv *.tsv *.txt"),
-                ("CSV files", "*.csv"),
-                ("TSV files", "*.tsv"),
-                ("Text files", "*.txt"),
-                ("All files", "*.*"),
-            ],
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import load table",
+            "",
+            "Delimited tables (*.csv *.tsv *.txt);;CSV files (*.csv);;TSV files (*.tsv);;Text files (*.txt);;All files (*.*)",
         )
         if not path:
             return
         table_text = Path(path).read_text(encoding="utf-8-sig")
-        self.input_text.delete("1.0", tk.END)
-        self.input_text.insert("1.0", table_text)
-        self.status_text.set(f"Imported {Path(path).name}. Click Calculate to run.")
+        self.input_text.setPlainText(table_text)
+        self._set_status(f"Imported {Path(path).name}. Click Calculate to run.")
 
     def _calculate(self) -> None:
         try:
-            parsed = parse_load_table(self.input_text.get("1.0", tk.END))
-            constants = resolve_constants(self.bolt_size.get(), self.margin_basis.get())
+            parsed = parse_load_table(self.input_text.toPlainText())
+            constants = resolve_constants(
+                self.bolt_size_combo.currentText(),
+                self.margin_basis_combo.currentText(),
+            )
             results = calculate_bolt_group(parsed.loads, constants)
         except Exception as exc:
-            messagebox.showerror("Calculation failed", str(exc))
-            self.status_text.set("Calculation failed. Fix the input table and retry.")
+            QMessageBox.critical(self, "Calculation failed", str(exc))
+            self._set_status("Calculation failed. Fix the input table and retry.")
             return
 
         self.parsed_table = parsed
@@ -291,70 +316,89 @@ class BoltCalculationApp(tk.Tk):
         self._fill_preview(parsed)
         self._fill_results(results)
         self._fill_trace(parsed, results)
-        self._update_status(results)
+        self._update_summary(results)
 
     def _fill_preview(self, parsed: ParsedTable) -> None:
-        self.preview_tree.delete(*self.preview_tree.get_children())
-        for load in parsed.loads:
-            self.preview_tree.insert(
-                "",
-                tk.END,
-                values=(
-                    load.name,
-                    self._fmt_optional(load.x_mm, 3),
-                    self._fmt_optional(load.y_mm, 3),
-                    self._fmt_optional(load.z_mm, 3),
-                    self._fmt(load.fx_n, 2),
-                    self._fmt(load.fy_n, 2),
-                    self._fmt(load.fz_n, 2),
-                    self._fmt(load.mx_nmm, 2),
-                    self._fmt(load.my_nmm, 2),
-                    self._fmt(load.mz_nmm, 2),
-                ),
+        self.preview_table.setRowCount(len(parsed.loads))
+        for row, load in enumerate(parsed.loads):
+            values = (
+                load.name,
+                self._fmt_optional(load.x_mm, 3),
+                self._fmt_optional(load.y_mm, 3),
+                self._fmt_optional(load.z_mm, 3),
+                self._fmt(load.fx_n, 2),
+                self._fmt(load.fy_n, 2),
+                self._fmt(load.fz_n, 2),
+                self._fmt(load.mx_nmm, 2),
+                self._fmt(load.my_nmm, 2),
+                self._fmt(load.mz_nmm, 2),
             )
+            self._set_row(self.preview_table, row, values)
 
     def _fill_results(self, results: list[BoltCalculationResult]) -> None:
-        self.results_tree.delete(*self.results_tree.get_children())
-        for result in results:
+        self.results_table.setRowCount(len(results))
+        for row, result in enumerate(results):
             strength = result.strength
             interaction = result.interaction
-            self.results_tree.insert(
-                "",
-                tk.END,
-                values=(
-                    result.load.name,
-                    self._fmt(strength.tensile_mpa, 1),
-                    self._fmt(strength.fiber_mpa, 1),
-                    self._fmt(strength.lcf_alt_mpa, 1),
-                    strength.life,
-                    self._fmt(strength.crush_bolt_mpa, 1),
-                    self._fmt(strength.crush_nut_mpa, 1),
-                    self._fmt(interaction.plug_n, 1),
-                    self._fmt(interaction.shear_n, 1),
-                    self._fmt(interaction.bending_nmm, 1),
-                    self._fmt(interaction.torsion_nmm, 1),
-                    self._fmt(interaction.rt, 3),
-                    self._fmt(interaction.rb, 3),
-                    self._fmt(interaction.rs, 3),
-                    self._fmt(interaction.rst, 3),
-                    self._fmt_margin(interaction.margin),
-                    result.status,
-                    result.governing_check,
-                ),
+            values = (
+                result.load.name,
+                self._fmt(strength.tensile_mpa, 1),
+                self._fmt(strength.fiber_mpa, 1),
+                self._fmt(strength.lcf_alt_mpa, 1),
+                strength.life,
+                self._fmt(strength.crush_bolt_mpa, 1),
+                self._fmt(strength.crush_nut_mpa, 1),
+                self._fmt(interaction.plug_n, 1),
+                self._fmt(interaction.shear_n, 1),
+                self._fmt(interaction.bending_nmm, 1),
+                self._fmt(interaction.torsion_nmm, 1),
+                self._fmt(interaction.rt, 3),
+                self._fmt(interaction.rb, 3),
+                self._fmt(interaction.rs, 3),
+                self._fmt(interaction.rst, 3),
+                self._fmt_margin(interaction.margin),
+                result.status,
+                result.governing_check,
             )
+            self._set_row(self.results_table, row, values, result.status)
+
+    def _set_row(
+        self,
+        table: QTableWidget,
+        row: int,
+        values: tuple[str, ...],
+        status: str | None = None,
+    ) -> None:
+        for column, value in enumerate(values):
+            item = QTableWidgetItem(value)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if column == 0:
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            else:
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            if status == "FAIL":
+                item.setBackground(QColor("#fdeaea"))
+                item.setForeground(QColor("#8b1f1f"))
+            elif status == "PASS" and column == len(values) - 2:
+                item.setForeground(QColor("#1f6b43"))
+            table.setItem(row, column, item)
 
     def _fill_trace(
         self,
         parsed: ParsedTable,
         results: list[BoltCalculationResult],
     ) -> None:
-        constants = resolve_constants(self.bolt_size.get(), self.margin_basis.get())
+        constants = resolve_constants(
+            self.bolt_size_combo.currentText(),
+            self.margin_basis_combo.currentText(),
+        )
         notes = "\n".join(f"- {note}" for note in parsed.notes) or "- none"
         field_map = "\n".join(
             f"- {field}: {header}" for field, header in sorted(parsed.field_headers.items())
         )
-        text = f"""Design path: {self.design_path.get()}
-Coordinate system: {self.coordinate_system.get()}
+        text = f"""Design path: {self.criteria_combo.currentText()}
+Coordinate system: {self.coordinate_combo.currentText()}
+GUI style: Qt Fusion light engineering
 
 Resolved constants:
 - bolt_size: {constants.bolt_size}
@@ -384,12 +428,9 @@ This prototype uses the documented ExampleScenario reference behavior in N,
 N*mm, mm, mm^2, mm^4, and MPa. Other bolt sizes are listed in the source lookup
 formulas, but complete prototype constants are currently documented for .2500-28.
 """
-        self.trace_text.configure(state="normal")
-        self.trace_text.delete("1.0", tk.END)
-        self.trace_text.insert("1.0", text)
-        self.trace_text.configure(state="disabled")
+        self.trace_text.setPlainText(text)
 
-    def _update_status(self, results: list[BoltCalculationResult]) -> None:
+    def _update_summary(self, results: list[BoltCalculationResult]) -> None:
         fail_count = sum(1 for result in results if result.status == "FAIL")
         finite_results = [
             result
@@ -402,34 +443,43 @@ formulas, but complete prototype constants are currently documented for .2500-28
             default=None,
         )
         if governing is None:
-            margin_text = "all margins infinite"
+            governing_text = "all margins infinite"
         else:
-            margin_text = (
-                f"governing {governing.load.name}: "
-                f"{governing.interaction.margin * 100.0:.0f}%"
+            governing_text = (
+                f"{governing.load.name} {governing.interaction.margin * 100.0:.0f}%"
             )
-        self.status_text.set(
-            f"{len(results)} bolts calculated, {fail_count} failures, {margin_text}."
-        )
+
+        self.rows_label.setText(f"Rows: {len(results)}")
+        self.fail_label.setText(f"Failures: {fail_count}")
+        self.governing_label.setText(f"Governing: {governing_text}")
+        self._set_status(f"{len(results)} bolts calculated with {fail_count} failures.")
+
+    def _set_status(self, text: str) -> None:
+        self.status_label.setText(text)
+        self.statusBar().showMessage(text)
 
     def _visualize(self) -> None:
         try:
-            open_pyvista_plot(self.results, self.scalar_choice.get())
+            open_pyvista_plot(self.results, self.scalar_combo.currentText())
         except Exception as exc:
-            messagebox.showerror("Visualization unavailable", str(exc))
+            QMessageBox.warning(self, "Visualization unavailable", str(exc))
 
     def _export_results(self) -> None:
         if not self.results:
-            messagebox.showinfo("No results", "Calculate results before exporting.")
+            QMessageBox.information(self, "No results", "Calculate results before exporting.")
             return
-        path = filedialog.asksaveasfilename(
-            title="Export results",
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export results",
+            "",
+            "CSV files (*.csv);;All files (*.*)",
         )
         if not path:
             return
-        with Path(path).open("w", newline="", encoding="utf-8") as handle:
+        export_path = Path(path)
+        if export_path.suffix == "":
+            export_path = export_path.with_suffix(".csv")
+        with export_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
             writer.writerow(
                 [
@@ -478,7 +528,7 @@ formulas, but complete prototype constants are currently documented for .2500-28
                         result.governing_check,
                     ]
                 )
-        self.status_text.set(f"Exported results to {Path(path).name}.")
+        self._set_status(f"Exported results to {export_path.name}.")
 
     def _fmt(self, value: float, decimals: int) -> str:
         return f"{value:.{decimals}f}"
@@ -494,9 +544,142 @@ formulas, but complete prototype constants are currently documented for .2500-28
         return f"{margin * 100.0:.0f}%"
 
 
+def _apply_fusion_light_style(app: QApplication) -> None:
+    fusion_style = QStyleFactory.create("Fusion")
+    if fusion_style is not None:
+        app.setStyle(fusion_style)
+    else:
+        app.setStyle("Fusion")
+    app.setProperty("boltToolVisualStyle", "Qt Fusion Light Engineering")
+    app.setFont(QFont("Segoe UI", 10))
+
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#f4f6f8"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#1f2933"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#f7f9fb"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#1f2933"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#1f2933"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#eef2f5"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#1f2933"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2f6f9f"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    app.setPalette(palette)
+
+    app.setStyleSheet(
+        """
+        QMainWindow, QWidget {
+            background: #f4f6f8;
+            color: #1f2933;
+        }
+        QFrame#TopBar {
+            background: #eef2f5;
+            border: 1px solid #d2dbe5;
+            border-radius: 6px;
+        }
+        QLabel#AppTitle {
+            color: #162330;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        QLabel#Subtitle {
+            color: #52616f;
+            font-size: 11px;
+        }
+        QLabel#ControlLabel {
+            color: #52616f;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        QFrame#SummaryBand {
+            background: #ffffff;
+            border: 1px solid #d2dbe5;
+            border-left: 4px solid #2f6f9f;
+            border-radius: 4px;
+        }
+        QLabel#StatusLabel {
+            color: #16324f;
+            font-weight: 700;
+        }
+        QComboBox, QPushButton {
+            background: #ffffff;
+            border: 1px solid #b8c4cf;
+            border-radius: 4px;
+            padding: 5px 8px;
+            min-height: 22px;
+        }
+        QPushButton {
+            font-weight: 600;
+        }
+        QComboBox:hover, QPushButton:hover {
+            border-color: #2f6f9f;
+            background: #f8fbfd;
+        }
+        QPushButton:pressed {
+            background: #e3edf5;
+        }
+        QTabWidget::pane {
+            background: #ffffff;
+            border: 1px solid #d2dbe5;
+            top: -1px;
+        }
+        QTabBar::tab {
+            background: #e7edf3;
+            border: 1px solid #cbd5df;
+            padding: 7px 12px;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+        }
+        QTabBar::tab:selected {
+            background: #ffffff;
+            border-bottom-color: #ffffff;
+            color: #16324f;
+            font-weight: 700;
+        }
+        QPlainTextEdit {
+            background: #ffffff;
+            border: 1px solid #cbd5df;
+            border-radius: 4px;
+            selection-background-color: #cfe4f4;
+            selection-color: #162330;
+        }
+        QTableWidget {
+            background: #ffffff;
+            alternate-background-color: #f7f9fb;
+            border: 1px solid #cbd5df;
+            gridline-color: #d8e0e8;
+            selection-background-color: #d8eaf7;
+            selection-color: #14212b;
+        }
+        QHeaderView::section {
+            background: #e7edf3;
+            border: 0;
+            border-right: 1px solid #cbd5df;
+            border-bottom: 1px solid #cbd5df;
+            color: #263442;
+            font-weight: 700;
+            padding: 6px;
+        }
+        QSplitter::handle {
+            background: #dce3ea;
+        }
+        QStatusBar {
+            background: #eef2f5;
+            border-top: 1px solid #d2dbe5;
+            color: #52616f;
+        }
+        """
+    )
+
+
 def main() -> None:
-    app = BoltCalculationApp()
-    app.mainloop()
+    app = QApplication(sys.argv)
+    _apply_fusion_light_style(app)
+    window = BoltCalculationApp()
+    window.show()
+    raise SystemExit(app.exec())
 
 
 if __name__ == "__main__":
