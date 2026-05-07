@@ -25,6 +25,10 @@ columns are retained for result labels and visualization. Header units such as
 `FX[kN]`, `MX[N.m]`, and `X[mm]` are converted into the documented internal
 units before calculation.
 
+The GUI opens with the reference ExampleScenario already calculated. Result
+actions enable only when valid data is available, and selecting a result row
+updates the trace panel with that bolt's detailed calculation breakdown.
+
 The implemented calculation path is the documented `.2500-28` ExampleScenario
 reference case. Other bolt sizes appear in source lookup formulas, but complete
 prototype constants are only documented for `.2500-28`.
