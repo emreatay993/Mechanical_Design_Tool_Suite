@@ -94,10 +94,13 @@ def open_pyvista_plot(
         point_size=22,
         cmap=VISUALIZATION_CMAP,
         clim=scalar_range,
-        show_scalar_bar=False,
+        scalar_bar_args={
+            "title": scalar_name,
+            "n_labels": 5,
+            "fmt": "%.3g",
+        },
     )
     plotter.add_point_labels(points, [result.load.name for result in results], font_size=11)
     plotter.add_axes()
     plotter.show_grid()
-    plotter.add_scalar_bar(title=scalar_name, n_labels=5)
     plotter.show()

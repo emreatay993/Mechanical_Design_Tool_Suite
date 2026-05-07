@@ -82,9 +82,6 @@ class VisualizationDependencyTest(unittest.TestCase):
             def show_grid(self) -> None:
                 pass
 
-            def add_scalar_bar(self, **kwargs: object) -> None:
-                captured["scalar_bar_kwargs"] = kwargs
-
             def show(self) -> None:
                 captured["shown"] = True
 
@@ -97,8 +94,9 @@ class VisualizationDependencyTest(unittest.TestCase):
 
         self.assertEqual(mesh_kwargs["cmap"], VISUALIZATION_CMAP)
         self.assertEqual(mesh_kwargs["clim"], local_scalar_range(margin_values))
-        self.assertFalse(mesh_kwargs["show_scalar_bar"])
-        self.assertEqual(captured["scalar_bar_kwargs"]["title"], "Margin")
+        self.assertEqual(mesh_kwargs["scalar_bar_args"]["title"], "Margin")
+        self.assertEqual(mesh_kwargs["scalar_bar_args"]["n_labels"], 5)
+        self.assertEqual(mesh_kwargs["scalar_bar_args"]["fmt"], "%.3g")
         self.assertTrue(captured["shown"])
 
 
