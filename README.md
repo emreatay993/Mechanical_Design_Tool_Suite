@@ -44,8 +44,5 @@ Run the package backend tests:
 $env:PYTHONPATH="src"; python -m unittest discover -s tests
 ```
 
-Optional 3D node contour visualization uses PyVista:
-
-```powershell
-python -m pip install -e ".[visualization]"
-```
+The editable install also installs the PyVista dependency used by the 3D node
+contour window.
