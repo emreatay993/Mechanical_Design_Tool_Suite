@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from math import isfinite
-from typing import Iterable
+from typing import Any, Iterable, Sequence
 
 from .calculations import BoltCalculationResult
 
 
 VISUALIZATION_CMAP = "jet"
+HOVER_TEXT_POSITION = 2
 
 
 SCALAR_CHOICES = {
@@ -49,6 +50,21 @@ def local_scalar_range(values: Iterable[float]) -> tuple[float, float]:
     return minimum, maximum
 
 
+def format_contour_value(value: float) -> str:
+    """Format a contour value for compact hover display."""
+    return f"{value:.6g}"
+
+
+def format_hover_text(node_name: str, scalar_name: str, value: float) -> str:
+    """Return the upper-left hover overlay text for a picked bolt node."""
+    return f"{node_name}\n{scalar_name}: {format_contour_value(value)}"
+
+
+def hover_prompt_text(scalar_name: str) -> str:
+    """Return the idle upper-left hover overlay text."""
+    return f"Hover over a bolt node\n{scalar_name}: -"
+
+
 def results_have_coordinates(results: Iterable[BoltCalculationResult]) -> bool:
     return all(
         result.load.x_mm is not None
@@ -87,7 +103,7 @@ def open_pyvista_plot(
         cloud[name] = [getter(result) for result in results]
 
     plotter = pv.Plotter(title=f"Bolt nodes - {scalar_name}")
-    plotter.add_mesh(
+    node_actor = plotter.add_mesh(
         cloud,
         scalars=scalar_name,
         render_points_as_spheres=True,
@@ -101,6 +117,64 @@ def open_pyvista_plot(
         },
     )
     plotter.add_point_labels(points, [result.load.name for result in results], font_size=11)
+    _install_hover_overlay(
+        plotter=plotter,
+        node_actor=node_actor,
+        node_names=[result.load.name for result in results],
+        scalar_name=scalar_name,
+        scalar_values=selected_values,
+    )
     plotter.add_axes()
     plotter.show_grid()
     plotter.show()
+
+
+def _install_hover_overlay(
+    plotter: Any,
+    node_actor: Any,
+    node_names: Sequence[str],
+    scalar_name: str,
+    scalar_values: Sequence[float],
+) -> None:
+    """Install mouse hover text for bolt nodes in the upper-left plot corner."""
+    from vtkmodules.vtkRenderingCore import vtkPointPicker
+
+    hover_actor = plotter.add_text(
+        hover_prompt_text(scalar_name),
+        position="upper_left",
+        font_size=12,
+        color="black",
+        name="bolt_hover_info",
+    )
+    picker = vtkPointPicker()
+    picker.SetTolerance(0.025)
+    picker.PickFromListOn()
+    picker.AddPickList(node_actor)
+
+    def set_hover_text(text: str) -> None:
+        if hover_actor.get_text(HOVER_TEXT_POSITION) == text:
+            return
+        hover_actor.set_text(HOVER_TEXT_POSITION, text)
+        plotter.render()
+
+    def on_mouse_move(_interactor: Any, _event: str) -> None:
+        event_position = plotter.iren.interactor.GetEventPosition()
+        picker.Pick(event_position[0], event_position[1], 0, plotter.renderer)
+        point_id = picker.GetPointId()
+        if 0 <= point_id < len(node_names):
+            set_hover_text(
+                format_hover_text(
+                    node_names[point_id],
+                    scalar_name,
+                    scalar_values[point_id],
+                )
+            )
+            return
+        set_hover_text(hover_prompt_text(scalar_name))
+
+    plotter.iren.interactor.AddObserver("MouseMoveEvent", on_mouse_move)
+
+    # Keep VTK callback objects alive for the life of the plotter.
+    plotter._bolt_hover_actor = hover_actor
+    plotter._bolt_hover_picker = picker
+    plotter._bolt_hover_callback = on_mouse_move
