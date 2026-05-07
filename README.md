@@ -50,3 +50,23 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests
 
 The editable install also installs the PyVista dependency used by the 3D node
 contour window.
+
+## Build Windows Executable
+
+Build a PyInstaller onedir executable from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean
+```
+
+The executable is written to:
+
+```text
+dist\BoltCalculationTool\BoltCalculationTool.exe
+```
+
+To build and launch it in one step:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean -Launch
+```

@@ -3,3 +3,6 @@ __pycache__/
 *.py[cod]
 .idea/
 docs/assets/gui_mockups/
+build/
+dist/
+*.egg-info/
