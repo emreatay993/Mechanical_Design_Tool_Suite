@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bolt-calculation-tool"
+version = "0.1.0"
+description = "Prototype GUI and backend for documented bolt calculations."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+visualization = ["pyvista>=0.43"]
+
+[project.scripts]
+bolt-calc-gui = "bolt_calculation_tool.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
