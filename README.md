@@ -19,6 +19,21 @@ python -m pip install -e .
 bolt-calc-gui
 ```
 
+## Run The Standalone Tolerance Analysis GUI
+
+The Five Flute-style tolerance stackup calculator clone is available as a
+separate PyQt6 app:
+
+```powershell
+python scripts\run_tolerance_analysis.py
+```
+
+Or through the editable-install entry point:
+
+```powershell
+tolerance-analysis-gui
+```
+
 The prototype supports pasted or imported CSV/TSV/TXT tables with `FX`, `FY`,
 `FZ`, `MX`, `MY`, and `MZ` columns. Optional `NodeID`, `X`, `Y`, and `Z`
 columns are retained for result labels and visualization. Header units such as

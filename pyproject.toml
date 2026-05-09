@@ -15,6 +15,7 @@ build = ["pyinstaller>=6.13"]
 
 [project.scripts]
 bolt-calc-gui = "bolt_calculation_tool.gui:main"
+tolerance-analysis-gui = "bolt_calculation_tool.tolerance_gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
