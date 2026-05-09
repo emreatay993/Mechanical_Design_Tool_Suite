@@ -485,10 +485,12 @@ class ToleranceAnalysisApp(QMainWindow):
 
         title_row = QHBoxLayout()
         title_row.setSpacing(12)
-        title = QLabel("New Tolerance Analysis")
-        title.setObjectName("PageTitle")
-        title_row.addWidget(title)
-        title_row.addStretch(1)
+        self.title_edit = QLineEdit("New Tolerance Analysis")
+        self.title_edit.setObjectName("PageTitleEdit")
+        self.title_edit.setPlaceholderText("Tolerance analysis title")
+        self.title_edit.setClearButtonEnabled(False)
+        self.title_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        title_row.addWidget(self.title_edit, 1)
         save_button = QPushButton("Save tolerance analysis")
         save_button.setEnabled(False)
         save_button.setObjectName("DisabledToolbarButton")
@@ -504,13 +506,6 @@ class ToleranceAnalysisApp(QMainWindow):
         divider.setFrameShape(QFrame.Shape.HLine)
         divider.setObjectName("Divider")
         root.addWidget(divider)
-
-        description = QLabel(
-            "A free shareable tool for worst case and root sum squared tolerance "
-            "analysis for mechanical design."
-        )
-        description.setObjectName("Description")
-        root.addWidget(description)
 
         root.addWidget(self._section_label("Inputs:", "Dimensions and bilateral tolerances in stackup"))
         self.dimension_table = self._build_dimension_table()
@@ -880,7 +875,24 @@ class ToleranceAnalysisApp(QMainWindow):
         documents = Path.home() / "Documents"
         base_dir = documents if documents.exists() else Path.home()
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return base_dir / f"tolerance_analysis_{stamp}.pdf"
+        title = self._safe_filename_stem(self._analysis_title())
+        return base_dir / f"{title}_{stamp}.pdf"
+
+    def _analysis_title(self) -> str:
+        title = self.title_edit.text().strip()
+        return title or "Tolerance Analysis"
+
+    def _safe_filename_stem(self, text: str) -> str:
+        safe_chars = []
+        for char in text.strip().lower():
+            if char.isalnum():
+                safe_chars.append(char)
+            elif char in {" ", "-", "_"}:
+                safe_chars.append("_")
+        stem = "".join(safe_chars).strip("_")
+        while "__" in stem:
+            stem = stem.replace("__", "_")
+        return stem or "tolerance_analysis"
 
     def _export_path_with_suffix(self, path: Path, selected_filter: str) -> Path:
         suffix = path.suffix.lower()
@@ -1030,15 +1042,6 @@ def _apply_tolerance_style(app: QApplication) -> None:
             font-size: 11px;
             padding: 8px 0;
         }
-        QLabel#PageTitle {
-            font-size: 15px;
-            font-weight: 500;
-            color: #202020;
-        }
-        QLabel#Description {
-            font-size: 12px;
-            color: #444444;
-        }
         QLabel#SectionLabel {
             font-size: 12px;
             color: #303030;
@@ -1098,6 +1101,24 @@ def _apply_tolerance_style(app: QApplication) -> None:
             border: 0;
             padding: 4px 8px;
             color: #111111;
+        }
+        QLineEdit#PageTitleEdit {
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            color: #202020;
+            font-size: 20px;
+            font-weight: 500;
+            padding: 2px 6px;
+            min-height: 34px;
+        }
+        QLineEdit#PageTitleEdit:hover {
+            border-color: #d0d0d0;
+        }
+        QLineEdit#PageTitleEdit:focus {
+            background: #ffffff;
+            border: 2px solid #69dbe8;
+            padding: 1px 5px;
         }
         QLineEdit#DimensionTextEdit, QLineEdit#DimensionNumberEdit {
             background: transparent;
