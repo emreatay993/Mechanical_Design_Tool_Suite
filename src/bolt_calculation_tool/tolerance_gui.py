@@ -2,24 +2,31 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 import sys
 
 from .tolerance import StackupAnalysis, ToleranceDimension, calculate_stackup
 
 try:
-    from PyQt6.QtCore import QLineF, QRectF, QSize, Qt
+    from PyQt6.QtCore import QLineF, QMarginsF, QRectF, QSize, QSizeF, Qt
     from PyQt6.QtGui import (
         QColor,
         QDoubleValidator,
         QFont,
         QFontDatabase,
+        QImage,
+        QPageLayout,
+        QPageSize,
         QPainter,
         QPalette,
+        QPdfWriter,
         QPen,
     )
     from PyQt6.QtWidgets import (
         QAbstractItemView,
         QApplication,
+        QFileDialog,
         QFrame,
         QGridLayout,
         QHBoxLayout,
@@ -27,6 +34,7 @@ try:
         QLabel,
         QLineEdit,
         QMainWindow,
+        QMessageBox,
         QPushButton,
         QScrollArea,
         QSizePolicy,
@@ -450,11 +458,13 @@ class ToleranceAnalysisApp(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.setCentralWidget(scroll)
+        self.page_scroll = scroll
 
         content = QWidget()
         content.setObjectName("AppSurface")
         content.setMinimumWidth(980)
         scroll.setWidget(content)
+        self.export_content = content
 
         root = QVBoxLayout(content)
         root.setContentsMargins(14, 12, 14, 22)
@@ -484,8 +494,9 @@ class ToleranceAnalysisApp(QMainWindow):
         save_button.setObjectName("DisabledToolbarButton")
         title_row.addWidget(save_button)
         share_button = QPushButton("Share")
-        share_button.setEnabled(False)
         share_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+        share_button.setToolTip("Export this tolerance analysis as PDF or PNG")
+        share_button.clicked.connect(self._export_page)
         title_row.addWidget(share_button)
         root.addLayout(title_row)
 
@@ -840,6 +851,135 @@ class ToleranceAnalysisApp(QMainWindow):
         self.status_label.setText(text)
         color = "#d56159" if error else "#338ba1"
         self.status_label.setStyleSheet(f"color: {color}; font-size: 11px;")
+
+    def _export_page(self) -> None:
+        default_path = self._default_export_path()
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export tolerance analysis",
+            str(default_path),
+            "PDF document (*.pdf);;PNG image (*.png)",
+        )
+        if not path:
+            return
+
+        export_path = self._export_path_with_suffix(Path(path), selected_filter)
+        try:
+            if export_path.suffix.lower() == ".png":
+                self._export_page_png(export_path)
+            else:
+                self._export_page_pdf(export_path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            self._set_status("Export failed.", error=True)
+            return
+
+        self._set_status(f"Exported {export_path.name}.", error=False)
+
+    def _default_export_path(self) -> Path:
+        documents = Path.home() / "Documents"
+        base_dir = documents if documents.exists() else Path.home()
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return base_dir / f"tolerance_analysis_{stamp}.pdf"
+
+    def _export_path_with_suffix(self, path: Path, selected_filter: str) -> Path:
+        suffix = path.suffix.lower()
+        if suffix in {".pdf", ".png"}:
+            return path
+        if "png" in selected_filter.lower():
+            return path.with_suffix(".png")
+        return path.with_suffix(".pdf")
+
+    def _export_page_png(self, path: Path) -> None:
+        image = self._render_page_image(scale=3.0)
+        if not image.save(str(path), "PNG"):
+            raise RuntimeError(f"Could not write PNG file: {path}")
+
+    def _export_page_pdf(self, path: Path) -> None:
+        widget = self.export_content
+        export_size = self._export_page_size()
+        old_size = widget.size()
+        self._prepare_export_widget(export_size)
+        try:
+            dpi = 300
+            width_mm = export_size.width() / 96.0 * 25.4
+            height_mm = export_size.height() / 96.0 * 25.4
+            writer = QPdfWriter(str(path))
+            writer.setResolution(dpi)
+            writer.setPageSize(
+                QPageSize(
+                    QSizeF(width_mm, height_mm),
+                    QPageSize.Unit.Millimeter,
+                    "Tolerance Analysis",
+                )
+            )
+            writer.setPageMargins(
+                QMarginsF(0.0, 0.0, 0.0, 0.0),
+                QPageLayout.Unit.Millimeter,
+            )
+
+            painter = QPainter(writer)
+            try:
+                page_rect = writer.pageLayout().paintRectPixels(dpi)
+                painter.scale(
+                    page_rect.width() / export_size.width(),
+                    page_rect.height() / export_size.height(),
+                )
+                widget.render(painter)
+            finally:
+                painter.end()
+        finally:
+            self._restore_export_widget(old_size)
+
+    def _render_page_image(self, scale: float) -> QImage:
+        widget = self.export_content
+        export_size = self._export_page_size()
+        old_size = widget.size()
+        self._prepare_export_widget(export_size)
+        try:
+            image_size = QSize(
+                int(export_size.width() * scale),
+                int(export_size.height() * scale),
+            )
+            image = QImage(image_size, QImage.Format.Format_ARGB32_Premultiplied)
+            image.fill(QColor("#ffffff"))
+            dots_per_meter = int(300 / 25.4 * 1000)
+            image.setDotsPerMeterX(dots_per_meter)
+            image.setDotsPerMeterY(dots_per_meter)
+
+            painter = QPainter(image)
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+                painter.scale(scale, scale)
+                widget.render(painter)
+            finally:
+                painter.end()
+            return image
+        finally:
+            self._restore_export_widget(old_size)
+
+    def _export_page_size(self) -> QSize:
+        widget = self.export_content
+        hint = widget.sizeHint()
+        current = widget.size()
+        width = max(current.width(), hint.width(), widget.minimumWidth())
+        height = max(current.height(), hint.height())
+        return QSize(width, height)
+
+    def _prepare_export_widget(self, size: QSize) -> None:
+        self.export_content.resize(size)
+        layout = self.export_content.layout()
+        if layout is not None:
+            layout.activate()
+        QApplication.processEvents()
+
+    def _restore_export_widget(self, old_size: QSize) -> None:
+        self.export_content.resize(old_size)
+        layout = self.export_content.layout()
+        if layout is not None:
+            layout.activate()
+        QApplication.processEvents()
 
 
 def _apply_tolerance_style(app: QApplication) -> None:
