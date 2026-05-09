@@ -54,6 +54,74 @@ RSS_LIGHT = QColor("#fb9c95")
 RSS_DARK = QColor("#d56159")
 
 
+class CircleXButton(QPushButton):
+    """Filled circle-x remove button drawn with Qt vector primitives."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setAccessibleName("Remove dimension")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(24, 24)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFlat(True)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override name.
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if self.isDown():
+            fill = QColor("#111111")
+        elif self.underMouse():
+            fill = QColor("#1f1f1f")
+        else:
+            fill = QColor("#303030")
+
+        size = 22.0
+        left = (self.width() - size) / 2.0
+        top = (self.height() - size) / 2.0
+        circle = QRectF(left, top, size, size)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(fill)
+        painter.drawEllipse(circle)
+
+        inset = 7.0
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(
+            QPen(
+                QColor("#ffffff"),
+                2.4,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+                Qt.PenJoinStyle.RoundJoin,
+            )
+        )
+        painter.drawLine(
+            QLineF(
+                circle.left() + inset,
+                circle.top() + inset,
+                circle.right() - inset,
+                circle.bottom() - inset,
+            )
+        )
+        painter.drawLine(
+            QLineF(
+                circle.right() - inset,
+                circle.top() + inset,
+                circle.left() + inset,
+                circle.bottom() - inset,
+            )
+        )
+
+    def enterEvent(self, event) -> None:  # noqa: N802 - Qt override name.
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt override name.
+        super().leaveEvent(event)
+        self.update()
+
+
 class StackupPlot(QWidget):
     """Paints the stackup graphic from the Five Flute calculator."""
 
@@ -602,9 +670,8 @@ class ToleranceAnalysisApp(QMainWindow):
             2,
             self._dimension_number_edit(tolerance, allow_negative=False),
         )
-        remove_button = QPushButton("\u00d7")
+        remove_button = CircleXButton()
         remove_button.setToolTip("Remove dimension")
-        remove_button.setObjectName("RemoveButton")
         remove_button.clicked.connect(lambda checked=False, button=remove_button: self._remove_row(button))
         remove_cell = QWidget()
         remove_cell.setObjectName("RemoveCell")
@@ -885,23 +952,6 @@ def _apply_tolerance_style(app: QApplication) -> None:
         }
         QPushButton#PrimaryAction:hover {
             background: #332596;
-        }
-        QPushButton#RemoveButton {
-            background: #303030;
-            border: 0;
-            border-radius: 11px;
-            color: #ffffff;
-            font-size: 20px;
-            font-weight: 700;
-            line-height: 20px;
-            padding: 0;
-            min-width: 22px;
-            max-width: 22px;
-            min-height: 22px;
-            max-height: 22px;
-        }
-        QPushButton#RemoveButton:hover {
-            background: #111111;
         }
         QLineEdit, QTableWidget QLineEdit {
             background: transparent;
