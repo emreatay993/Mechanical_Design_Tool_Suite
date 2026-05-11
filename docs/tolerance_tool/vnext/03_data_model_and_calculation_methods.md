@@ -221,6 +221,19 @@ chamfer allowance
 thread protrusion
 ```
 
+## Current Implemented Extensions
+
+- Path items and flanges support asymmetric `-Tol` / `+Tol` values. The
+  displayed worst-case and RSS envelope values remain available, while
+  directional minus/plus values are also calculated and exported.
+- Monte Carlo simulation can be enabled per sub-joint stackup path. The first
+  implementation uses a deterministic local random seed, normal sampling, and
+  reports mean, standard deviation, min/max, median, and 0.135% / 99.865%
+  percentile estimates.
+- CSV/XLSX import uses a flat row schema with `joint`, `sub_joint`,
+  `item_type`, `item_name`, `nominal_thickness`, and either `tolerance` or
+  `tolerance_minus` / `tolerance_plus`.
+
 ## Open Engineering Decisions
 
 | Decision | Why it matters |
@@ -228,5 +241,4 @@ thread protrusion
 | Exact bolt length datum | Catalogs may define bolt length under-head, overall, or family-specific conventions. |
 | Engagement formulas by nut/insert/threaded hole | Each engagement type may need different parameters. |
 | Required thread protrusion rule | The tool needs clear pass/fail criteria for `1.5P`, `2P`, and `2P+Chamfer`. |
-| Treatment of asymmetric tolerances | Current model is symmetric; hardware catalogs may need plus/minus fields. |
 | Treatment of correlation | Current RSS assumes independent contributors. |

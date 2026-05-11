@@ -11,7 +11,7 @@ next-version tolerance tool.
 | Support catalogs | Standard part data is loaded through a catalog service. |
 | Support project save/load | Editable project state uses a versioned file format. |
 | Support live UI results | UI controllers recalculate affected sub-joints after edits. |
-| Support future methods | Bolt length optimization, asymmetric tolerances, and Monte Carlo can be added without rewriting the UI. |
+| Support extensible methods | Bolt length optimization, asymmetric tolerances, Monte Carlo, and future methods can live in the domain layer without rewriting the UI shell. |
 
 ## Proposed Module Boundaries
 

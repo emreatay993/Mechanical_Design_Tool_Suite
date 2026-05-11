@@ -132,6 +132,52 @@ ApplicationWindow {
         }
     }
 
+    component Expander: ColumnLayout {
+        id: section
+        property string title: ""
+        property bool expanded: true
+        default property alias content: body.data
+        Layout.fillWidth: true
+        spacing: 6
+
+        Button {
+            Layout.fillWidth: true
+            height: 34
+            onClicked: section.expanded = !section.expanded
+            contentItem: RowLayout {
+                spacing: 8
+                Text {
+                    text: section.expanded ? "v" : ">"
+                    color: "#475569"
+                    font.pixelSize: 12
+                    Layout.preferredWidth: 12
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Text {
+                    text: section.title
+                    color: "#172033"
+                    font.pixelSize: 14
+                    font.bold: true
+                    Layout.fillWidth: true
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+            background: Rectangle {
+                radius: 7
+                color: parent.down ? "#e8f0ff" : parent.hovered ? "#f4f8ff" : "#ffffff"
+                border.color: "#d8dee9"
+            }
+        }
+
+        ColumnLayout {
+            id: body
+            Layout.fillWidth: true
+            visible: section.expanded
+            spacing: 8
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -208,6 +254,7 @@ ApplicationWindow {
 
                 ActionButton { text: "New"; onClicked: backend.newProject() }
                 ActionButton { text: "Open"; onClicked: backend.openProject() }
+                ActionButton { text: "Import"; onClicked: backend.importSpreadsheet() }
                 ActionButton { text: "Save"; onClicked: backend.saveProject() }
                 ActionButton { text: "Save As"; onClicked: backend.saveProjectAs() }
                 ActionButton { text: "CSV"; onClicked: backend.exportCsv() }
@@ -375,7 +422,7 @@ ApplicationWindow {
                                 Repeater {
                                     model: backend.flanges
                                     delegate: Rectangle {
-                                        width: 170
+                                        width: 246
                                         height: 76
                                         radius: 8
                                         color: "#f8fafc"
@@ -396,13 +443,21 @@ ApplicationWindow {
                                                     id: flangeNominal
                                                     Layout.preferredWidth: 70
                                                     text: modelData.nominal
-                                                    onEditingFinished: backend.updateFlange(modelData.id, text, flangeTolerance.text)
+                                                    onEditingFinished: backend.updateFlange(modelData.id, text, flangeTolMinus.text, flangeTolPlus.text)
                                                 }
                                                 FieldBox {
-                                                    id: flangeTolerance
+                                                    id: flangeTolMinus
                                                     Layout.preferredWidth: 70
-                                                    text: modelData.tolerance
-                                                    onEditingFinished: backend.updateFlange(modelData.id, flangeNominal.text, text)
+                                                    text: modelData.tolerance_minus
+                                                    placeholderText: "-Tol"
+                                                    onEditingFinished: backend.updateFlange(modelData.id, flangeNominal.text, text, flangeTolPlus.text)
+                                                }
+                                                FieldBox {
+                                                    id: flangeTolPlus
+                                                    Layout.preferredWidth: 70
+                                                    text: modelData.tolerance_plus
+                                                    placeholderText: "+Tol"
+                                                    onEditingFinished: backend.updateFlange(modelData.id, flangeNominal.text, flangeTolMinus.text, text)
                                                 }
                                             }
                                         }
@@ -464,10 +519,11 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 10
-                                Label { text: "Path item"; Layout.preferredWidth: 245; font.bold: true; color: "#334155" }
-                                Label { text: "Source"; Layout.preferredWidth: 90; font.bold: true; color: "#334155" }
-                                Label { text: "Thickness"; Layout.preferredWidth: 110; font.bold: true; color: "#334155" }
-                                Label { text: "Tolerance"; Layout.preferredWidth: 110; font.bold: true; color: "#334155" }
+                                Label { text: "Path item"; Layout.preferredWidth: 225; font.bold: true; color: "#334155" }
+                                Label { text: "Source"; Layout.preferredWidth: 78; font.bold: true; color: "#334155" }
+                                Label { text: "Thickness"; Layout.preferredWidth: 92; font.bold: true; color: "#334155" }
+                                Label { text: "-Tol"; Layout.preferredWidth: 82; font.bold: true; color: "#334155" }
+                                Label { text: "+Tol"; Layout.preferredWidth: 82; font.bold: true; color: "#334155" }
                                 Label { text: "Use"; Layout.preferredWidth: 50; font.bold: true; color: "#334155" }
                                 Item { Layout.fillWidth: true }
                             }
@@ -486,7 +542,7 @@ ApplicationWindow {
                                     model: backend.pathItems
                                     delegate: Rectangle {
                                         width: parent.width
-                                        height: 52
+                                        height: 56
                                         radius: 7
                                         color: modelData.locked ? "#fbfcff" : "#ffffff"
                                         border.color: modelData.locked ? "#d8dee9" : "#cfd6e3"
@@ -498,7 +554,7 @@ ApplicationWindow {
                                             spacing: 10
 
                                             ColumnLayout {
-                                                Layout.preferredWidth: 245
+                                                Layout.preferredWidth: 225
                                                 spacing: 1
                                                 Label {
                                                     text: modelData.name
@@ -510,30 +566,37 @@ ApplicationWindow {
                                                 MutedText { text: modelData.role }
                                             }
                                             Label {
-                                                Layout.preferredWidth: 90
+                                                Layout.preferredWidth: 78
                                                 text: modelData.source_label
                                                 color: "#64748b"
                                                 font.pixelSize: 12
                                             }
                                             FieldBox {
                                                 id: itemNominal
-                                                Layout.preferredWidth: 110
+                                                Layout.preferredWidth: 92
                                                 enabled: !modelData.locked
                                                 text: modelData.nominal
-                                                onEditingFinished: backend.updatePathItem(modelData.id, text, itemTolerance.text, includeBox.checked)
+                                                onEditingFinished: backend.updatePathItem(modelData.id, text, itemTolMinus.text, itemTolPlus.text, includeBox.checked)
                                             }
                                             FieldBox {
-                                                id: itemTolerance
-                                                Layout.preferredWidth: 110
+                                                id: itemTolMinus
+                                                Layout.preferredWidth: 82
                                                 enabled: !modelData.locked
-                                                text: modelData.tolerance
-                                                onEditingFinished: backend.updatePathItem(modelData.id, itemNominal.text, text, includeBox.checked)
+                                                text: modelData.tolerance_minus
+                                                onEditingFinished: backend.updatePathItem(modelData.id, itemNominal.text, text, itemTolPlus.text, includeBox.checked)
+                                            }
+                                            FieldBox {
+                                                id: itemTolPlus
+                                                Layout.preferredWidth: 82
+                                                enabled: !modelData.locked
+                                                text: modelData.tolerance_plus
+                                                onEditingFinished: backend.updatePathItem(modelData.id, itemNominal.text, itemTolMinus.text, text, includeBox.checked)
                                             }
                                             CheckBox {
                                                 id: includeBox
                                                 Layout.preferredWidth: 50
                                                 checked: modelData.include
-                                                onToggled: backend.updatePathItem(modelData.id, itemNominal.text, itemTolerance.text, checked)
+                                                onToggled: backend.updatePathItem(modelData.id, itemNominal.text, itemTolMinus.text, itemTolPlus.text, checked)
                                             }
                             Button {
                                 Layout.preferredWidth: 34
@@ -592,11 +655,11 @@ ApplicationWindow {
                                                 anchors.fill: parent
                                                 anchors.leftMargin: 8
                                                 anchors.rightMargin: 8
-                                                Label { text: modelData.sub_joint; Layout.preferredWidth: 100; color: "#111827"; font.bold: true }
-                                                Label { text: "WC " + modelData.worst_case; Layout.preferredWidth: 86; color: "#334155" }
-                                                Label { text: "RSS " + modelData.rss; Layout.preferredWidth: 86; color: "#334155" }
-                                                Label { text: "1.5RSS " + modelData.one_point_five_rss; Layout.preferredWidth: 108; color: "#334155" }
-                                                Label { text: "Top4 " + modelData.top_four; Layout.preferredWidth: 86; color: "#334155" }
+                                                Label { text: modelData.sub_joint; Layout.preferredWidth: 92; color: "#111827"; font.bold: true }
+                                                Label { text: "WC -" + modelData.worst_case_minus + "/+" + modelData.worst_case_plus; Layout.preferredWidth: 124; color: "#334155" }
+                                                Label { text: "RSS -" + modelData.rss_minus + "/+" + modelData.rss_plus; Layout.preferredWidth: 124; color: "#334155" }
+                                                Label { text: "MC " + modelData.mc_mean; Layout.preferredWidth: 84; color: "#334155" }
+                                                Label { text: "Top4 " + modelData.top_four; Layout.preferredWidth: 78; color: "#334155" }
                                                 Label { text: modelData.status; Layout.fillWidth: true; color: statusColor(modelData.status); font.bold: true }
                                             }
                                         }
@@ -612,9 +675,15 @@ ApplicationWindow {
                 Layout.preferredWidth: 360
                 Layout.fillHeight: true
 
-                ColumnLayout {
+                ScrollView {
+                    id: resultsScroll
                     anchors.fill: parent
                     anchors.margins: 14
+                    clip: true
+                    contentWidth: availableWidth
+
+                    ColumnLayout {
+                    width: resultsScroll.availableWidth
                     spacing: 12
 
                     SectionTitle { text: "Live results" }
@@ -680,7 +749,59 @@ ApplicationWindow {
                         text: "Top contributors: " + (backend.metrics.top_contributors || "-")
                     }
 
-                    SectionTitle { text: "Bolt and engagement" }
+                    Expander {
+                        title: "Monte Carlo"
+                        expanded: backend.selectedSubJoint.monte_carlo_enabled || false
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 108
+                        radius: 8
+                        color: "#f8fafc"
+                        border.color: "#d8dee9"
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 9
+                            spacing: 6
+                            RowLayout {
+                                Layout.fillWidth: true
+                                CheckBox {
+                                    id: monteCarloEnabled
+                                    text: "Run"
+                                    checked: backend.selectedSubJoint.monte_carlo_enabled || false
+                                    onToggled: backend.updateMonteCarloSettings(checked, monteCarloSamples.text, monteCarloSeed.text)
+                                }
+                                FieldBox {
+                                    id: monteCarloSamples
+                                    Layout.preferredWidth: 82
+                                    text: backend.selectedSubJoint.monte_carlo_sample_count || "10000"
+                                    enabled: monteCarloEnabled.checked
+                                    onEditingFinished: backend.updateMonteCarloSettings(monteCarloEnabled.checked, text, monteCarloSeed.text)
+                                }
+                                FieldBox {
+                                    id: monteCarloSeed
+                                    Layout.preferredWidth: 74
+                                    text: backend.selectedSubJoint.monte_carlo_seed || "12345"
+                                    enabled: monteCarloEnabled.checked
+                                    onEditingFinished: backend.updateMonteCarloSettings(monteCarloEnabled.checked, monteCarloSamples.text, text)
+                                }
+                            }
+                            MutedText {
+                                text: monteCarloEnabled.checked
+                                      ? "Mean " + backend.metrics.monte_carlo.mean + " | P0.135 " + backend.metrics.monte_carlo.p00135 + " | P99.865 " + backend.metrics.monte_carlo.p99865
+                                      : "Disabled"
+                            }
+                            MutedText {
+                                text: monteCarloEnabled.checked
+                                      ? "Std " + backend.metrics.monte_carlo.std_deviation + " | min/max " + backend.metrics.monte_carlo.minimum + " / " + backend.metrics.monte_carlo.maximum
+                                      : ""
+                            }
+                        }
+                    }
+                    }
+
+                    Expander {
+                        title: "Bolt and engagement"
+                        expanded: true
                     SelectBox {
                         Layout.fillWidth: true
                         model: backend.boltSizes
@@ -716,8 +837,11 @@ ApplicationWindow {
                                 backend.setEngagementPart(backend.engagementOptions[currentIndex].id)
                         }
                     }
+                    }
 
-                    SectionTitle { text: "Thread checks" }
+                    Expander {
+                        title: "Thread checks"
+                        expanded: true
                     ScrollView {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 120
@@ -745,8 +869,11 @@ ApplicationWindow {
                             }
                         }
                     }
+                    }
 
-                    SectionTitle { text: "Optimization" }
+                    Expander {
+                        title: "Optimization"
+                        expanded: false
                     RowLayout {
                         Layout.fillWidth: true
                         ActionButton {
@@ -757,7 +884,7 @@ ApplicationWindow {
                     }
                     ScrollView {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        Layout.preferredHeight: 180
                         clip: true
 
                         Column {
@@ -799,6 +926,8 @@ ApplicationWindow {
                                 }
                             }
                         }
+                    }
+                    }
                     }
                 }
             }

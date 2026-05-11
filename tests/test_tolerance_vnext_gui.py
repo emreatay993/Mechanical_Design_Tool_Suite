@@ -42,6 +42,15 @@ class ToleranceVNextBackendTest(unittest.TestCase):
         self.assertEqual(self.backend.metrics["nominal"], "13")
         self.assertTrue(self.backend.dirty)
 
+    def test_editing_flange_accepts_asymmetric_tolerances(self) -> None:
+        flange = self.backend.flanges[0]
+        self.backend.updateFlange(flange["id"], "5", "0.10", "0.30")
+
+        self.assertEqual(self.backend.flanges[0]["tolerance_minus"], "0.1")
+        self.assertEqual(self.backend.flanges[0]["tolerance_plus"], "0.3")
+        self.assertEqual(self.backend.metrics["worst_case_minus"], "0.55")
+        self.assertEqual(self.backend.metrics["worst_case_plus"], "0.75")
+
     def test_save_load_and_csv_export_helpers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project_path = Path(directory) / "ui_state.tolproj"
@@ -54,6 +63,43 @@ class ToleranceVNextBackendTest(unittest.TestCase):
             self.assertTrue(project_path.exists())
             self.assertTrue(csv_path.exists())
             self.assertIn("JOINT A.1", csv_path.read_text(encoding="utf-8"))
+            self.assertIn("mc_mean", csv_path.read_text(encoding="utf-8"))
+
+    def test_monte_carlo_settings_populate_metrics(self) -> None:
+        self.backend.updateMonteCarloSettings(True, "1000", "42")
+
+        self.assertTrue(self.backend.selectedSubJoint["monte_carlo_enabled"])
+        self.assertEqual(self.backend.selectedSubJoint["monte_carlo_sample_count"], "1000")
+        self.assertEqual(self.backend.metrics["monte_carlo"]["sample_count"], "1000")
+        self.assertNotEqual(self.backend.metrics["monte_carlo"]["mean"], "-")
+        self.assertTrue(self.backend.dirty)
+
+    def test_invalid_monte_carlo_settings_are_rejected(self) -> None:
+        self.backend.updateMonteCarloSettings(True, "50", "42")
+
+        self.assertIn("between 100 and 100000", self.backend.statusText)
+
+    def test_import_spreadsheet_replaces_project_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "stackups.csv"
+            path.write_text(
+                "\n".join(
+                    [
+                        "project_title,unit_system,joint,sub_joint,item_type,item_name,nominal_thickness,tolerance,bolt_size,bolt_type,bolt_length,engagement_type",
+                        "Imported UI,mm,JOINT Z,JOINT Z.1,flange,Flange 1,3,0.1,0.190,PD Shank,17.5,nut",
+                        "Imported UI,mm,JOINT Z,JOINT Z.1,custom,Shim,2,0.2,0.190,PD Shank,17.5,nut",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            self.backend.importSpreadsheetFrom(str(path))
+
+        self.assertEqual(self.backend.projectTitle, "Imported UI")
+        self.assertEqual(self.backend.selectedJoint["name"], "JOINT Z")
+        self.assertEqual(self.backend.selectedSubJoint["name"], "JOINT Z.1")
+        self.assertEqual(self.backend.metrics["nominal"], "5")
+        self.assertTrue(self.backend.dirty)
 
     def test_theme_selection_is_saved_as_app_preference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -19,15 +19,28 @@ def new_id(prefix: str) -> str:
 @dataclass
 class MethodSettings:
     sigma_coverage: float = DEFAULT_SIGMA_COVERAGE
+    monte_carlo_enabled: bool = False
+    monte_carlo_sample_count: int = 10000
+    monte_carlo_seed: int = 12345
 
     def to_dict(self) -> dict[str, Any]:
-        return {"sigma_coverage": self.sigma_coverage}
+        return {
+            "sigma_coverage": self.sigma_coverage,
+            "monte_carlo_enabled": self.monte_carlo_enabled,
+            "monte_carlo_sample_count": self.monte_carlo_sample_count,
+            "monte_carlo_seed": self.monte_carlo_seed,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "MethodSettings":
         if not data:
             return cls()
-        return cls(sigma_coverage=float(data.get("sigma_coverage", DEFAULT_SIGMA_COVERAGE)))
+        return cls(
+            sigma_coverage=float(data.get("sigma_coverage", DEFAULT_SIGMA_COVERAGE)),
+            monte_carlo_enabled=bool(data.get("monte_carlo_enabled", False)),
+            monte_carlo_sample_count=int(data.get("monte_carlo_sample_count", 10000)),
+            monte_carlo_seed=int(data.get("monte_carlo_seed", 12345)),
+        )
 
 
 @dataclass
@@ -35,8 +48,13 @@ class Flange:
     name: str
     nominal_thickness: float
     tolerance: float
+    tolerance_minus: float | None = None
+    tolerance_plus: float | None = None
     id: str = field(default_factory=lambda: new_id("flange"))
     material_or_note: str = ""
+
+    def __post_init__(self) -> None:
+        _normalize_asymmetric_tolerance(self)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -44,16 +62,21 @@ class Flange:
             "name": self.name,
             "nominal_thickness": self.nominal_thickness,
             "tolerance": self.tolerance,
+            "tolerance_minus": self.tolerance_minus,
+            "tolerance_plus": self.tolerance_plus,
             "material_or_note": self.material_or_note,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Flange":
+        legacy_tolerance = float(data.get("tolerance", 0.0))
         return cls(
             id=str(data.get("id") or new_id("flange")),
             name=str(data.get("name") or "Flange"),
             nominal_thickness=float(data.get("nominal_thickness", 0.0)),
-            tolerance=float(data.get("tolerance", 0.0)),
+            tolerance=legacy_tolerance,
+            tolerance_minus=float(data.get("tolerance_minus", legacy_tolerance)),
+            tolerance_plus=float(data.get("tolerance_plus", legacy_tolerance)),
             material_or_note=str(data.get("material_or_note", "")),
         )
 
@@ -63,11 +86,16 @@ class PathItem:
     name: str
     nominal_thickness: float
     tolerance: float
+    tolerance_minus: float | None = None
+    tolerance_plus: float | None = None
     source_type: str = "custom"
     source_id: str = ""
     role: str = "custom"
     include_in_stackup: bool = True
     id: str = field(default_factory=lambda: new_id("item"))
+
+    def __post_init__(self) -> None:
+        _normalize_asymmetric_tolerance(self)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,19 +105,24 @@ class PathItem:
             "name": self.name,
             "nominal_thickness": self.nominal_thickness,
             "tolerance": self.tolerance,
+            "tolerance_minus": self.tolerance_minus,
+            "tolerance_plus": self.tolerance_plus,
             "role": self.role,
             "include_in_stackup": self.include_in_stackup,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PathItem":
+        legacy_tolerance = float(data.get("tolerance", 0.0))
         return cls(
             id=str(data.get("id") or new_id("item")),
             source_type=str(data.get("source_type", "custom")),
             source_id=str(data.get("source_id", "")),
             name=str(data.get("name") or "Path item"),
             nominal_thickness=float(data.get("nominal_thickness", 0.0)),
-            tolerance=float(data.get("tolerance", 0.0)),
+            tolerance=legacy_tolerance,
+            tolerance_minus=float(data.get("tolerance_minus", legacy_tolerance)),
+            tolerance_plus=float(data.get("tolerance_plus", legacy_tolerance)),
             role=str(data.get("role", "custom")),
             include_in_stackup=bool(data.get("include_in_stackup", True)),
         )
@@ -232,6 +265,8 @@ def create_flange_path_item(flange: Flange) -> PathItem:
         name=flange.name,
         nominal_thickness=flange.nominal_thickness,
         tolerance=flange.tolerance,
+        tolerance_minus=flange.tolerance_minus,
+        tolerance_plus=flange.tolerance_plus,
         role="flange",
     )
 
@@ -252,6 +287,8 @@ def sync_path_with_flanges(joint: Joint, sub_joint: SubJoint) -> None:
             item.name = flange.name
             item.nominal_thickness = flange.nominal_thickness
             item.tolerance = flange.tolerance
+            item.tolerance_minus = flange.tolerance_minus
+            item.tolerance_plus = flange.tolerance_plus
         synced_items.append(item)
     synced_items.extend(item for item in path.items if item.source_type != "flange")
     path.items = synced_items
@@ -300,3 +337,13 @@ def next_joint_name(existing_count: int) -> str:
         if index < 0:
             break
     return f"JOINT {letters}"
+
+
+def _normalize_asymmetric_tolerance(item: Flange | PathItem) -> None:
+    tolerance = float(item.tolerance)
+    tolerance_minus = tolerance if item.tolerance_minus is None else float(item.tolerance_minus)
+    tolerance_plus = tolerance if item.tolerance_plus is None else float(item.tolerance_plus)
+    item.nominal_thickness = float(item.nominal_thickness)
+    item.tolerance_minus = tolerance_minus
+    item.tolerance_plus = tolerance_plus
+    item.tolerance = max(tolerance, tolerance_minus, tolerance_plus)

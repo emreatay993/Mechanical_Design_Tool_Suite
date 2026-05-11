@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -19,6 +20,7 @@ from .tolerance_methods import (
 from .tolerance_models import (
     Flange,
     Joint,
+    MethodSettings,
     PathItem,
     SubJoint,
     ToleranceProject,
@@ -29,6 +31,7 @@ from .tolerance_models import (
 )
 from .tolerance_optimizer import rank_bolt_lengths
 from .tolerance_project_io import load_project, save_project
+from .tolerance_spreadsheet_io import load_spreadsheet_project
 
 try:
     from PyQt6.QtCore import QObject, Qt, QUrl, pyqtProperty, pyqtSignal, pyqtSlot
@@ -244,16 +247,28 @@ class ToleranceVNextBackend(QObject):
         stackup = result.stackup
         protrusion = result.protrusion
         contributors = stackup.contributors[:4]
+        monte_carlo = _monte_carlo_to_ui(stackup.monte_carlo)
         return {
             "status": protrusion.status,
             "nominal": _format_number(stackup.nominal),
             "worst_case": _format_number(stackup.worst_case_deviation),
+            "worst_case_minus": _format_number(stackup.worst_case_minus),
+            "worst_case_plus": _format_number(stackup.worst_case_plus),
             "rss": _format_number(stackup.rss),
+            "rss_minus": _format_number(stackup.rss_minus),
+            "rss_plus": _format_number(stackup.rss_plus),
             "one_point_five_rss": _format_number(stackup.one_point_five_rss),
+            "one_point_five_rss_minus": _format_number(
+                stackup.one_point_five_rss_minus
+            ),
+            "one_point_five_rss_plus": _format_number(
+                stackup.one_point_five_rss_plus
+            ),
             "top_four": f"{stackup.top_four_contributor_sum * 100.0:.0f}%",
             "top_contributors": ", ".join(item.name for item in contributors) or "-",
             "protrusion": _format_optional(protrusion.protrusion),
             "engagement": _format_optional(protrusion.engagement),
+            "monte_carlo": monte_carlo,
             "criteria": [
                 {
                     "name": item.name,
@@ -299,9 +314,32 @@ class ToleranceVNextBackend(QObject):
                             "worst_case": _format_number(
                                 result.stackup.worst_case_deviation
                             ),
+                            "worst_case_minus": _format_number(
+                                result.stackup.worst_case_minus
+                            ),
+                            "worst_case_plus": _format_number(
+                                result.stackup.worst_case_plus
+                            ),
                             "rss": _format_number(result.stackup.rss),
+                            "rss_minus": _format_number(result.stackup.rss_minus),
+                            "rss_plus": _format_number(result.stackup.rss_plus),
                             "one_point_five_rss": _format_number(
                                 result.stackup.one_point_five_rss
+                            ),
+                            "mc_mean": _format_optional(
+                                result.stackup.monte_carlo.mean
+                                if result.stackup.monte_carlo
+                                else None
+                            ),
+                            "mc_p00135": _format_optional(
+                                result.stackup.monte_carlo.p00135
+                                if result.stackup.monte_carlo
+                                else None
+                            ),
+                            "mc_p99865": _format_optional(
+                                result.stackup.monte_carlo.p99865
+                                if result.stackup.monte_carlo
+                                else None
                             ),
                             "top_four": (
                                 f"{result.stackup.top_four_contributor_sum * 100.0:.0f}%"
@@ -317,8 +355,15 @@ class ToleranceVNextBackend(QObject):
                             "bolt": "-",
                             "length": "-",
                             "worst_case": "-",
+                            "worst_case_minus": "-",
+                            "worst_case_plus": "-",
                             "rss": "-",
+                            "rss_minus": "-",
+                            "rss_plus": "-",
                             "one_point_five_rss": "-",
+                            "mc_mean": "-",
+                            "mc_p00135": "-",
+                            "mc_p99865": "-",
                             "top_four": "-",
                             "status": f"Input error: {exc}",
                         }
@@ -432,6 +477,13 @@ class ToleranceVNextBackend(QObject):
         sub_joint.stackup_path.selected_engagement_part_id = (
             source.stackup_path.selected_engagement_part_id
         )
+        source_settings = source.stackup_path.method_settings
+        sub_joint.stackup_path.method_settings = MethodSettings(
+            sigma_coverage=source_settings.sigma_coverage,
+            monte_carlo_enabled=source_settings.monte_carlo_enabled,
+            monte_carlo_sample_count=source_settings.monte_carlo_sample_count,
+            monte_carlo_seed=source_settings.monte_carlo_seed,
+        )
         sub_joint.stackup_path.items = [
             PathItem(
                 source_type=item.source_type,
@@ -439,6 +491,8 @@ class ToleranceVNextBackend(QObject):
                 name=item.name,
                 nominal_thickness=item.nominal_thickness,
                 tolerance=item.tolerance,
+                tolerance_minus=item.tolerance_minus,
+                tolerance_plus=item.tolerance_plus,
                 role=item.role,
                 include_in_stackup=item.include_in_stackup,
             )
@@ -461,7 +515,14 @@ class ToleranceVNextBackend(QObject):
         self._mark_dirty("Names updated.")
 
     @pyqtSlot(str, str, str)
-    def updateFlange(self, flange_id: str, nominal: str, tolerance: str) -> None:
+    @pyqtSlot(str, str, str, str)
+    def updateFlange(
+        self,
+        flange_id: str,
+        nominal: str,
+        tolerance_minus: str,
+        tolerance_plus: str | None = None,
+    ) -> None:
         joint = self._selected_joint()
         if joint is None:
             return
@@ -469,16 +530,22 @@ class ToleranceVNextBackend(QObject):
         if flange is None:
             return
         try:
-            nominal_value = float(nominal)
-            tolerance_value = float(tolerance)
+            nominal_value, minus_value, plus_value = _parse_tolerance_inputs(
+                flange.name,
+                nominal,
+                tolerance_minus,
+                tolerance_plus,
+            )
         except ValueError:
             self._set_status(f"{flange.name}: thickness and tolerance must be numeric.")
             return
-        if tolerance_value < 0.0:
+        if minus_value < 0.0 or plus_value < 0.0:
             self._set_status(f"{flange.name}: tolerance must be non-negative.")
             return
         flange.nominal_thickness = nominal_value
-        flange.tolerance = tolerance_value
+        flange.tolerance_minus = minus_value
+        flange.tolerance_plus = plus_value
+        flange.tolerance = max(minus_value, plus_value)
         for sub_joint in joint.sub_joints:
             sync_path_with_flanges(joint, sub_joint)
         self._mark_dirty(f"{flange.name} updated.")
@@ -559,6 +626,8 @@ class ToleranceVNextBackend(QObject):
                 name=record.display_name,
                 nominal_thickness=record.nominal_thickness,
                 tolerance=record.tolerance,
+                tolerance_minus=record.tolerance,
+                tolerance_plus=record.tolerance,
                 role=record.part_type,
             )
         )
@@ -581,12 +650,14 @@ class ToleranceVNextBackend(QObject):
         self._mark_dirty("Added custom path item.")
 
     @pyqtSlot(str, str, str, bool)
+    @pyqtSlot(str, str, str, str, bool)
     def updatePathItem(
         self,
         item_id: str,
         nominal: str,
-        tolerance: str,
-        include_in_stackup: bool,
+        tolerance_minus: str,
+        tolerance_plus_or_include: str | bool,
+        include_in_stackup: bool | None = None,
     ) -> None:
         selected = self._selected_pair()
         if selected is None:
@@ -601,14 +672,54 @@ class ToleranceVNextBackend(QObject):
         if item.source_type == "flange":
             self._set_status("Edit linked flange values in the joint setup table.")
             return
+        tolerance_plus = (
+            None if include_in_stackup is None else str(tolerance_plus_or_include)
+        )
+        include = (
+            bool(tolerance_plus_or_include)
+            if include_in_stackup is None
+            else include_in_stackup
+        )
         try:
-            item.nominal_thickness = float(nominal)
-            item.tolerance = float(tolerance)
+            nominal_value, minus_value, plus_value = _parse_tolerance_inputs(
+                item.name,
+                nominal,
+                tolerance_minus,
+                tolerance_plus,
+            )
         except ValueError:
             self._set_status(f"{item.name}: thickness and tolerance must be numeric.")
             return
-        item.include_in_stackup = include_in_stackup
+        if minus_value < 0.0 or plus_value < 0.0:
+            self._set_status(f"{item.name}: tolerance must be non-negative.")
+            return
+        item.nominal_thickness = nominal_value
+        item.tolerance_minus = minus_value
+        item.tolerance_plus = plus_value
+        item.tolerance = max(minus_value, plus_value)
+        item.include_in_stackup = include
         self._mark_dirty(f"{item.name} updated.")
+
+    @pyqtSlot(bool, str, str)
+    def updateMonteCarloSettings(self, enabled: bool, samples: str, seed: str) -> None:
+        selected = self._selected_pair()
+        if selected is None:
+            return
+        _, sub_joint = selected
+        try:
+            sample_count = int(samples)
+            seed_value = int(seed)
+        except ValueError:
+            self._set_status("Monte Carlo samples and seed must be integers.")
+            return
+        if sample_count < 100 or sample_count > 100000:
+            self._set_status("Monte Carlo sample count must be between 100 and 100000.")
+            return
+        settings = sub_joint.stackup_path.method_settings
+        settings.monte_carlo_enabled = bool(enabled)
+        settings.monte_carlo_sample_count = sample_count
+        settings.monte_carlo_seed = seed_value
+        self._mark_dirty("Monte Carlo settings updated.")
 
     @pyqtSlot(str)
     def removePathItem(self, item_id: str) -> None:
@@ -698,6 +809,33 @@ class ToleranceVNextBackend(QObject):
         self._emit_all()
 
     @pyqtSlot()
+    def importSpreadsheet(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Import tolerance stackup table",
+            str(Path.home()),
+            "Stackup table (*.csv *.xlsx)",
+        )
+        if path:
+            self.importSpreadsheetFrom(path)
+
+    @pyqtSlot(str)
+    def importSpreadsheetFrom(self, path: str) -> None:
+        try:
+            self.project = load_spreadsheet_project(path, self.catalog)
+        except (OSError, ValueError) as exc:
+            self._set_status(f"Could not import stackup table: {exc}")
+            return
+        self.project_path = None
+        self.dirty = True
+        first_joint = self.project.joints[0]
+        self.selected_joint_id = first_joint.id
+        self.selected_sub_joint_id = first_joint.sub_joints[0].id
+        self._ensure_selection_valid()
+        self.status_text = f"Imported {Path(path).name}."
+        self._emit_all()
+
+    @pyqtSlot()
     def exportCsv(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             None,
@@ -722,8 +860,15 @@ class ToleranceVNextBackend(QObject):
                     "bolt",
                     "length",
                     "worst_case",
+                    "worst_case_minus",
+                    "worst_case_plus",
                     "rss",
+                    "rss_minus",
+                    "rss_plus",
                     "one_point_five_rss",
+                    "mc_mean",
+                    "mc_p00135",
+                    "mc_p99865",
                     "top_four",
                     "status",
                 ],
@@ -871,6 +1016,7 @@ class ToleranceVNextBackend(QObject):
         }
 
     def _sub_joint_to_ui(self, sub_joint: SubJoint) -> dict[str, Any]:
+        settings = sub_joint.stackup_path.method_settings
         return {
             "id": sub_joint.id,
             "name": sub_joint.name,
@@ -879,6 +1025,9 @@ class ToleranceVNextBackend(QObject):
             "bolt_length": _format_number(sub_joint.selected_bolt_length),
             "engagement_type": sub_joint.stackup_path.engagement_type,
             "engagement_part_id": sub_joint.stackup_path.selected_engagement_part_id,
+            "monte_carlo_enabled": settings.monte_carlo_enabled,
+            "monte_carlo_sample_count": str(settings.monte_carlo_sample_count),
+            "monte_carlo_seed": str(settings.monte_carlo_seed),
             "selected": sub_joint.id == self.selected_sub_joint_id,
         }
 
@@ -888,6 +1037,8 @@ class ToleranceVNextBackend(QObject):
             "name": flange.name,
             "nominal": _format_number(flange.nominal_thickness),
             "tolerance": _format_number(flange.tolerance),
+            "tolerance_minus": _format_number(float(flange.tolerance_minus or 0.0)),
+            "tolerance_plus": _format_number(float(flange.tolerance_plus or 0.0)),
         }
 
     def _path_item_to_ui(self, item: PathItem) -> dict[str, Any]:
@@ -899,6 +1050,8 @@ class ToleranceVNextBackend(QObject):
             "source_label": item.source_type.title(),
             "nominal": _format_number(item.nominal_thickness),
             "tolerance": _format_number(item.tolerance),
+            "tolerance_minus": _format_number(float(item.tolerance_minus or 0.0)),
+            "tolerance_plus": _format_number(float(item.tolerance_plus or 0.0)),
             "include": item.include_in_stackup,
             "locked": item.source_type == "flange",
         }
@@ -966,6 +1119,55 @@ def _format_number(value: float) -> str:
 
 def _format_optional(value: float | None) -> str:
     return "-" if value is None else _format_number(value)
+
+
+def _parse_tolerance_inputs(
+    label: str,
+    nominal: str,
+    tolerance_minus: str,
+    tolerance_plus: str | None,
+) -> tuple[float, float, float]:
+    try:
+        nominal_value = float(nominal)
+        minus_value = float(tolerance_minus)
+        plus_value = minus_value if tolerance_plus is None else float(tolerance_plus)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label}: thickness and tolerance must be numeric.") from exc
+    if (
+        not math.isfinite(nominal_value)
+        or not math.isfinite(minus_value)
+        or not math.isfinite(plus_value)
+    ):
+        raise ValueError(f"{label}: thickness and tolerance must be finite.")
+    return nominal_value, minus_value, plus_value
+
+
+def _monte_carlo_to_ui(result) -> dict[str, Any]:
+    if result is None:
+        return {
+            "enabled": False,
+            "sample_count": "",
+            "seed": "",
+            "mean": "-",
+            "std_deviation": "-",
+            "minimum": "-",
+            "p00135": "-",
+            "p50": "-",
+            "p99865": "-",
+            "maximum": "-",
+        }
+    return {
+        "enabled": True,
+        "sample_count": str(result.sample_count),
+        "seed": str(result.seed),
+        "mean": _format_number(result.mean),
+        "std_deviation": _format_number(result.std_deviation),
+        "minimum": _format_number(result.minimum),
+        "p00135": _format_number(result.p00135),
+        "p50": _format_number(result.p50),
+        "p99865": _format_number(result.p99865),
+        "maximum": _format_number(result.maximum),
+    }
 
 
 def _match_choice(value: str | None, choices: tuple[str, ...]) -> str | None:

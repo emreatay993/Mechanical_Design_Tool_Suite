@@ -57,6 +57,12 @@ tolerance-analysis-vnext-gui --quick-style Universal
 The same style preference is also available from the vNext header. Changes are
 saved as an app UI preference and applied on the next launch.
 
+The vNext workspace supports asymmetric `-Tol` / `+Tol` entry, optional seeded
+Monte Carlo simulation, and full-project stackup import from `.csv` or `.xlsx`
+tables. Import tables use flat rows with `joint`, `sub_joint`, `item_type`,
+`item_name`, `nominal_thickness`, and either `tolerance` or
+`tolerance_minus` / `tolerance_plus` columns.
+
 Design documents for the tolerance analysis GUI are in
 [`docs/tolerance_tool`](docs/tolerance_tool/README.md).
 

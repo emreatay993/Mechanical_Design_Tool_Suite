@@ -51,6 +51,11 @@ inline validation, and same-page bolt length decisions.
   flange path items synchronized.
 - Calculate nominal stack, worst-case deviation, RSS, 1.5RSS, top-four
   contributor percentage, and thread protrusion/engagement status.
+- Support asymmetric path-item tolerances with separate minus/plus stackup
+  directions while preserving envelope values for compact summaries.
+- Support optional deterministic Monte Carlo simulation per sub-joint stackup
+  path.
+- Support full-project stackup import from `.csv` and `.xlsx` flat tables.
 - Implement provisional sample-catalog protrusion rules:
   - units are millimeters.
   - bolt length datum is under-head length.
@@ -62,5 +67,6 @@ inline validation, and same-page bolt length decisions.
 - Preserve existing tolerance tests.
 - Add vNext tests for default project creation, stackup calculations,
   contributor ranking, flange/path synchronization, catalog-based optimization,
-  project save/load, backend state, and CSV export.
+  project save/load, backend state, CSV/XLSX import, asymmetric tolerances,
+  Monte Carlo, and CSV export.
 - Verify that the QML file loads under an offscreen Qt platform.

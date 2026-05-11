@@ -111,8 +111,8 @@ Priority values:
 | TOL-NV-DATA-002 | P0 | Proposed | Saved projects shall preserve joints, flanges, sub-joints, stackup paths, selected catalog parts, selected bolt lengths, units, and method settings. |
 | TOL-NV-DATA-003 | P0 | Proposed | The project file format shall be versioned. |
 | TOL-NV-DATA-004 | P0 | Proposed | Reports shall preserve the current PDF/PNG export capability and add next-version summary content. |
-| TOL-NV-DATA-005 | P1 | Proposed | The tool should support importing the joint/flange setup from CSV or spreadsheet-style tables. |
-| TOL-NV-DATA-006 | P1 | Proposed | The tool should support exporting calculation summaries to CSV. |
+| TOL-NV-DATA-005 | P1 | Implemented | The tool should support importing the joint/flange setup from CSV or spreadsheet-style tables. |
+| TOL-NV-DATA-006 | P1 | Implemented | The tool should support exporting calculation summaries to CSV. |
 
 ## UI/UX Quality Requirements
 
