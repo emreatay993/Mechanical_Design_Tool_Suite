@@ -294,49 +294,112 @@ ApplicationWindow {
                             Repeater {
                                 model: backend.joints
                                 delegate: Column {
+                                    id: navJoint
                                     property string jointId: modelData.id
+                                    property string jointName: modelData.name
+                                    property bool expanded: modelData.selected
+                                    readonly property bool selectedParent: backend.selectedJoint.id === jointId
                                     width: parent.width
-                                    spacing: 4
+                                    spacing: 3
 
                                     Rectangle {
                                         width: parent.width
-                                        height: 36
+                                        height: 38
                                         radius: 6
-                                        color: modelData.selected ? "#e8f0ff" : "#f8fafc"
-                                        border.color: modelData.selected ? "#8ab4ff" : "#e1e6ef"
+                                        color: navJoint.selectedParent ? "#e8f0ff" : "#f8fafc"
+                                        border.color: navJoint.selectedParent ? "#8ab4ff" : "#e1e6ef"
                                         RowLayout {
                                             anchors.fill: parent
-                                            anchors.leftMargin: 10
+                                            anchors.leftMargin: 8
                                             anchors.rightMargin: 8
+                                            spacing: 8
                                             Label {
-                                                text: modelData.name
-                                                Layout.fillWidth: true
-                                                color: "#172033"
+                                                text: navJoint.expanded || navJoint.selectedParent ? "v" : ">"
+                                                Layout.preferredWidth: 16
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                color: navJoint.selectedParent ? "#0f4ca8" : "#667085"
+                                                font.pixelSize: 12
                                                 font.bold: true
                                             }
+                                            Label {
+                                                text: navJoint.jointName
+                                                Layout.fillWidth: true
+                                                color: navJoint.selectedParent ? "#0f4ca8" : "#172033"
+                                                font.bold: true
+                                            }
+                                            Label {
+                                                text: modelData.sub_joints.length
+                                                Layout.preferredWidth: 24
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                color: "#667085"
+                                                font.pixelSize: 11
+                                            }
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: navJoint.expanded = !navJoint.expanded
                                         }
                                     }
 
-                                    Repeater {
-                                        model: modelData.sub_joints
-                                        delegate: Button {
+                                    Item {
+                                        width: parent.width
+                                        visible: navJoint.expanded || navJoint.selectedParent
+                                        height: visible ? childColumn.implicitHeight + 4 : 0
+                                        clip: true
+
+                                        Behavior on height {
+                                            NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                                        }
+
+                                        Rectangle {
+                                            x: 16
+                                            y: 2
+                                            width: 1
+                                            height: Math.max(0, childColumn.implicitHeight - 2)
+                                            color: "#ccd6e3"
+                                        }
+
+                                        Column {
+                                            id: childColumn
                                             width: parent.width
-                                            height: 34
-                                            text: "  " + modelData.name
-                                            checkable: true
-                                            checked: modelData.selected
-                                            onClicked: backend.selectSubJoint(jointId, modelData.id)
-                                            contentItem: Label {
-                                                text: parent.text
-                                                color: parent.checked ? "#0f4ca8" : "#344054"
-                                                font.pixelSize: 12
-                                                font.bold: parent.checked
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                            background: Rectangle {
-                                                radius: 6
-                                                color: parent.checked ? "#dceaff" : "#ffffff"
-                                                border.color: parent.checked ? "#75a7f8" : "#d8dee9"
+                                            spacing: 4
+
+                                            Repeater {
+                                                model: modelData.sub_joints
+                                                delegate: Button {
+                                                    readonly property bool childSelected: backend.selectedSubJoint.id === modelData.id
+                                                    x: 24
+                                                    width: parent.width - 24
+                                                    height: 34
+                                                    text: modelData.name
+                                                    checkable: true
+                                                    checked: childSelected
+                                                    onClicked: backend.selectSubJoint(navJoint.jointId, modelData.id)
+                                                    contentItem: Label {
+                                                        text: parent.text
+                                                        leftPadding: 12
+                                                        color: parent.checked ? "#0f4ca8" : "#344054"
+                                                        font.pixelSize: 12
+                                                        font.bold: parent.checked
+                                                        verticalAlignment: Text.AlignVCenter
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    background: Rectangle {
+                                                        radius: 6
+                                                        color: parent.checked ? "#dceaff" : "#ffffff"
+                                                        border.color: parent.checked ? "#75a7f8" : "#d8dee9"
+                                                        Rectangle {
+                                                            width: 8
+                                                            height: 1
+                                                            x: -8
+                                                            y: parent.height / 2
+                                                            color: "#ccd6e3"
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
