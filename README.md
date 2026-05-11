@@ -34,6 +34,9 @@ Or through the editable-install entry point:
 tolerance-analysis-gui
 ```
 
+Design documents for the tolerance analysis GUI are in
+[`docs/tolerance_tool`](docs/tolerance_tool/README.md).
+
 The prototype supports pasted or imported CSV/TSV/TXT tables with `FX`, `FY`,
 `FZ`, `MX`, `MY`, and `MZ` columns. Optional `NodeID`, `X`, `Y`, and `Z`
 columns are retained for result labels and visualization. Header units such as
