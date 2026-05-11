@@ -16,6 +16,10 @@ build = ["pyinstaller>=6.13"]
 [project.scripts]
 bolt-calc-gui = "bolt_calculation_tool.gui:main"
 tolerance-analysis-gui = "bolt_calculation_tool.tolerance_gui:main"
+tolerance-analysis-vnext-gui = "bolt_calculation_tool.tolerance_vnext_gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+bolt_calculation_tool = ["data/*.json", "qml/*.qml"]

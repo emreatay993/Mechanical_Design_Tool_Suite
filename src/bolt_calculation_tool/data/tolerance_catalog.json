@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "bolts": [
+    {
+      "id": "bolt_0190_pd_shank",
+      "size": "0.190",
+      "type": "PD Shank",
+      "display_name": "0.190 PD Shank",
+      "pitch": 0.8,
+      "chamfer_allowance": 0.4,
+      "lengths": [14.0, 15.0, 16.0, 17.5, 18.0, 20.0, 22.0]
+    },
+    {
+      "id": "bolt_0250_close_tol",
+      "size": "0.250",
+      "type": "Close Tolerance",
+      "display_name": "0.250 Close Tolerance",
+      "pitch": 1.0,
+      "chamfer_allowance": 0.5,
+      "lengths": [18.0, 20.0, 22.0, 24.0, 26.0, 28.0]
+    }
+  ],
+  "hardware": [
+    {
+      "id": "nut_0190_standard",
+      "part_type": "nut",
+      "display_name": "0.190 Standard Nut",
+      "compatible_bolt_sizes": ["0.190"],
+      "nominal_thickness": 2.0,
+      "tolerance": 0.05
+    },
+    {
+      "id": "nut_0250_standard",
+      "part_type": "nut",
+      "display_name": "0.250 Standard Nut",
+      "compatible_bolt_sizes": ["0.250"],
+      "nominal_thickness": 2.8,
+      "tolerance": 0.06
+    },
+    {
+      "id": "insert_0190_light",
+      "part_type": "insert",
+      "display_name": "0.190 Light Insert",
+      "compatible_bolt_sizes": ["0.190"],
+      "nominal_thickness": 3.4,
+      "tolerance": 0.08,
+      "min_engagement": 3.2,
+      "max_engagement": 6.0
+    },
+    {
+      "id": "bracket_std_100",
+      "part_type": "bracket",
+      "display_name": "Standard Bracket 1.00",
+      "compatible_bolt_sizes": ["0.190", "0.250"],
+      "nominal_thickness": 1.0,
+      "tolerance": 0.10
+    },
+    {
+      "id": "washer_0190_thin",
+      "part_type": "washer",
+      "display_name": "0.190 Thin Washer",
+      "compatible_bolt_sizes": ["0.190"],
+      "nominal_thickness": 0.6,
+      "tolerance": 0.03
+    }
+  ]
+}

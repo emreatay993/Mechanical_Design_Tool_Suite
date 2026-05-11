@@ -19,6 +19,8 @@ thread protrusion checks, and live optimization results.
 | [03_data_model_and_calculation_methods.md](03_data_model_and_calculation_methods.md) | Domain model, standard-part catalog model, stackup path calculations, contributor metrics, and thread protrusion logic. |
 | [04_architecture_and_persistence.md](04_architecture_and_persistence.md) | Proposed software architecture, module boundaries, catalog integration, autosave, project files, and migration approach. |
 | [05_verification_validation_plan.md](05_verification_validation_plan.md) | Verification plan for requirements, UI workflows, calculations, persistence, catalogs, and exports. |
+| [tolerance_stackup_qml_mockups.html](tolerance_stackup_qml_mockups.html) | Eight QML-style GUI mockup directions for the bolted-joint 1D tolerance stackup workflow. |
+| [06_implementation_plan.md](06_implementation_plan.md) | Saved implementation plan and reference file for this vNext build. |
 
 ## Source Interpretation
 

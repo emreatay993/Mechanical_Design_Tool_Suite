@@ -34,6 +34,29 @@ Or through the editable-install entry point:
 tolerance-analysis-gui
 ```
 
+The next-version joint-driven tolerance workspace is available as:
+
+```powershell
+python scripts\run_tolerance_vnext_analysis.py
+```
+
+Or through the editable-install entry point:
+
+```powershell
+tolerance-analysis-vnext-gui
+```
+
+The vNext app defaults to Qt Quick Fusion light styling. More modern Qt Quick
+Controls styles can be selected when available:
+
+```powershell
+tolerance-analysis-vnext-gui --quick-style Material
+tolerance-analysis-vnext-gui --quick-style Universal
+```
+
+The same style preference is also available from the vNext header. Changes are
+saved as an app UI preference and applied on the next launch.
+
 Design documents for the tolerance analysis GUI are in
 [`docs/tolerance_tool`](docs/tolerance_tool/README.md).
 
