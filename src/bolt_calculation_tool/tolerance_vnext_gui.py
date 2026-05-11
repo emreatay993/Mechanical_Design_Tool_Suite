@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import dataclass
 import json
 import math
 import os
@@ -50,6 +51,13 @@ MATERIAL_THEME_OPTIONS = ("Light", "Dark")
 DEFAULT_QUICK_STYLE = "Fusion"
 DEFAULT_MATERIAL_THEME = "Light"
 PREFERENCES_ENV_VAR = "TOLERANCE_VNEXT_PREFERENCES"
+
+
+@dataclass
+class ToleranceVNextSession:
+    engine: QQmlApplicationEngine
+    backend: "ToleranceVNextBackend"
+    window: QObject
 
 
 class ToleranceVNextBackend(QObject):
@@ -1266,11 +1274,15 @@ def _configure_quick_style(args: argparse.Namespace) -> None:
     os.environ.setdefault("QT_QUICK_CONTROLS_UNIVERSAL_ACCENT", "Cobalt")
 
 
-def main() -> None:
-    args = _resolve_style_args(_parse_args(sys.argv[1:]))
+def prepare_vnext_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return _resolve_style_args(_parse_args(sys.argv[1:] if argv is None else argv))
+
+
+def create_vnext_session(
+    args: argparse.Namespace | None = None,
+) -> ToleranceVNextSession:
+    args = args or prepare_vnext_args([])
     _configure_quick_style(args)
-    app = QApplication([sys.argv[0]])
-    app.setApplicationName("Tolerance Tool vNext")
     backend = ToleranceVNextBackend(
         quick_style=args.quick_style,
         material_theme=args.material_theme,
@@ -1281,8 +1293,17 @@ def main() -> None:
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
         raise SystemExit(1)
-    backend.window = engine.rootObjects()[0]
+    window = engine.rootObjects()[0]
+    backend.window = window
     backend.refresh()
+    return ToleranceVNextSession(engine=engine, backend=backend, window=window)
+
+
+def main() -> None:
+    args = prepare_vnext_args(sys.argv[1:])
+    app = QApplication([sys.argv[0]])
+    app.setApplicationName("Tolerance Tool vNext")
+    session = create_vnext_session(args)
     raise SystemExit(app.exec())
 
 

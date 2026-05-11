@@ -923,10 +923,18 @@ def _apply_fusion_light_style(app: QApplication) -> None:
     )
 
 
-def main() -> None:
-    app = QApplication(sys.argv)
+def create_bolt_window(app: QApplication | None = None) -> BoltCalculationApp:
+    app = app or QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
     _apply_fusion_light_style(app)
     window = BoltCalculationApp()
+    return window
+
+
+def main() -> None:
+    app = QApplication(sys.argv)
+    window = create_bolt_window(app)
     window.show()
     raise SystemExit(app.exec())
 

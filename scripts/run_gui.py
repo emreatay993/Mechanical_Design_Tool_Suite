@@ -8,8 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+sys.path = [path for path in sys.path if path != str(SRC)]
+sys.path.insert(0, str(SRC))
 
 from bolt_calculation_tool.gui import main
 

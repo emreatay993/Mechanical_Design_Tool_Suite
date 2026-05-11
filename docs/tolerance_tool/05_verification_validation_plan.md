@@ -86,7 +86,7 @@ Before a release or handoff:
 | Method labels | UI and docs consistently use worst case, RSS/root sum squared, target min/max, and tail risk. |
 | Units | Any absence of unit handling is explicit in docs or UI. |
 | Disabled save | Product decision is documented: implement persistence or remove the disabled action. |
-| Packaging | Launch path is documented and tested. |
+| Packaging | Selector and direct executable launch paths are documented and tested. |
 | Main GUI relationship | It is clear whether the tolerance GUI is standalone or integrated. |
 | Mockup drift | Future UI work based on `tolerance_stackup_mockups.html` does not claim unsupported methods are implemented. |
 
@@ -118,4 +118,3 @@ python scripts\run_tolerance_analysis.py
 | No automated GUI test coverage | Recalculation, validation, and export regressions could be missed. |
 | No persistence workflow | Users cannot reopen editable tolerance analyses. |
 | No explicit unit support | Users can mix units accidentally. |
-| No packaged tolerance executable | Windows release behavior is not fully specified for this standalone tool. |

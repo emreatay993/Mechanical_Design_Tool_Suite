@@ -1,6 +1,6 @@
-"""Run the prototype GUI with ``python -m bolt_calculation_tool``."""
+"""Run the packaged application selector with ``python -m bolt_calculation_tool``."""
 
-from .gui import main
+from .launcher import main
 
 
 if __name__ == "__main__":

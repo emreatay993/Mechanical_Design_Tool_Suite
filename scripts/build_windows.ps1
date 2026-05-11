@@ -10,7 +10,14 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptDir "..")
 $specPath = Join-Path $repoRoot "BoltCalculationTool.spec"
-$exePath = Join-Path $repoRoot "dist\BoltCalculationTool\BoltCalculationTool.exe"
+$distDir = Join-Path $repoRoot "dist\BoltCalculationTool"
+$launcherExePath = Join-Path $distDir "BoltCalculationTool.exe"
+$expectedExePaths = @(
+    $launcherExePath,
+    (Join-Path $distDir "BoltCalculationGui.exe"),
+    (Join-Path $distDir "ToleranceAnalysis.exe"),
+    (Join-Path $distDir "ToleranceAnalysisVNext.exe")
+)
 
 Push-Location $repoRoot
 try {
@@ -34,16 +41,19 @@ try {
         throw "PyInstaller build failed."
     }
 
-    if (-not (Test-Path -LiteralPath $exePath)) {
-        throw "Expected executable was not created: $exePath"
+    $missingExePaths = @($expectedExePaths | Where-Object { -not (Test-Path -LiteralPath $_) })
+    if ($missingExePaths.Count -gt 0) {
+        throw "Expected executable(s) were not created: $($missingExePaths -join ', ')"
     }
 
     Write-Host "Build complete:"
-    Write-Host "  $exePath"
+    foreach ($path in $expectedExePaths) {
+        Write-Host "  $path"
+    }
 
     if ($Launch) {
-        Write-Host "Launching built executable..."
-        Start-Process -FilePath $exePath -WorkingDirectory (Split-Path -Parent $exePath)
+        Write-Host "Launching program selector..."
+        Start-Process -FilePath $launcherExePath -WorkingDirectory $distDir
     }
 }
 finally {

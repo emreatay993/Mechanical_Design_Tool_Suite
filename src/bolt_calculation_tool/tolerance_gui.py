@@ -1163,10 +1163,18 @@ def _apply_tolerance_style(app: QApplication) -> None:
     )
 
 
-def main() -> None:
-    app = QApplication(sys.argv)
+def create_tolerance_window(app: QApplication | None = None) -> ToleranceAnalysisApp:
+    app = app or QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
     _apply_tolerance_style(app)
     window = ToleranceAnalysisApp()
+    return window
+
+
+def main() -> None:
+    app = QApplication(sys.argv)
+    window = create_tolerance_window(app)
     window.show()
     raise SystemExit(app.exec())
 

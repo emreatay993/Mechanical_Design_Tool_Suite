@@ -84,14 +84,14 @@ Implemented launch paths:
 | --- | --- |
 | Source checkout | `python scripts\run_tolerance_analysis.py` |
 | Editable install | `tolerance-analysis-gui` |
+| Packaged selector | `dist\BoltCalculationTool\BoltCalculationTool.exe` |
+| Packaged direct executable | `dist\BoltCalculationTool\ToleranceAnalysis.exe` |
 
-Current packaging note:
+Packaging note:
 
-The PyInstaller spec in the repository is oriented around the main bolt
-calculation GUI. It collects package submodules, but it does not define a
-tolerance-specific executable entry point. A release decision is needed on
-whether the tolerance tool should ship as its own executable, remain a console
-entry point, or be integrated into the main GUI.
+The PyInstaller spec builds a GUI suite folder. `BoltCalculationTool.exe` is the
+end-user selector, while `ToleranceAnalysis.exe`, `ToleranceAnalysisVNext.exe`,
+and `BoltCalculationGui.exe` remain available as direct launchers.
 
 ## Extension Points
 

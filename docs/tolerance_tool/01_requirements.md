@@ -92,5 +92,5 @@ Priority values:
 | --- | --- | --- | --- |
 | TOL-REQ-PKG-001 | P0 | Implemented | Developers shall be able to launch the tool from a source checkout with `python scripts\run_tolerance_analysis.py`. |
 | TOL-REQ-PKG-002 | P0 | Implemented | Editable installs shall expose the `tolerance-analysis-gui` console entry point. |
-| TOL-REQ-PKG-003 | P1 | Proposed | Windows packaging shall define whether the tolerance GUI is distributed as a dedicated executable or remains source/entry-point only. |
-| TOL-REQ-PKG-004 | P1 | Proposed | Packaging documentation shall list the launch path for the tolerance tool separately from the main bolt calculation GUI. |
+| TOL-REQ-PKG-003 | P1 | Implemented | Windows packaging shall include dedicated tolerance GUI executables and a top-level program selector. |
+| TOL-REQ-PKG-004 | P1 | Implemented | Packaging documentation shall list the launch path for the tolerance tool separately from the main bolt calculation GUI. |

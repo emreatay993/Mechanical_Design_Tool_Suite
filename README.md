@@ -16,6 +16,13 @@ Or install the package in editable mode and use the console entry point:
 
 ```powershell
 python -m pip install -e .
+bolt-calc-launcher
+```
+
+The launcher opens the program selector used by packaged builds. To open only
+the bolt calculation GUI:
+
+```powershell
 bolt-calc-gui
 ```
 
@@ -98,19 +105,24 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests
 The editable install also installs the PyVista dependency used by the 3D node
 contour window.
 
-## Build Windows Executable
+## Build Windows Executables
 
-Build a PyInstaller onedir executable from the repository root:
+Build the PyInstaller onedir GUI suite from the repository root:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean
 ```
 
-The executable is written to:
+The program selector is written to:
 
 ```text
 dist\BoltCalculationTool\BoltCalculationTool.exe
 ```
+
+The same folder also contains direct launchers for the bolt calculation GUI,
+the legacy tolerance GUI, and the vNext tolerance GUI. See
+[`docs/pyinstaller_install_guide.md`](docs/pyinstaller_install_guide.md) for the
+full build and troubleshooting guide.
 
 To build and launch it in one step:
 

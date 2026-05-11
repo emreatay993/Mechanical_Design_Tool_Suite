@@ -130,4 +130,4 @@ Before considering the next-version UI acceptable:
 | Bolt length datum | Catalog convention must be documented. |
 | Nut/insert engagement | Engagement formulas must be defined by part type. |
 | Unit system | Decide initial supported project units. |
-| Packaging | Decide standalone executable, main GUI integration, or both. |
+| Packaging | Verify both selector launch and direct `ToleranceAnalysisVNext.exe` launch before handoff. |
