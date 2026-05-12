@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -20,6 +21,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+
+_DEBUG_LOG_ENV = "MDTS_PACKAGED_ERROR_LOGS"
+_DEBUG_FLAG_FILE = "mdts_debug_build.flag"
 
 
 @dataclass(frozen=True)
@@ -117,7 +122,7 @@ class LauncherWindow(QWidget):
             )
             return
         try:
-            subprocess.Popen(command, cwd=str(_launch_cwd()))
+            subprocess.Popen(command, cwd=str(_launch_cwd()), env=_program_environment())
         except OSError as exc:
             QMessageBox.critical(
                 self,
@@ -181,6 +186,27 @@ def _launch_cwd() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path.cwd()
+
+
+def _program_environment() -> dict[str, str] | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    if not _packaged_error_logging_enabled():
+        return None
+
+    environment = os.environ.copy()
+    environment[_DEBUG_LOG_ENV] = "1"
+    return environment
+
+
+def _packaged_error_logging_enabled() -> bool:
+    if os.environ.get(_DEBUG_LOG_ENV, "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+
+    internal_dir = getattr(sys, "_MEIPASS", None)
+    if internal_dir:
+        return (Path(internal_dir) / _DEBUG_FLAG_FILE).exists()
+    return (Path(sys.executable).resolve().parent / "_internal" / _DEBUG_FLAG_FILE).exists()
 
 
 def _program_icon(kind: str, accent: str, size: int) -> QPixmap:

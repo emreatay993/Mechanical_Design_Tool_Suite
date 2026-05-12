@@ -1,10 +1,12 @@
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 .idea/
 docs/assets/gui_mockups/
 build/
 dist/
+output/
 *.egg-info/
 
 # Standalone CAD 1D tolerance tool: keep raw third-party/demo source media local-only.

@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 from pathlib import Path
 import sys
 
@@ -9,6 +10,15 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 project_root = Path(SPECPATH).resolve()
 src_root = project_root / "src"
 sys.path.insert(0, str(src_root))
+
+debug_build = os.environ.get("MDTS_PYI_DEBUG", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+runtime_hooks = [str(project_root / "scripts" / "pyinstaller_error_logging_hook.py")]
+debug_flag_path = project_root / "build" / "mdts_debug_build.flag"
 
 entry_scripts = [
     ("MechanicalDesignToolSuite", project_root / "scripts" / "run_launcher.py"),
@@ -53,6 +63,14 @@ for data_path in (
     if data_path.exists():
         datas.append((str(data_path), str(data_path.parent.relative_to(src_root))))
 
+if debug_build:
+    debug_flag_path.parent.mkdir(parents=True, exist_ok=True)
+    debug_flag_path.write_text(
+        "This file enables packaged error logging for debug PyInstaller builds.\n",
+        encoding="utf-8",
+    )
+    datas.append((str(debug_flag_path), "."))
+
 
 a = Analysis(
     [str(script_path) for _, script_path in entry_scripts],
@@ -62,7 +80,7 @@ a = Analysis(
     hiddenimports=sorted(set(hiddenimports)),
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=runtime_hooks,
     excludes=[],
     noarchive=False,
     optimize=0,
@@ -78,11 +96,11 @@ for index, (name, _) in enumerate(entry_scripts):
             [],
             exclude_binaries=True,
             name=name,
-            debug=False,
+            debug=debug_build,
             bootloader_ignore_signals=False,
             strip=False,
             upx=False,
-            console=False,
+            console=debug_build,
             disable_windowed_traceback=False,
             argv_emulation=False,
             target_arch=None,
