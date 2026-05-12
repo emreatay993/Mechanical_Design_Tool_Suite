@@ -124,3 +124,18 @@ Requirements in this file are derived from:
 | Results dashboard | Transcript `00:13:49-00:21:08`; visual sheets 005-007 | P0 | Derived |
 | Reports | Transcript `00:22:09-00:23:36`; visual sheet 007 | P1 | Derived |
 | Targeted UI fidelity details | `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` | P0 | Derived |
+
+## P0 Evidence Checklist
+
+P00 locks the following evidence sources as required rereads for later implementation packets:
+
+| Evidence Area | Required Source | P0 Requirement Coverage |
+| --- | --- | --- |
+| Neutral import and project workflow | `source_artifacts/transcripts/2026-05-12_eztol_demo_timestamped_transcript.md`, cues around `00:02:35-00:04:55` | FR-CAD-001 through FR-CAD-008 |
+| Guided stackup authoring | Targeted visual review sections `00:05:00-00:06:52` plus key frames `007` through `013` | FR-STK-001 through FR-STK-009 |
+| Dense tolerance editing and GD&T entry | Targeted visual review sections `00:07:05-00:13:55` plus key frames `014` through `028` | FR-TOL-001 through FR-TOL-006 |
+| Results, dashboard, and non-1D warnings | Transcript cues around `00:15:55-00:21:54`; targeted review dashboard and contribution sections | FR-RES-001 through FR-RES-009, FR-DASH-001 through FR-DASH-006 |
+| Browser-style report output | Targeted visual review report section `00:22:18-00:23:38` | FR-RPT-001 through FR-RPT-004 |
+| UI fidelity details | `extracted_specs/2026-05-12_eztol_targeted_visual_review.md`, then local key frames and five-second sheets | UI-FID-001 through UI-FID-007 |
+
+No P0 requirement area is currently missing a primary evidence source. Exact GD&T glyphs, tolerance-type dropdown labels, statistical submenu labels, and non-1D thresholds remain documented implementation uncertainties rather than missing requirements.

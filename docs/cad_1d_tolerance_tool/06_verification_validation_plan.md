@@ -38,6 +38,25 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -p "test_cad_toleran
 | V09 | UI fidelity | Main shell and detail views | Layout, density, colors, table columns, and transitions match visual evidence | Visual sheets 002-007 |
 | V10 | Targeted visual fidelity | Main shell, guided toolbar, result plots, dashboard badges, report pages | UI matches `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` or records explicit fidelity gaps | Targeted visual review |
 
+## Neutral CAD Fixture Requirements
+
+Trackable fixture placeholders are documented under `tests/fixtures/cad_1d_tolerance/`.
+
+| Fixture ID | Required Format | Minimum Geometry | Verification Target |
+| --- | --- | --- | --- |
+| CAD1D-STEP-ASM-001 | STEP AP203/AP214/AP242 | Two or more assembly parts, planar faces, one cylindrical feature, millimeter units | V01 import, assembly tree, endpoint selection, shape references |
+| CAD1D-IGES-BREP-001 | IGES | One B-Rep part with planar and cylindrical faces, millimeter units | V01 IGES import and basic feature metadata |
+| CAD1D-NON1D-001 | STEP AP203/AP214/AP242 | Offset or rotationally sensitive loop geometry | V07 non-1D warning heuristic tests |
+| CAD1D-PROJECT-001 | `.tolproj` JSON | CAD source metadata, one passing stackup, one failing or warning stackup, asymmetric contributor examples | Persistence, report, and UI model tests after the relevant packets land |
+
+Fixture acceptance rules:
+
+- Use neutral formats only for P0; native CAD, JT, STL, and OBJ are not acceptance fixtures for this clone.
+- Keep units explicit and default to millimeters.
+- Include at least one planar endpoint and one cylindrical/axis-like feature across the fixture set.
+- Include stable display names that can drive deterministic tree and table tests.
+- If a binary fixture cannot be committed, record the generator script or local artifact path in this directory before relying on it in tests.
+
 ## Reference Cases
 
 - Manual loop from transcript opening: bushing ID alignment, nominal misalignment `0`, objective/worst-case variation near `+/-0.75`.
