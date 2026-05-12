@@ -34,7 +34,7 @@ Expected launch files:
 | `BoltCalculationTool.exe` | Professional program selector shown to end users. |
 | `BoltCalculationGui.exe` | Direct launch for the bolt calculation GUI. |
 | `ToleranceAnalysis.exe` | Direct launch for the legacy tolerance GUI. |
-| `ToleranceAnalysisVNext.exe` | Direct launch for the QML vNext tolerance GUI. |
+| `ToleranceAnalysisVNext.exe` | Direct launch for the vNext tolerance GUI. |
 
 Keep the full `dist\BoltCalculationTool` folder together. The executables share
 the `_internal` runtime folder, Qt plugins, QML files, and bundled catalog data.
@@ -56,7 +56,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -C
 | Symptom | Check |
 | --- | --- |
 | Selector opens but a program is missing | Rebuild and confirm all four expected executables are still next to each other. |
-| vNext QML view does not open | Keep `_internal`, `bolt_calculation_tool\qml`, and Qt plugin folders with the executables. |
+| vNext view does not open | Keep `_internal`, bundled UI files, and Qt plugin folders with the executables. |
 | Spreadsheet import fails in packaged app | Rebuild after installing `openpyxl`; it is collected by the spec. |
 | Build uses stale source code | Run the build from the repository root and keep the editable install step enabled. |
-

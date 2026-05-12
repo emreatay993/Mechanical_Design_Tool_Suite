@@ -53,8 +53,8 @@ Or through the editable-install entry point:
 tolerance-analysis-vnext-gui
 ```
 
-The vNext app defaults to Qt Quick Fusion light styling. More modern Qt Quick
-Controls styles can be selected when available:
+The vNext app defaults to Fusion light styling. More modern UI styles can be
+selected when available:
 
 ```powershell
 tolerance-analysis-vnext-gui --quick-style Material

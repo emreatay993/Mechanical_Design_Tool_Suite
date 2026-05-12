@@ -1011,7 +1011,7 @@ ApplicationWindow {
                     font.pixelSize: 12
                     Layout.fillWidth: true
                 }
-                MutedText { text: "Qt Quick engineering workspace" }
+                MutedText { text: "Modern engineering workspace" }
             }
         }
     }

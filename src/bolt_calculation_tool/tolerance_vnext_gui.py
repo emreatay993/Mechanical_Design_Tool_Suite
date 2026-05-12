@@ -407,7 +407,7 @@ class ToleranceVNextBackend(QObject):
     def setQuickStyle(self, style: str) -> None:
         matched = _match_choice(style, QUICK_STYLE_OPTIONS)
         if matched is None:
-            self._set_status(f"{style} is not an available Qt Quick Controls style.")
+            self._set_status(f"{style} is not an available UI style.")
             return
         self.preferred_quick_style = matched
         self._persist_theme_preferences()
@@ -1232,7 +1232,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         choices=QUICK_STYLE_OPTIONS,
         default=None,
         help=(
-            "Qt Quick Controls style. Fusion is the default; Material and "
+            "UI style. Fusion is the default; Material and "
             "Universal provide more modern looks when available. If omitted, "
             "the saved UI preference is used."
         ),
