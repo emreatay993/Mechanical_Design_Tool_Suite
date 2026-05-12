@@ -9,7 +9,7 @@ From the repository root:
 
 ```powershell
 python -m pip install -e .
-python scripts\run_gui.py
+python scripts\run_launcher.py
 ```
 
 Or install the package in editable mode and use the console entry point:
@@ -129,3 +129,19 @@ To build and launch it in one step:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean -Launch
 ```
+
+For a debug bundle that opens console windows and writes packaged error logs
+under `dist\MechanicalDesignToolSuite\_internal`, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean -DebugBuild
+```
+
+To run an existing packaged executable with temporary debug logging enabled:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -RunOnly -DebugRun -Program Launcher
+```
+
+Valid `-Program` values are `Launcher`, `Bolt`, `Tolerance`, and
+`ToleranceVNext`.
