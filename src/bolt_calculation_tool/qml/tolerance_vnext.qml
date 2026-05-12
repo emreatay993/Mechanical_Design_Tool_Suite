@@ -13,6 +13,13 @@ ApplicationWindow {
     color: "#f4f6fb"
     font.family: "Segoe UI"
     font.pixelSize: 12
+    readonly property int pathTableColumnSpacing: 10
+    readonly property int pathItemColumnWidth: 225
+    readonly property int pathSourceColumnWidth: 78
+    readonly property int pathThicknessColumnWidth: 92
+    readonly property int pathToleranceColumnWidth: 82
+    readonly property int pathUseColumnWidth: 50
+    readonly property int pathActionColumnWidth: 34
 
     function safeIndex(items, value) {
         if (!items || value === undefined)
@@ -582,12 +589,14 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 10
-                                Label { text: "Path item"; Layout.preferredWidth: 225; font.bold: true; color: "#334155" }
-                                Label { text: "Source"; Layout.preferredWidth: 78; font.bold: true; color: "#334155" }
-                                Label { text: "Thickness"; Layout.preferredWidth: 92; font.bold: true; color: "#334155" }
-                                Label { text: "-Tol"; Layout.preferredWidth: 82; font.bold: true; color: "#334155" }
-                                Label { text: "+Tol"; Layout.preferredWidth: 82; font.bold: true; color: "#334155" }
-                                Label { text: "Use"; Layout.preferredWidth: 50; font.bold: true; color: "#334155" }
+                                spacing: root.pathTableColumnSpacing
+                                Label { text: "Path item"; Layout.preferredWidth: root.pathItemColumnWidth; font.bold: true; color: "#334155" }
+                                Label { text: "Source"; Layout.preferredWidth: root.pathSourceColumnWidth; font.bold: true; color: "#334155" }
+                                Label { text: "Thickness"; Layout.preferredWidth: root.pathThicknessColumnWidth; font.bold: true; color: "#334155" }
+                                Label { text: "-Tol"; Layout.preferredWidth: root.pathToleranceColumnWidth; font.bold: true; color: "#334155" }
+                                Label { text: "+Tol"; Layout.preferredWidth: root.pathToleranceColumnWidth; font.bold: true; color: "#334155" }
+                                Label { text: "Use"; Layout.preferredWidth: root.pathUseColumnWidth; font.bold: true; color: "#334155" }
+                                Item { Layout.preferredWidth: root.pathActionColumnWidth }
                                 Item { Layout.fillWidth: true }
                             }
                         }
@@ -614,10 +623,10 @@ ApplicationWindow {
                                             anchors.fill: parent
                                             anchors.leftMargin: 10
                                             anchors.rightMargin: 10
-                                            spacing: 10
+                                            spacing: root.pathTableColumnSpacing
 
                                             ColumnLayout {
-                                                Layout.preferredWidth: 225
+                                                Layout.preferredWidth: root.pathItemColumnWidth
                                                 spacing: 1
                                                 Label {
                                                     text: modelData.name
@@ -629,55 +638,55 @@ ApplicationWindow {
                                                 MutedText { text: modelData.role }
                                             }
                                             Label {
-                                                Layout.preferredWidth: 78
+                                                Layout.preferredWidth: root.pathSourceColumnWidth
                                                 text: modelData.source_label
                                                 color: "#64748b"
                                                 font.pixelSize: 12
                                             }
                                             FieldBox {
                                                 id: itemNominal
-                                                Layout.preferredWidth: 92
+                                                Layout.preferredWidth: root.pathThicknessColumnWidth
                                                 enabled: !modelData.locked
                                                 text: modelData.nominal
                                                 onEditingFinished: backend.updatePathItem(modelData.id, text, itemTolMinus.text, itemTolPlus.text, includeBox.checked)
                                             }
                                             FieldBox {
                                                 id: itemTolMinus
-                                                Layout.preferredWidth: 82
+                                                Layout.preferredWidth: root.pathToleranceColumnWidth
                                                 enabled: !modelData.locked
                                                 text: modelData.tolerance_minus
                                                 onEditingFinished: backend.updatePathItem(modelData.id, itemNominal.text, text, itemTolPlus.text, includeBox.checked)
                                             }
                                             FieldBox {
                                                 id: itemTolPlus
-                                                Layout.preferredWidth: 82
+                                                Layout.preferredWidth: root.pathToleranceColumnWidth
                                                 enabled: !modelData.locked
                                                 text: modelData.tolerance_plus
                                                 onEditingFinished: backend.updatePathItem(modelData.id, itemNominal.text, itemTolMinus.text, text, includeBox.checked)
                                             }
                                             CheckBox {
                                                 id: includeBox
-                                                Layout.preferredWidth: 50
+                                                Layout.preferredWidth: root.pathUseColumnWidth
                                                 checked: modelData.include
                                                 onToggled: backend.updatePathItem(modelData.id, itemNominal.text, itemTolMinus.text, itemTolPlus.text, checked)
                                             }
-                            Button {
-                                Layout.preferredWidth: 34
-                                enabled: !modelData.locked
-                                text: "x"
-                                onClicked: backend.removePathItem(modelData.id)
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.enabled ? "#475569" : "#cbd5e1"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    radius: 6
-                                    color: parent.down ? "#fee2e2" : parent.hovered ? "#fff1f2" : "#f8fafc"
-                                    border.color: parent.enabled ? "#cbd5e1" : "#e2e8f0"
-                                }
-                            }
+                                            Button {
+                                                Layout.preferredWidth: root.pathActionColumnWidth
+                                                enabled: !modelData.locked
+                                                text: "x"
+                                                onClicked: backend.removePathItem(modelData.id)
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    color: parent.enabled ? "#475569" : "#cbd5e1"
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
+                                                background: Rectangle {
+                                                    radius: 6
+                                                    color: parent.down ? "#fee2e2" : parent.hovered ? "#fff1f2" : "#f8fafc"
+                                                    border.color: parent.enabled ? "#cbd5e1" : "#e2e8f0"
+                                                }
+                                            }
                                             Item { Layout.fillWidth: true }
                                         }
                                     }
