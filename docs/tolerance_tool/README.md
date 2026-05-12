@@ -19,8 +19,8 @@ implemented separately from the main bolt calculation GUI.
 
 | Area | Reference |
 | --- | --- |
-| Domain calculation | [`../../src/bolt_calculation_tool/tolerance.py`](../../src/bolt_calculation_tool/tolerance.py) |
-| Standalone PyQt6 GUI | [`../../src/bolt_calculation_tool/tolerance_gui.py`](../../src/bolt_calculation_tool/tolerance_gui.py) |
+| Domain calculation | [`../../src/mechanical_design_tool_suite/tolerance.py`](../../src/mechanical_design_tool_suite/tolerance.py) |
+| Standalone PyQt6 GUI | [`../../src/mechanical_design_tool_suite/tolerance_gui.py`](../../src/mechanical_design_tool_suite/tolerance_gui.py) |
 | Source checkout launcher | [`../../scripts/run_tolerance_analysis.py`](../../scripts/run_tolerance_analysis.py) |
 | Package entry point | [`../../pyproject.toml`](../../pyproject.toml) |
 | Regression tests | [`../../tests/test_tolerance_analysis.py`](../../tests/test_tolerance_analysis.py) |

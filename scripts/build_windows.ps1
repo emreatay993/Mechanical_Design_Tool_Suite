@@ -9,9 +9,9 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptDir "..")
-$specPath = Join-Path $repoRoot "BoltCalculationTool.spec"
-$distDir = Join-Path $repoRoot "dist\BoltCalculationTool"
-$launcherExePath = Join-Path $distDir "BoltCalculationTool.exe"
+$specPath = Join-Path $repoRoot "MechanicalDesignToolSuite.spec"
+$distDir = Join-Path $repoRoot "dist\MechanicalDesignToolSuite"
+$launcherExePath = Join-Path $distDir "MechanicalDesignToolSuite.exe"
 $expectedExePaths = @(
     $launcherExePath,
     (Join-Path $distDir "BoltCalculationGui.exe"),
@@ -35,7 +35,7 @@ try {
         Remove-Item -LiteralPath (Join-Path $repoRoot "dist") -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    Write-Host "Building BoltCalculationTool with PyInstaller..."
+    Write-Host "Building MechanicalDesignToolSuite with PyInstaller..."
     & $Python -m PyInstaller --noconfirm $specPath
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller build failed."

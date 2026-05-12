@@ -115,7 +115,7 @@ class ToleranceCatalog:
     def builtin(cls) -> "ToleranceCatalog":
         try:
             catalog_text = (
-                resources.files("bolt_calculation_tool")
+                resources.files("mechanical_design_tool_suite")
                 .joinpath("data/tolerance_catalog.json")
                 .read_text(encoding="utf-8")
             )

@@ -4,20 +4,20 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from bolt_calculation_tool.tolerance_catalog import ToleranceCatalog
-from bolt_calculation_tool.tolerance_methods import (
+from mechanical_design_tool_suite.tolerance_catalog import ToleranceCatalog
+from mechanical_design_tool_suite.tolerance_methods import (
     calculate_stackup_path,
     calculate_sub_joint_result,
 )
-from bolt_calculation_tool.tolerance_models import (
+from mechanical_design_tool_suite.tolerance_models import (
     Flange,
     MethodSettings,
     PathItem,
     create_default_project,
     sync_path_with_flanges,
 )
-from bolt_calculation_tool.tolerance_optimizer import rank_bolt_lengths
-from bolt_calculation_tool.tolerance_project_io import load_project, save_project
+from mechanical_design_tool_suite.tolerance_optimizer import rank_bolt_lengths
+from mechanical_design_tool_suite.tolerance_project_io import load_project, save_project
 
 
 class ToleranceVNextDomainTest(unittest.TestCase):

@@ -16,7 +16,7 @@ next-version tolerance tool.
 ## Proposed Module Boundaries
 
 ```text
-bolt_calculation_tool/
+mechanical_design_tool_suite/
   tolerance.py                         current baseline stackup calculation
   tolerance_models.py                  vNext dataclasses/domain models
   tolerance_methods.py                 vNext stackup, contributor, protrusion methods

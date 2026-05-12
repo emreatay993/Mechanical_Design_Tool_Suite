@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
-from bolt_calculation_tool.gui import BoltCalculationApp, _apply_fusion_light_style
+from mechanical_design_tool_suite.gui import BoltCalculationApp, _apply_fusion_light_style
 
 
 class GuiStateTest(unittest.TestCase):

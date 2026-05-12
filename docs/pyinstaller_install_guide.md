@@ -16,7 +16,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -C
 ```
 
 The build script installs the package in editable mode with the `build` extra,
-runs PyInstaller with `BoltCalculationTool.spec`, and validates the expected
+runs PyInstaller with `MechanicalDesignToolSuite.spec`, and validates the expected
 executables.
 
 ## Output Folder
@@ -24,25 +24,25 @@ executables.
 The packaged suite is written to:
 
 ```text
-dist\BoltCalculationTool
+dist\MechanicalDesignToolSuite
 ```
 
 Expected launch files:
 
 | Executable | Purpose |
 | --- | --- |
-| `BoltCalculationTool.exe` | Professional program selector shown to end users. |
+| `MechanicalDesignToolSuite.exe` | Professional program selector shown to end users. |
 | `BoltCalculationGui.exe` | Direct launch for the bolt calculation GUI. |
 | `ToleranceAnalysis.exe` | Direct launch for the legacy tolerance GUI. |
 | `ToleranceAnalysisVNext.exe` | Direct launch for the vNext tolerance GUI. |
 
-Keep the full `dist\BoltCalculationTool` folder together. The executables share
+Keep the full `dist\MechanicalDesignToolSuite` folder together. The executables share
 the `_internal` runtime folder, Qt plugins, QML files, and bundled catalog data.
 
 ## Launch After Build
 
 ```powershell
-.\dist\BoltCalculationTool\BoltCalculationTool.exe
+.\dist\MechanicalDesignToolSuite\MechanicalDesignToolSuite.exe
 ```
 
 To build and launch the selector in one step:

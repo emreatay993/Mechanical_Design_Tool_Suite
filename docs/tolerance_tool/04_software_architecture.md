@@ -7,8 +7,8 @@ tolerance analysis GUI.
 
 | Module | Responsibility |
 | --- | --- |
-| [`../../src/bolt_calculation_tool/tolerance.py`](../../src/bolt_calculation_tool/tolerance.py) | Pure calculation/domain layer for tolerance stackup analysis. |
-| [`../../src/bolt_calculation_tool/tolerance_gui.py`](../../src/bolt_calculation_tool/tolerance_gui.py) | PyQt6 GUI, input collection, plotting, output table, status messages, and PDF/PNG export. |
+| [`../../src/mechanical_design_tool_suite/tolerance.py`](../../src/mechanical_design_tool_suite/tolerance.py) | Pure calculation/domain layer for tolerance stackup analysis. |
+| [`../../src/mechanical_design_tool_suite/tolerance_gui.py`](../../src/mechanical_design_tool_suite/tolerance_gui.py) | PyQt6 GUI, input collection, plotting, output table, status messages, and PDF/PNG export. |
 | [`../../scripts/run_tolerance_analysis.py`](../../scripts/run_tolerance_analysis.py) | Source checkout launcher that prepends `src` to `sys.path` and starts the GUI. |
 | [`../../pyproject.toml`](../../pyproject.toml) | Package metadata and `tolerance-analysis-gui` console entry point. |
 | [`../../tests/test_tolerance_analysis.py`](../../tests/test_tolerance_analysis.py) | Unit regression tests for the calculation layer. |
@@ -84,12 +84,12 @@ Implemented launch paths:
 | --- | --- |
 | Source checkout | `python scripts\run_tolerance_analysis.py` |
 | Editable install | `tolerance-analysis-gui` |
-| Packaged selector | `dist\BoltCalculationTool\BoltCalculationTool.exe` |
-| Packaged direct executable | `dist\BoltCalculationTool\ToleranceAnalysis.exe` |
+| Packaged selector | `dist\MechanicalDesignToolSuite\MechanicalDesignToolSuite.exe` |
+| Packaged direct executable | `dist\MechanicalDesignToolSuite\ToleranceAnalysis.exe` |
 
 Packaging note:
 
-The PyInstaller spec builds a GUI suite folder. `BoltCalculationTool.exe` is the
+The PyInstaller spec builds a GUI suite folder. `MechanicalDesignToolSuite.exe` is the
 end-user selector, while `ToleranceAnalysis.exe`, `ToleranceAnalysisVNext.exe`,
 and `BoltCalculationGui.exe` remain available as direct launchers.
 

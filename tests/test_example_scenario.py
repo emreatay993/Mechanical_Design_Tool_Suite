@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from bolt_calculation_tool.calculations import calculate_bolt_group, resolve_constants
-from bolt_calculation_tool.io import parse_load_table
-from bolt_calculation_tool.sample_data import example_scenario_table_text
+from mechanical_design_tool_suite.calculations import calculate_bolt_group, resolve_constants
+from mechanical_design_tool_suite.io import parse_load_table
+from mechanical_design_tool_suite.sample_data import example_scenario_table_text
 
 
 class ExampleScenarioBackendTest(unittest.TestCase):

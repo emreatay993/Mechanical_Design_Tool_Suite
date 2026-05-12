@@ -3,9 +3,9 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bolt-calculation-tool"
+name = "mechanical-design-tool-suite"
 version = "0.1.0"
-description = "Prototype GUI and backend for documented bolt calculations."
+description = "Desktop suite for mechanical design calculation tools."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["PyQt6>=6.6", "pyvista>=0.43", "openpyxl>=3.1"]
@@ -14,16 +14,16 @@ dependencies = ["PyQt6>=6.6", "pyvista>=0.43", "openpyxl>=3.1"]
 build = ["pyinstaller>=6.13"]
 
 [project.scripts]
-bolt-calc-launcher = "bolt_calculation_tool.launcher:main"
-bolt-calc-gui = "bolt_calculation_tool.gui:main"
-tolerance-analysis-gui = "bolt_calculation_tool.tolerance_gui:main"
-tolerance-analysis-vnext-gui = "bolt_calculation_tool.tolerance_vnext_gui:main"
+mechanical-design-tool-suite = "mechanical_design_tool_suite.launcher:main"
+bolt-calc-gui = "mechanical_design_tool_suite.gui:main"
+tolerance-analysis-gui = "mechanical_design_tool_suite.tolerance_gui:main"
+tolerance-analysis-vnext-gui = "mechanical_design_tool_suite.tolerance_vnext_gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-bolt_calculation_tool = [
+mechanical_design_tool_suite = [
     "data/*.json",
     "qml/*.qml",
     "qml/assets/*.md",

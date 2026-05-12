@@ -1,4 +1,4 @@
-"""Prototype bolt calculation package."""
+"""Mechanical design calculation tool suite."""
 
 from .calculations import (
     BOLT_SPECS,

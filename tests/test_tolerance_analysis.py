@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from bolt_calculation_tool.tolerance import ToleranceDimension, calculate_stackup
+from mechanical_design_tool_suite.tolerance import ToleranceDimension, calculate_stackup
 
 
 class ToleranceAnalysisTest(unittest.TestCase):

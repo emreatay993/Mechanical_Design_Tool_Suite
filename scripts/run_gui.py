@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 sys.path = [path for path in sys.path if path != str(SRC)]
 sys.path.insert(0, str(SRC))
 
-from bolt_calculation_tool.gui import main
+from mechanical_design_tool_suite.gui import main
 
 
 if __name__ == "__main__":

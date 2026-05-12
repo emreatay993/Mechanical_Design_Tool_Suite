@@ -2,7 +2,7 @@
 
 This document defines the calculation methodology for the standalone tolerance
 analysis GUI. The implemented source of truth is
-[`../../src/bolt_calculation_tool/tolerance.py`](../../src/bolt_calculation_tool/tolerance.py).
+[`../../src/mechanical_design_tool_suite/tolerance.py`](../../src/mechanical_design_tool_suite/tolerance.py).
 
 ## Calculation Scope
 

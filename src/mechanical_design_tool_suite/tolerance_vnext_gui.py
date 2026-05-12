@@ -1212,8 +1212,8 @@ def _theme_preferences_path() -> Path:
         return Path(override)
     appdata = os.environ.get("APPDATA")
     if appdata:
-        return Path(appdata) / "BoltCalculationTool" / "tolerance_vnext_ui.json"
-    return Path.home() / ".bolt_calculation_tool" / "tolerance_vnext_ui.json"
+        return Path(appdata) / "MechanicalDesignToolSuite" / "tolerance_vnext_ui.json"
+    return Path.home() / ".mechanical_design_tool_suite" / "tolerance_vnext_ui.json"
 
 
 def _load_theme_preferences(path: Path | str | None = None) -> dict[str, str]:

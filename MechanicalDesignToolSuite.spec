@@ -11,7 +11,7 @@ src_root = project_root / "src"
 sys.path.insert(0, str(src_root))
 
 entry_scripts = [
-    ("BoltCalculationTool", project_root / "scripts" / "run_launcher.py"),
+    ("MechanicalDesignToolSuite", project_root / "scripts" / "run_launcher.py"),
     ("BoltCalculationGui", project_root / "scripts" / "run_gui.py"),
     ("ToleranceAnalysis", project_root / "scripts" / "run_tolerance_analysis.py"),
     ("ToleranceAnalysisVNext", project_root / "scripts" / "run_tolerance_vnext_analysis.py"),
@@ -23,7 +23,7 @@ binaries = []
 hiddenimports = []
 
 for package_name in (
-    "bolt_calculation_tool",
+    "mechanical_design_tool_suite",
     "PyQt6",
     "pyvista",
     "vtk",
@@ -36,7 +36,7 @@ for package_name in (
     binaries += package_binaries
     hiddenimports += package_hiddenimports
 
-hiddenimports += collect_submodules("bolt_calculation_tool")
+hiddenimports += collect_submodules("mechanical_design_tool_suite")
 hiddenimports += collect_submodules("openpyxl")
 hiddenimports += [
     "PyQt6.QtQml",
@@ -47,8 +47,8 @@ hiddenimports += [
 ]
 
 for data_path in (
-    src_root / "bolt_calculation_tool" / "data" / "tolerance_catalog.json",
-    src_root / "bolt_calculation_tool" / "qml" / "tolerance_vnext.qml",
+    src_root / "mechanical_design_tool_suite" / "data" / "tolerance_catalog.json",
+    src_root / "mechanical_design_tool_suite" / "qml" / "tolerance_vnext.qml",
 ):
     if data_path.exists():
         datas.append((str(data_path), str(data_path.parent.relative_to(src_root))))
@@ -98,5 +98,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="BoltCalculationTool",
+    name="MechanicalDesignToolSuite",
 )

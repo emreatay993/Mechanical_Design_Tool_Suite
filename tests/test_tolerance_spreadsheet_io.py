@@ -6,9 +6,9 @@ import unittest
 
 from openpyxl import Workbook
 
-from bolt_calculation_tool.tolerance_catalog import ToleranceCatalog
-from bolt_calculation_tool.tolerance_methods import calculate_sub_joint_result
-from bolt_calculation_tool.tolerance_spreadsheet_io import load_spreadsheet_project
+from mechanical_design_tool_suite.tolerance_catalog import ToleranceCatalog
+from mechanical_design_tool_suite.tolerance_methods import calculate_sub_joint_result
+from mechanical_design_tool_suite.tolerance_spreadsheet_io import load_spreadsheet_project
 
 
 class ToleranceSpreadsheetImportTest(unittest.TestCase):

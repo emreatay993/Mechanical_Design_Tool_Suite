@@ -2,7 +2,7 @@
 
 This document specifies the user-facing behavior for the standalone tolerance
 analysis GUI implemented in
-[`../../src/bolt_calculation_tool/tolerance_gui.py`](../../src/bolt_calculation_tool/tolerance_gui.py).
+[`../../src/mechanical_design_tool_suite/tolerance_gui.py`](../../src/mechanical_design_tool_suite/tolerance_gui.py).
 
 ## Launch Paths
 

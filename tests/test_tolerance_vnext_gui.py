@@ -11,14 +11,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
-from bolt_calculation_tool.tolerance_vnext_gui import (
+from mechanical_design_tool_suite.tolerance_vnext_gui import (
     PREFERENCES_ENV_VAR,
     ToleranceVNextBackend,
     _parse_args,
     _resolve_style_args,
     _save_theme_preferences,
 )
-from bolt_calculation_tool.tolerance_models import PathItem
+from mechanical_design_tool_suite.tolerance_models import PathItem
 
 
 class ToleranceVNextBackendTest(unittest.TestCase):

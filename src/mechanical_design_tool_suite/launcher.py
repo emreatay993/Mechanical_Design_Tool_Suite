@@ -1,4 +1,4 @@
-"""Program selection launcher for the packaged bolt calculation suite."""
+"""Program selection launcher for the packaged mechanical design tool suite."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ PROGRAMS = (
         description="Run the main bolted-joint calculation workflow.",
         accent="#2f6f9f",
         exe_name="BoltCalculationGui.exe",
-        module_name="bolt_calculation_tool.gui",
+        module_name="mechanical_design_tool_suite.gui",
         icon_kind="bolt",
     ),
     ProgramDescriptor(
@@ -52,7 +52,7 @@ PROGRAMS = (
         description="Open the current released tolerance analysis interface.",
         accent="#6f55d9",
         exe_name="ToleranceAnalysis.exe",
-        module_name="bolt_calculation_tool.tolerance_gui",
+        module_name="mechanical_design_tool_suite.tolerance_gui",
         icon_kind="tolerance",
     ),
     ProgramDescriptor(
@@ -62,7 +62,7 @@ PROGRAMS = (
         description="Open the new engineering workspace with a modern UI.",
         accent="#23845f",
         exe_name="ToleranceAnalysisVNext.exe",
-        module_name="bolt_calculation_tool.tolerance_vnext_gui",
+        module_name="mechanical_design_tool_suite.tolerance_vnext_gui",
         icon_kind="vnext",
     ),
 )
@@ -71,7 +71,7 @@ PROGRAMS = (
 class LauncherWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Bolt Calculation Tool Suite")
+        self.setWindowTitle("Mechanical Design Tool Suite")
         self.setMinimumSize(980, 580)
         self.setWindowIcon(QIcon(_program_icon("bolt", "#2f6f9f", 48)))
         self._build_ui()
@@ -82,7 +82,7 @@ class LauncherWindow(QWidget):
         root.setSpacing(22)
 
         header = QVBoxLayout()
-        title = QLabel("Bolt Calculation Tool Suite")
+        title = QLabel("Mechanical Design Tool Suite")
         title.setObjectName("LauncherTitle")
         subtitle = QLabel("Select the engineering program you want to run.")
         subtitle.setObjectName("LauncherSubtitle")
@@ -308,7 +308,7 @@ def _apply_launcher_style(app: QApplication) -> None:
 
 def main() -> None:
     app = QApplication.instance() or QApplication([sys.argv[0]])
-    app.setApplicationName("Bolt Calculation Tool Suite")
+    app.setApplicationName("Mechanical Design Tool Suite")
     _apply_launcher_style(app)
     window = LauncherWindow()
     window.show()

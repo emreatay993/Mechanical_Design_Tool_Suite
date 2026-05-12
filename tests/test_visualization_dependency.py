@@ -7,9 +7,9 @@ from unittest import mock
 
 import pyvista as pv
 
-from bolt_calculation_tool.calculations import calculate_bolt_group, resolve_constants
-from bolt_calculation_tool.sample_data import example_scenario_loads
-from bolt_calculation_tool.visualization import (
+from mechanical_design_tool_suite.calculations import calculate_bolt_group, resolve_constants
+from mechanical_design_tool_suite.sample_data import example_scenario_loads
+from mechanical_design_tool_suite.visualization import (
     SCALAR_CHOICES,
     VISUALIZATION_CMAP,
     format_hover_text,

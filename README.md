@@ -1,9 +1,9 @@
-# Bolt Calculation Tool
+# Mechanical Design Tool Suite
 
-Prototype PyQt6 Fusion light GUI and calculation backend for the documented
-`ExampleScenario` circumferential flange bolt checks.
+Desktop suite for mechanical design calculation tools, currently including
+the bolt calculator and tolerance analysis workspaces.
 
-## Run The GUI
+## Run The Suite Launcher
 
 From the repository root:
 
@@ -16,7 +16,7 @@ Or install the package in editable mode and use the console entry point:
 
 ```powershell
 python -m pip install -e .
-bolt-calc-launcher
+mechanical-design-tool-suite
 ```
 
 The launcher opens the program selector used by packaged builds. To open only
@@ -116,7 +116,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -C
 The program selector is written to:
 
 ```text
-dist\BoltCalculationTool\BoltCalculationTool.exe
+dist\MechanicalDesignToolSuite\MechanicalDesignToolSuite.exe
 ```
 
 The same folder also contains direct launchers for the bolt calculation GUI,
