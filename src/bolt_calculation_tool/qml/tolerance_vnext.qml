@@ -10,9 +10,26 @@ ApplicationWindow {
     minimumWidth: 1360
     minimumHeight: 760
     title: "Tolerance Tool vNext"
-    color: "#f4f6fb"
     font.family: "Segoe UI"
     font.pixelSize: 12
+    readonly property color stylePageBackground: "#f4f6fb"
+    readonly property color styleSurface: "#ffffff"
+    readonly property color styleControlHover: "#edf5ff"
+    readonly property color styleControlPressed: "#d7e7ff"
+    readonly property color styleBorder: "#cbd5e1"
+    readonly property color styleBorderSubtle: "#d8dee9"
+    readonly property color styleFocus: "#3b82f6"
+    readonly property color styleText: "#1f2937"
+    readonly property color styleTextStrong: "#111827"
+    readonly property color styleTextHeading: "#172033"
+    readonly property color styleTextAction: "#1f3b63"
+    readonly property color styleTextMuted: "#6b7280"
+    readonly property color styleTextDisabled: "#94a3b8"
+    readonly property color styleChevron: "#64748b"
+    readonly property int styleControlRadius: 7
+    readonly property int styleMenuItemRadius: 5
+    readonly property int styleMenuPadding: 4
+    readonly property int styleMenuItemHeight: 32
     readonly property int pathTableColumnSpacing: 10
     readonly property int pathItemColumnWidth: 225
     readonly property int pathSourceColumnWidth: 78
@@ -20,6 +37,7 @@ ApplicationWindow {
     readonly property int pathToleranceColumnWidth: 82
     readonly property int pathUseColumnWidth: 50
     readonly property int pathActionColumnWidth: 34
+    color: stylePageBackground
 
     function safeIndex(items, value) {
         if (!items || value === undefined)
@@ -52,9 +70,9 @@ ApplicationWindow {
     }
 
     component Card: Rectangle {
-        color: "#ffffff"
+        color: root.styleSurface
         radius: 8
-        border.color: "#d8dee9"
+        border.color: root.styleBorderSubtle
         border.width: 1
     }
 
@@ -67,7 +85,7 @@ ApplicationWindow {
     }
 
     component MutedText: Label {
-        color: "#6b7280"
+        color: root.styleTextMuted
         font.pixelSize: 12
         font.family: root.font.family
         wrapMode: Text.WordWrap
@@ -83,16 +101,45 @@ ApplicationWindow {
         bottomPadding: 6
         contentItem: Text {
             text: parent.text
-            color: parent.enabled ? "#1f3b63" : "#94a3b8"
+            color: parent.enabled ? root.styleTextAction : root.styleTextDisabled
             font: parent.font
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
         }
         background: Rectangle {
-            radius: 7
-            color: parent.down ? "#d7e7ff" : parent.hovered ? "#edf5ff" : "#ffffff"
-            border.color: parent.activeFocus ? "#3b82f6" : "#cbd5e1"
+            radius: root.styleControlRadius
+            color: parent.down ? root.styleControlPressed : parent.hovered ? root.styleControlHover : root.styleSurface
+            border.color: parent.activeFocus ? root.styleFocus : root.styleBorder
+        }
+    }
+
+    component ExportMenuRow: Rectangle {
+        id: exportMenuRow
+        property string label: ""
+        signal triggered()
+        implicitWidth: 128
+        implicitHeight: root.styleMenuItemHeight
+        radius: root.styleMenuItemRadius
+        color: exportMenuMouse.containsMouse ? root.styleControlHover : root.styleSurface
+
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            text: exportMenuRow.label
+            color: root.styleText
+            font.pixelSize: 12
+            font.family: root.font.family
+            elide: Text.ElideRight
+        }
+
+        MouseArea {
+            id: exportMenuMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: exportMenuRow.triggered()
         }
     }
 
@@ -283,7 +330,7 @@ ApplicationWindow {
                     rightPadding: 10
                     topPadding: 6
                     bottomPadding: 6
-                    onClicked: exportMenu.open()
+                    onClicked: exportPopup.opened ? exportPopup.close() : exportPopup.open()
 
                     contentItem: RowLayout {
                         spacing: 6
@@ -295,60 +342,69 @@ ApplicationWindow {
                         }
                         Text {
                             text: exportButton.text
-                            color: exportButton.enabled ? "#1f3b63" : "#94a3b8"
+                            color: exportButton.enabled ? root.styleTextAction : root.styleTextDisabled
                             font: exportButton.font
                             verticalAlignment: Text.AlignVCenter
                         }
                         Text {
                             text: "v"
-                            color: "#64748b"
+                            color: root.styleChevron
                             font.pixelSize: 11
                             verticalAlignment: Text.AlignVCenter
                         }
                     }
                     background: Rectangle {
-                        radius: 7
-                        color: exportButton.down ? "#d7e7ff" : exportButton.hovered ? "#edf5ff" : "#ffffff"
-                        border.color: exportButton.activeFocus ? "#3b82f6" : "#cbd5e1"
+                        radius: root.styleControlRadius
+                        color: exportButton.down || exportPopup.opened ? root.styleControlPressed : exportButton.hovered ? root.styleControlHover : root.styleSurface
+                        border.color: exportButton.activeFocus ? root.styleFocus : root.styleBorder
                     }
 
-                    Menu {
-                        id: exportMenu
+                    Popup {
+                        id: exportPopup
                         y: exportButton.height + 4
-                        width: exportButton.width + 22
-                        padding: 4
-
-                        delegate: MenuItem {
-                            id: exportMenuItem
-                            implicitWidth: 138
-                            implicitHeight: 34
-                            leftPadding: 12
-                            rightPadding: 12
-
-                            contentItem: Text {
-                                text: exportMenuItem.text
-                                color: exportMenuItem.enabled ? "#1f2937" : "#94a3b8"
-                                font.pixelSize: 12
-                                font.family: root.font.family
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-                            background: Rectangle {
-                                radius: 5
-                                color: exportMenuItem.highlighted ? "#edf5ff" : "#ffffff"
-                            }
-                        }
+                        width: exportButton.width
+                        padding: root.styleMenuPadding
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
                         background: Rectangle {
-                            radius: 7
-                            color: "#ffffff"
-                            border.color: "#cbd5e1"
+                            radius: root.styleControlRadius
+                            color: root.styleSurface
+                            border.color: root.styleBorder
                             border.width: 1
                         }
 
-                        MenuItem { text: "Export CSV"; onTriggered: backend.exportCsv() }
-                        MenuItem { text: "Export PNG"; onTriggered: backend.exportPng() }
-                        MenuItem { text: "Export PDF"; onTriggered: backend.exportPdf() }
+                        contentItem: Column {
+                            id: exportMenuColumn
+                            width: exportPopup.availableWidth
+                            spacing: 2
+
+                            ExportMenuRow {
+                                width: exportMenuColumn.width
+                                label: "Export CSV"
+                                onTriggered: {
+                                    exportPopup.close()
+                                    backend.exportCsv()
+                                }
+                            }
+
+                            ExportMenuRow {
+                                width: exportMenuColumn.width
+                                label: "Export PNG"
+                                onTriggered: {
+                                    exportPopup.close()
+                                    backend.exportPng()
+                                }
+                            }
+
+                            ExportMenuRow {
+                                width: exportMenuColumn.width
+                                label: "Export PDF"
+                                onTriggered: {
+                                    exportPopup.close()
+                                    backend.exportPdf()
+                                }
+                            }
+                        }
                     }
                 }
             }
