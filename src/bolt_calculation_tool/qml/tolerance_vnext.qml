@@ -315,6 +315,37 @@ ApplicationWindow {
                     Menu {
                         id: exportMenu
                         y: exportButton.height + 4
+                        width: exportButton.width + 22
+                        padding: 4
+
+                        delegate: MenuItem {
+                            id: exportMenuItem
+                            implicitWidth: 138
+                            implicitHeight: 34
+                            leftPadding: 12
+                            rightPadding: 12
+
+                            contentItem: Text {
+                                text: exportMenuItem.text
+                                color: exportMenuItem.enabled ? "#1f2937" : "#94a3b8"
+                                font.pixelSize: 12
+                                font.family: root.font.family
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                            background: Rectangle {
+                                radius: 5
+                                color: exportMenuItem.highlighted ? "#edf5ff" : "#ffffff"
+                            }
+                        }
+
+                        background: Rectangle {
+                            radius: 7
+                            color: "#ffffff"
+                            border.color: "#cbd5e1"
+                            border.width: 1
+                        }
+
                         MenuItem { text: "Export CSV"; onTriggered: backend.exportCsv() }
                         MenuItem { text: "Export PNG"; onTriggered: backend.exportPng() }
                         MenuItem { text: "Export PDF"; onTriggered: backend.exportPdf() }
