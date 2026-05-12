@@ -182,12 +182,13 @@ class ToleranceVNextBackend(QObject):
         _, sub_joint = selected
         return self._sub_joint_to_ui(sub_joint)
 
-    @pyqtProperty("QVariant", notify=projectChanged)
+    @pyqtProperty("QVariant", notify=selectedChanged)
     def flanges(self) -> list[dict[str, Any]]:
         joint = self._selected_joint()
         if joint is None:
             return []
-        return [self._flange_to_ui(flange) for flange in joint.flanges]
+        can_delete = len(joint.flanges) > 1
+        return [self._flange_to_ui(flange, can_delete) for flange in joint.flanges]
 
     @pyqtProperty("QVariant", notify=projectChanged)
     def pathItems(self) -> list[dict[str, Any]]:
@@ -457,6 +458,22 @@ class ToleranceVNextBackend(QObject):
         for sub_joint in joint.sub_joints:
             sync_path_with_flanges(joint, sub_joint)
         self._mark_dirty(f"Added {flange.name}.")
+
+    @pyqtSlot(str)
+    def deleteFlange(self, flange_id: str) -> None:
+        joint = self._selected_joint()
+        if joint is None:
+            return
+        if len(joint.flanges) <= 1:
+            self._set_status("At least one flange is required.")
+            return
+        flange = next((item for item in joint.flanges if item.id == flange_id), None)
+        if flange is None:
+            return
+        joint.flanges = [item for item in joint.flanges if item.id != flange_id]
+        for sub_joint in joint.sub_joints:
+            sync_path_with_flanges(joint, sub_joint)
+        self._mark_dirty(f"Removed {flange.name}.")
 
     @pyqtSlot()
     def addSubJoint(self) -> None:
@@ -1039,7 +1056,7 @@ class ToleranceVNextBackend(QObject):
             "selected": sub_joint.id == self.selected_sub_joint_id,
         }
 
-    def _flange_to_ui(self, flange: Flange) -> dict[str, Any]:
+    def _flange_to_ui(self, flange: Flange, can_delete: bool) -> dict[str, Any]:
         return {
             "id": flange.id,
             "name": flange.name,
@@ -1047,6 +1064,7 @@ class ToleranceVNextBackend(QObject):
             "tolerance": _format_number(flange.tolerance),
             "tolerance_minus": _format_number(float(flange.tolerance_minus or 0.0)),
             "tolerance_plus": _format_number(float(flange.tolerance_plus or 0.0)),
+            "can_delete": can_delete,
         }
 
     def _path_item_to_ui(self, item: PathItem) -> dict[str, Any]:

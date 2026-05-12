@@ -39,7 +39,7 @@ inline validation, and same-page bolt length decisions.
 - Expose the app style choice in the vNext workspace header as an application
   preference. Because Qt Quick Controls styles are selected at startup, changes
   are saved for the next launch rather than stored in `.tolproj` project data.
-- Default state shall include `JOINT A`, `JOINT A.1`, three flanges, a linked
+- Default state shall include `JOINT A`, `JOINT A.1`, two flanges, a linked
   stackup path, sample bolt data, and visible live results.
 
 ## Calculation And Data Plan

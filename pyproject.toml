@@ -23,4 +23,9 @@ tolerance-analysis-vnext-gui = "bolt_calculation_tool.tolerance_vnext_gui:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-bolt_calculation_tool = ["data/*.json", "qml/*.qml"]
+bolt_calculation_tool = [
+    "data/*.json",
+    "qml/*.qml",
+    "qml/assets/*.md",
+    "qml/assets/icons/*.svg",
+]

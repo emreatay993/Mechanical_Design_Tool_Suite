@@ -18,6 +18,7 @@ from bolt_calculation_tool.tolerance_vnext_gui import (
     _resolve_style_args,
     _save_theme_preferences,
 )
+from bolt_calculation_tool.tolerance_models import PathItem
 
 
 class ToleranceVNextBackendTest(unittest.TestCase):
@@ -39,7 +40,7 @@ class ToleranceVNextBackendTest(unittest.TestCase):
         flange = self.backend.flanges[0]
         self.backend.updateFlange(flange["id"], "6", "0.15")
 
-        self.assertEqual(self.backend.metrics["nominal"], "13")
+        self.assertEqual(self.backend.metrics["nominal"], "10")
         self.assertTrue(self.backend.dirty)
 
     def test_editing_flange_accepts_asymmetric_tolerances(self) -> None:
@@ -48,8 +49,32 @@ class ToleranceVNextBackendTest(unittest.TestCase):
 
         self.assertEqual(self.backend.flanges[0]["tolerance_minus"], "0.1")
         self.assertEqual(self.backend.flanges[0]["tolerance_plus"], "0.3")
-        self.assertEqual(self.backend.metrics["worst_case_minus"], "0.55")
-        self.assertEqual(self.backend.metrics["worst_case_plus"], "0.75")
+        self.assertEqual(self.backend.metrics["worst_case_minus"], "0.35")
+        self.assertEqual(self.backend.metrics["worst_case_plus"], "0.55")
+
+    def test_delete_flange_syncs_path_items_and_preserves_custom_items(self) -> None:
+        joint = self.backend.project.joints[0]
+        sub_joint = joint.sub_joints[0]
+        removed_id = joint.flanges[0].id
+        sub_joint.stackup_path.items.append(
+            PathItem("Shim", nominal_thickness=1.0, tolerance=0.05)
+        )
+
+        self.backend.deleteFlange(removed_id)
+
+        self.assertEqual(len(self.backend.flanges), 1)
+        self.assertFalse(
+            any(item.source_id == removed_id for item in sub_joint.stackup_path.items)
+        )
+        self.assertEqual(sub_joint.stackup_path.items[-1].name, "Shim")
+        self.assertTrue(self.backend.dirty)
+
+    def test_delete_last_flange_is_rejected(self) -> None:
+        self.backend.deleteFlange(self.backend.flanges[0]["id"])
+        self.backend.deleteFlange(self.backend.flanges[0]["id"])
+
+        self.assertEqual(len(self.backend.flanges), 1)
+        self.assertIn("At least one flange is required.", self.backend.statusText)
 
     def test_save_load_and_csv_export_helpers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

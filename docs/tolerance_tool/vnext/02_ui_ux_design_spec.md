@@ -14,7 +14,7 @@ Primary UX goals:
 
 | Goal | Design implication |
 | --- | --- |
-| Fast setup | Default `JOINT A`, `JOINT A.1`, and three flanges are created automatically. |
+| Fast setup | Default `JOINT A`, `JOINT A.1`, and two flanges are created automatically. |
 | Clear hierarchy | Joints, sub-joints, and stackup paths are visually nested. |
 | Low manual entry | Standard nuts, inserts, bolts, washers, and brackets come from catalogs. |
 | Decision visibility | Bolt length candidates, stackup results, thread protrusion, and warnings are visible on the same page. |
@@ -52,7 +52,7 @@ The main workspace should use a dense but readable engineering layout:
 | Joint setup                            | Guidance and validation          |
 | - JOINT A                              | - Missing fields                 |
 | - Add joint                            | - Catalog status                 |
-| - Flange 1/2/3 + Add flange            | - Project-level warnings         |
+| - Flange 1/2 + Add/delete flange       | - Project-level warnings         |
 +----------------------------------------+---------------------------------+
 | Joint bolt detail                      | Thread protrusion summary         |
 | - JOINT A                              | - 1.5P / 2P / 2P+Chamfer          |
@@ -72,6 +72,7 @@ The main workspace should use a dense but readable engineering layout:
 | Joint setup table | Allows editing joint names and flange thickness/tolerance values. |
 | Add joint | Adds the next joint name by sequence, for example `JOINT B`. |
 | Add flange | Adds a new flange column with thickness and tolerance fields. |
+| Delete flange | Removes an unused flange and its linked stackup path item; at least one flange remains. |
 | Joint bolt detail | Shows each joint with generated sub-joints and bolt fields. |
 | Open path action | Opens the stackup path builder for the selected sub-joint. |
 | Calculation summary | Shows numeric results pulled from each saved or applied path. |
@@ -79,7 +80,7 @@ The main workspace should use a dense but readable engineering layout:
 | Validation area | Aggregates project-level issues and links users to the source field. |
 
 The default state should not be blank. It should show `JOINT A`, `JOINT A.1`,
-three flange columns, and a clear prompt to open the first stackup path.
+two flange contributors, and a clear prompt to open the first stackup path.
 
 ## Stackup Path Builder Layout
 
@@ -93,9 +94,9 @@ must behave as one focused workspace for the selected sub-joint.
 | Ordered stackup path     | Selected item properties | Live results         |
 | - Flange 1 ref           | - Source: flange/catalog | Worst case           |
 | - Flange 2 ref           | - Nominal thickness      | RSS                  |
-| - Flange 3 ref           | - Tolerance              | 1.5RSS               |
-| - Add bracket            | - Include in stack       | Top contributors     |
-| - Nut/Insert selection   |                          | Thread protrusion    |
+| - Add bracket            | - Tolerance              | 1.5RSS               |
+| - Nut/Insert selection   | - Include in stack       | Top contributors     |
+|                          |                          | Thread protrusion    |
 +--------------------------+--------------------------+----------------------+
 | Standard part picker     | Bolt size/type/length candidates + Optimize      |
 +----------------------------------------------------------------------------+

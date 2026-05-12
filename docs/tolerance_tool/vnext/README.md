@@ -27,7 +27,7 @@ thread protrusion checks, and live optimization results.
 The spreadsheet mockup describes:
 
 - A top-level `JOINT` table with default `JOINT A`, editable joint names, add
-  joint behavior, default three flange columns, and add flange behavior.
+  joint behavior, default two flange contributors, and add/delete flange behavior.
 - A `JOINT BOLT DETAIL` table where each joint gets default sub-joints such as
   `JOINT A.1`, with bolt size, bolt type, and bolt length fields.
 - A calculation summary table with worst-case deviation, RSS, 1.5RSS, and top

@@ -40,7 +40,8 @@ Required unit tests:
 
 | Area | Required checks |
 | --- | --- |
-| Joint model | Default project creates `JOINT A`, three flanges, and `JOINT A.1`. |
+| Joint model | Default project creates `JOINT A`, two flanges, and `JOINT A.1`. |
+| Flange deletion | Removing a flange updates linked path items while preserving at least one flange. |
 | Naming | Added joints and sub-joints receive predictable names and can be renamed. |
 | Flange linking | Updating a joint flange updates linked default path items. |
 | Path stackup | Path items produce nominal, worst-case, RSS, and 1.5RSS values. |
@@ -69,9 +70,10 @@ Required GUI workflow tests:
 
 | Workflow | Expected result |
 | --- | --- |
-| Start new project | `JOINT A`, `JOINT A.1`, and three flanges are visible. |
+| Start new project | `JOINT A`, `JOINT A.1`, and two flanges are visible. |
 | Add joint | `JOINT B` appears and receives a default sub-joint. |
 | Add flange | A new flange thickness/tolerance column appears and can feed paths. |
+| Delete flange | A removable flange disappears from the joint setup and stackup path; deleting the last flange is blocked. |
 | Open sub-joint path | Stackup path builder opens and contains linked default flange items. |
 | Add bracket | Bracket appears in the path and affects results when included. |
 | Select nut or insert | Standard catalog data is pulled into the path. |

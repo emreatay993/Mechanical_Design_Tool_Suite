@@ -299,13 +299,11 @@ def create_default_joint(name: str = "JOINT A", sample_values: bool = False) -> 
         flange_specs = [
             ("Flange 1", 5.0, 0.15),
             ("Flange 2", 4.0, 0.25),
-            ("Flange 3", 3.0, 0.20),
         ]
     else:
         flange_specs = [
             ("Flange 1", 0.0, 0.0),
             ("Flange 2", 0.0, 0.0),
-            ("Flange 3", 0.0, 0.0),
         ]
     joint = Joint(
         name=name,

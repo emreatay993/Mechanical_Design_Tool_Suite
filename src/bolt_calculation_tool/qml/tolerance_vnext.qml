@@ -274,9 +274,52 @@ ApplicationWindow {
                 ActionButton { text: "Import"; onClicked: backend.importSpreadsheet() }
                 ActionButton { text: "Save"; onClicked: backend.saveProject() }
                 ActionButton { text: "Save As"; onClicked: backend.saveProjectAs() }
-                ActionButton { text: "CSV"; onClicked: backend.exportCsv() }
-                ActionButton { text: "PNG"; onClicked: backend.exportPng() }
-                ActionButton { text: "PDF"; onClicked: backend.exportPdf() }
+                Button {
+                    id: exportButton
+                    text: "Export"
+                    font.pixelSize: 12
+                    font.family: root.font.family
+                    leftPadding: 12
+                    rightPadding: 10
+                    topPadding: 6
+                    bottomPadding: 6
+                    onClicked: exportMenu.open()
+
+                    contentItem: RowLayout {
+                        spacing: 6
+                        Image {
+                            Layout.preferredWidth: 15
+                            Layout.preferredHeight: 15
+                            source: "assets/icons/download.svg"
+                            fillMode: Image.PreserveAspectFit
+                        }
+                        Text {
+                            text: exportButton.text
+                            color: exportButton.enabled ? "#1f3b63" : "#94a3b8"
+                            font: exportButton.font
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        Text {
+                            text: "v"
+                            color: "#64748b"
+                            font.pixelSize: 11
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                    background: Rectangle {
+                        radius: 7
+                        color: exportButton.down ? "#d7e7ff" : exportButton.hovered ? "#edf5ff" : "#ffffff"
+                        border.color: exportButton.activeFocus ? "#3b82f6" : "#cbd5e1"
+                    }
+
+                    Menu {
+                        id: exportMenu
+                        y: exportButton.height + 4
+                        MenuItem { text: "Export CSV"; onTriggered: backend.exportCsv() }
+                        MenuItem { text: "Export PNG"; onTriggered: backend.exportPng() }
+                        MenuItem { text: "Export PDF"; onTriggered: backend.exportPdf() }
+                    }
+                }
             }
         }
 
@@ -453,7 +496,7 @@ ApplicationWindow {
 
                 Card {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 178
+                    Layout.preferredHeight: 188
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -488,7 +531,7 @@ ApplicationWindow {
                             }
                             MutedText {
                                 Layout.fillWidth: true
-                                text: "Linked flange values automatically feed the selected stackup path."
+                                text: "These thickness contributors are included in " + (backend.selectedSubJoint.name || "the selected sub-joint") + " stackup."
                             }
                         }
 
@@ -503,7 +546,7 @@ ApplicationWindow {
                                     model: backend.flanges
                                     delegate: Rectangle {
                                         width: 246
-                                        height: 76
+                                        height: 86
                                         radius: 8
                                         color: "#f8fafc"
                                         border.color: "#d8dee9"
@@ -512,11 +555,53 @@ ApplicationWindow {
                                             anchors.fill: parent
                                             anchors.margins: 8
                                             spacing: 4
-                                            Label {
-                                                text: modelData.name
-                                                color: "#111827"
-                                                font.bold: true
-                                                font.pixelSize: 12
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Label {
+                                                    text: modelData.name
+                                                    color: "#111827"
+                                                    font.bold: true
+                                                    font.pixelSize: 12
+                                                    Layout.fillWidth: true
+                                                    elide: Text.ElideRight
+                                                }
+                                                Item {
+                                                    Layout.preferredWidth: 26
+                                                    Layout.preferredHeight: 24
+                                                    ToolTip.text: "At least one flange is required."
+                                                    ToolTip.visible: deleteFlangeHover.containsMouse && !modelData.can_delete
+
+                                                    Button {
+                                                        id: deleteFlangeButton
+                                                        anchors.fill: parent
+                                                        enabled: modelData.can_delete
+                                                        onClicked: backend.deleteFlange(modelData.id)
+                                                        contentItem: Item {
+                                                            implicitWidth: 16
+                                                            implicitHeight: 16
+                                                            Image {
+                                                                anchors.centerIn: parent
+                                                                width: 15
+                                                                height: 15
+                                                                source: "assets/icons/trash-2.svg"
+                                                                fillMode: Image.PreserveAspectFit
+                                                                opacity: deleteFlangeButton.enabled ? 1.0 : 0.35
+                                                            }
+                                                        }
+                                                        background: Rectangle {
+                                                            radius: 6
+                                                            color: parent.down ? "#fee2e2" : parent.hovered ? "#fff1f2" : "#f8fafc"
+                                                            border.color: parent.enabled ? "#cbd5e1" : "#e2e8f0"
+                                                        }
+                                                    }
+                                                    MouseArea {
+                                                        id: deleteFlangeHover
+                                                        anchors.fill: parent
+                                                        acceptedButtons: Qt.NoButton
+                                                        enabled: !modelData.can_delete
+                                                        hoverEnabled: true
+                                                    }
+                                                }
                                             }
                                             RowLayout {
                                                 FieldBox {

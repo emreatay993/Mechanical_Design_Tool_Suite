@@ -39,11 +39,11 @@ Priority values:
 | TOL-NV-JOINT-003 | P0 | Proposed | The user shall be able to add additional joints such as `JOINT B` and `JOINT C`. |
 | TOL-NV-JOINT-004 | P0 | Proposed | A joint shall represent a main assembly connection location where the part interfaces with other parts. |
 | TOL-NV-JOINT-005 | P0 | Proposed | Each joint shall include a flange definition table. |
-| TOL-NV-JOINT-006 | P0 | Proposed | A new project shall start with three default flange columns: `Flange 1`, `Flange 2`, and `Flange 3`. |
+| TOL-NV-JOINT-006 | P0 | Proposed | A new project shall start with two default flange contributors: `Flange 1` and `Flange 2`. |
 | TOL-NV-JOINT-007 | P0 | Proposed | Each flange shall have a nominal thickness and a plus/minus tolerance. |
-| TOL-NV-JOINT-008 | P0 | Proposed | The user shall be able to add more flanges when an assembly has more than three flange contributors. |
+| TOL-NV-JOINT-008 | P0 | Proposed | The user shall be able to add more flanges when an assembly has more than two flange contributors. |
 | TOL-NV-JOINT-009 | P0 | Proposed | Flange values entered in the joint table shall feed the stackup paths for that joint. |
-| TOL-NV-JOINT-010 | P1 | Proposed | The UI shall let the user hide unused flange columns without deleting the underlying data. |
+| TOL-NV-JOINT-010 | P1 | Proposed | The UI shall let the user delete unused flanges while keeping at least one flange contributor. |
 
 ## Sub-Joint And Bolt Detail Setup
 
