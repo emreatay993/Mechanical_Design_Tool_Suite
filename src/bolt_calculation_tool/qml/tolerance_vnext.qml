@@ -185,6 +185,16 @@ ApplicationWindow {
         }
     }
 
+    component PathHeaderCell: Label {
+        property int columnWidth: 80
+        Layout.minimumWidth: columnWidth
+        Layout.preferredWidth: columnWidth
+        Layout.maximumWidth: columnWidth
+        color: "#334155"
+        font.bold: true
+        elide: Text.ElideRight
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -590,13 +600,17 @@ ApplicationWindow {
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 10
                                 spacing: root.pathTableColumnSpacing
-                                Label { text: "Path item"; Layout.preferredWidth: root.pathItemColumnWidth; font.bold: true; color: "#334155" }
-                                Label { text: "Source"; Layout.preferredWidth: root.pathSourceColumnWidth; font.bold: true; color: "#334155" }
-                                Label { text: "Thickness"; Layout.preferredWidth: root.pathThicknessColumnWidth; font.bold: true; color: "#334155" }
-                                Label { text: "-Tol"; Layout.preferredWidth: root.pathToleranceColumnWidth; font.bold: true; color: "#334155" }
-                                Label { text: "+Tol"; Layout.preferredWidth: root.pathToleranceColumnWidth; font.bold: true; color: "#334155" }
-                                Label { text: "Use"; Layout.preferredWidth: root.pathUseColumnWidth; font.bold: true; color: "#334155" }
-                                Item { Layout.preferredWidth: root.pathActionColumnWidth }
+                                PathHeaderCell { text: "Path item"; columnWidth: root.pathItemColumnWidth }
+                                PathHeaderCell { text: "Source"; columnWidth: root.pathSourceColumnWidth }
+                                PathHeaderCell { text: "Thickness"; columnWidth: root.pathThicknessColumnWidth }
+                                PathHeaderCell { text: "-Tol"; columnWidth: root.pathToleranceColumnWidth }
+                                PathHeaderCell { text: "+Tol"; columnWidth: root.pathToleranceColumnWidth }
+                                PathHeaderCell { text: "Use"; columnWidth: root.pathUseColumnWidth }
+                                Item {
+                                    Layout.minimumWidth: root.pathActionColumnWidth
+                                    Layout.preferredWidth: root.pathActionColumnWidth
+                                    Layout.maximumWidth: root.pathActionColumnWidth
+                                }
                                 Item { Layout.fillWidth: true }
                             }
                         }
@@ -626,7 +640,9 @@ ApplicationWindow {
                                             spacing: root.pathTableColumnSpacing
 
                                             ColumnLayout {
+                                                Layout.minimumWidth: root.pathItemColumnWidth
                                                 Layout.preferredWidth: root.pathItemColumnWidth
+                                                Layout.maximumWidth: root.pathItemColumnWidth
                                                 spacing: 1
                                                 Label {
                                                     text: modelData.name
@@ -638,40 +654,52 @@ ApplicationWindow {
                                                 MutedText { text: modelData.role }
                                             }
                                             Label {
+                                                Layout.minimumWidth: root.pathSourceColumnWidth
                                                 Layout.preferredWidth: root.pathSourceColumnWidth
+                                                Layout.maximumWidth: root.pathSourceColumnWidth
                                                 text: modelData.source_label
                                                 color: "#64748b"
                                                 font.pixelSize: 12
                                             }
                                             FieldBox {
                                                 id: itemNominal
+                                                Layout.minimumWidth: root.pathThicknessColumnWidth
                                                 Layout.preferredWidth: root.pathThicknessColumnWidth
+                                                Layout.maximumWidth: root.pathThicknessColumnWidth
                                                 enabled: !modelData.locked
                                                 text: modelData.nominal
                                                 onEditingFinished: backend.updatePathItem(modelData.id, text, itemTolMinus.text, itemTolPlus.text, includeBox.checked)
                                             }
                                             FieldBox {
                                                 id: itemTolMinus
+                                                Layout.minimumWidth: root.pathToleranceColumnWidth
                                                 Layout.preferredWidth: root.pathToleranceColumnWidth
+                                                Layout.maximumWidth: root.pathToleranceColumnWidth
                                                 enabled: !modelData.locked
                                                 text: modelData.tolerance_minus
                                                 onEditingFinished: backend.updatePathItem(modelData.id, itemNominal.text, text, itemTolPlus.text, includeBox.checked)
                                             }
                                             FieldBox {
                                                 id: itemTolPlus
+                                                Layout.minimumWidth: root.pathToleranceColumnWidth
                                                 Layout.preferredWidth: root.pathToleranceColumnWidth
+                                                Layout.maximumWidth: root.pathToleranceColumnWidth
                                                 enabled: !modelData.locked
                                                 text: modelData.tolerance_plus
                                                 onEditingFinished: backend.updatePathItem(modelData.id, itemNominal.text, itemTolMinus.text, text, includeBox.checked)
                                             }
                                             CheckBox {
                                                 id: includeBox
+                                                Layout.minimumWidth: root.pathUseColumnWidth
                                                 Layout.preferredWidth: root.pathUseColumnWidth
+                                                Layout.maximumWidth: root.pathUseColumnWidth
                                                 checked: modelData.include
                                                 onToggled: backend.updatePathItem(modelData.id, itemNominal.text, itemTolMinus.text, itemTolPlus.text, checked)
                                             }
                                             Button {
+                                                Layout.minimumWidth: root.pathActionColumnWidth
                                                 Layout.preferredWidth: root.pathActionColumnWidth
+                                                Layout.maximumWidth: root.pathActionColumnWidth
                                                 enabled: !modelData.locked
                                                 text: "x"
                                                 onClicked: backend.removePathItem(modelData.id)
