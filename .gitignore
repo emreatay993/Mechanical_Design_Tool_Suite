@@ -6,3 +6,9 @@ docs/assets/gui_mockups/
 build/
 dist/
 *.egg-info/
+
+# Standalone CAD 1D tolerance tool: keep raw third-party/demo source media local-only.
+docs/cad_1d_tolerance_tool/source_artifacts/demos/*
+!docs/cad_1d_tolerance_tool/source_artifacts/demos/README.md
+docs/cad_1d_tolerance_tool/source_artifacts/screenshots/*
+!docs/cad_1d_tolerance_tool/source_artifacts/screenshots/README.md
