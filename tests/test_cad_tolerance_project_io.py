@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 
 from mechanical_design_tool_suite.cad_tolerance_models import (
     AnalysisMode,
@@ -35,9 +36,15 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
 )
 from mechanical_design_tool_suite.cad_tolerance_project_io import (
     CURRENT_SCHEMA_VERSION,
+    PACKAGE_MANIFEST_NAME,
+    PACKAGE_SUFFIX,
     PROJECT_SUFFIX,
+    export_project_package,
+    import_project_package,
     load_project,
     migrate_project_data,
+    project_asset_dir,
+    resolve_project_asset_path,
     save_project,
 )
 
@@ -277,6 +284,114 @@ class CadToleranceProjectIoTest(unittest.TestCase):
         self.assertEqual(loaded.title, project.title)
         self.assertEqual(loaded.cad_documents[0].display_name, "neutral_step_two_part_loop.step")
         self.assertEqual(loaded.stackups[0].contributors[1].name, "Manual runout to datum A")
+
+    def test_project_asset_resolver_supports_project_local_and_fixture_roots(self) -> None:
+        fixture_source = resolve_project_asset_path(
+            "fixtures/cad_1d_tolerance/neutral_step_two_part_loop.step",
+            FIXTURE_PATH,
+        )
+        self.assertEqual(
+            fixture_source,
+            (FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").resolve(),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            project_path = Path(directory) / "caster_study.tolproj"
+            cad_asset = project_asset_dir(project_path) / "cad" / "caster.step"
+            cad_asset.parent.mkdir(parents=True)
+            cad_asset.write_text("ISO-10303-21; ENDSEC; END-ISO-10303-21;", encoding="utf-8")
+
+            self.assertEqual(
+                resolve_project_asset_path("cad/caster.step", project_path),
+                cad_asset.resolve(),
+            )
+            self.assertEqual(
+                resolve_project_asset_path(
+                    "caster_study_assets/cad/caster.step",
+                    project_path,
+                ),
+                cad_asset.resolve(),
+            )
+
+    def test_tolpack_export_import_is_deterministic_and_portable(self) -> None:
+        project = load_project(FIXTURE_PATH)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = root / "caster_study.tolproj"
+            assets_dir = project_asset_dir(project_path)
+            cad_asset = assets_dir / "cad" / "neutral_step_two_part_loop.step"
+            snapshot_asset = assets_dir / "snapshots" / "bushing_alignment.png"
+            cad_asset.parent.mkdir(parents=True)
+            snapshot_asset.parent.mkdir(parents=True)
+            cad_asset.write_bytes((FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").read_bytes())
+            snapshot_asset.write_bytes(b"fake-png")
+            project.cad_documents[0].source_path = (
+                "caster_study_assets/cad/neutral_step_two_part_loop.step"
+            )
+            project.snapshots[0].image_path = (
+                "caster_study_assets/snapshots/bushing_alignment.png"
+            )
+            save_project(project, project_path)
+
+            first_package = export_project_package(project_path, root / "caster_study")
+            second_package = export_project_package(project_path, root / "caster_study_again")
+
+            self.assertEqual(first_package.suffix, PACKAGE_SUFFIX)
+            self.assertEqual(first_package.read_bytes(), second_package.read_bytes())
+
+            with zipfile.ZipFile(first_package, "r") as archive:
+                names = archive.namelist()
+                self.assertEqual(
+                    names,
+                    [
+                        "manifest.json",
+                        "project.tolproj",
+                        "assets/cad/neutral_step_two_part_loop.step",
+                        "assets/snapshots/bushing_alignment.png",
+                    ],
+                )
+                manifest = json.loads(archive.read(PACKAGE_MANIFEST_NAME))
+                packaged_data = json.loads(archive.read("project.tolproj"))
+
+            self.assertEqual(manifest["project_file"], "project.tolproj")
+            self.assertEqual(
+                [asset["path"] for asset in manifest["assets"]],
+                [
+                    "assets/cad/neutral_step_two_part_loop.step",
+                    "assets/snapshots/bushing_alignment.png",
+                ],
+            )
+            self.assertEqual(
+                packaged_data["cad_documents"][0]["source_path"],
+                "assets/cad/neutral_step_two_part_loop.step",
+            )
+            self.assertEqual(
+                packaged_data["snapshots"][0]["image_path"],
+                "assets/snapshots/bushing_alignment.png",
+            )
+            self.assertNotIn(str(root), json.dumps(manifest))
+            self.assertNotIn(str(root), json.dumps(packaged_data))
+
+            unpacked_project = import_project_package(first_package, root / "unpacked")
+            unpacked = load_project(unpacked_project)
+
+            self.assertEqual(
+                unpacked.cad_documents[0].source_path,
+                "assets/cad/neutral_step_two_part_loop.step",
+            )
+            self.assertTrue(
+                resolve_project_asset_path(
+                    unpacked.cad_documents[0].source_path,
+                    unpacked_project,
+                ).is_file()
+            )
+            self.assertTrue(
+                resolve_project_asset_path(
+                    unpacked.snapshots[0].image_path,
+                    unpacked_project,
+                ).is_file()
+            )
 
     def test_missing_optional_fields_load_with_domain_defaults(self) -> None:
         data = {

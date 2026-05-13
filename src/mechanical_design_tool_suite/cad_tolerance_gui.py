@@ -46,10 +46,24 @@ except ImportError as exc:  # pragma: no cover - exercised only without GUI deps
         "environment or install PyQt6 before launching it."
     ) from exc
 
+from .cad_geometry_api import (
+    CadImportSettings,
+    UnsupportedCadFormatError,
+    is_supported_neutral_cad,
+)
 from .cad_geometry_occ import CadKernelUnavailable, OccCadGeometrySession
 from .cad_stackup_workflow import GuidedStackupWorkflowController, GuidedToolbarState
 from .cad_tolerance_models import CadDocument, CadToleranceProject, ShapeKind, Snapshot, StackupRequirement
-from .cad_tolerance_project_io import load_project
+from .cad_tolerance_project_io import (
+    PACKAGE_SUFFIX,
+    export_project_package,
+    import_project_package,
+    load_project,
+    project_asset_dir,
+    project_relative_path,
+    resolve_project_asset_path,
+    save_project,
+)
 from .cad_tolerance_report import ResultDisplayProjection, generate_html_report
 from .cad_tolerance_viewmodels import (
     DETAIL_COLUMNS,
@@ -74,6 +88,7 @@ NEUTRAL_CAD_FILTER = (
     "IGES files (*.iges *.igs)"
 )
 PROJECT_FILTER = "CAD tolerance projects (*.tolproj)"
+PACKAGE_FILTER = "CAD tolerance packages (*.tolpack)"
 
 
 class PlaceholderCadViewerWidget(QFrame):
@@ -485,6 +500,8 @@ class CadToleranceMainWindow(QMainWindow):
         self.viewer = viewer if viewer is not None else self._create_viewer()
         self.workspace = workspace or CadToleranceWorkspaceViewModel.demo()
         self.project = CadToleranceProject(title=self.workspace.project_title)
+        self.project_path: Path | None = None
+        self.cad_source_status_messages: list[str] = []
         self.workflow_controller: GuidedStackupWorkflowController | None = None
 
         self.summary_model = CadStackupSummaryTableModel(self.workspace.summary_rows)
@@ -521,6 +538,8 @@ class CadToleranceMainWindow(QMainWindow):
             title=document.display_name or document.source_path or "Imported CAD",
             cad_documents=[document],
         )
+        self.project_path = None
+        self.cad_source_status_messages = []
         self.workspace = CadToleranceWorkspaceViewModel.from_document(document)
         self.assembly_model.set_roots(self.workspace.assembly_roots)
         self.summary_model.set_rows(self.workspace.summary_rows)
@@ -532,15 +551,71 @@ class CadToleranceMainWindow(QMainWindow):
         self.statusBar().showMessage(f"Imported {document.display_name or Path(document.source_path).name}")
 
     def load_project_file(self, path: str | Path) -> None:
-        project = load_project(Path(path))
+        project_path = Path(path)
+        project = load_project(project_path)
         self.project = project
+        self.project_path = project_path
         self.workspace = CadToleranceWorkspaceViewModel.from_project(project)
         self.assembly_model.set_roots(self.workspace.assembly_roots)
         self.summary_model.set_rows(self.workspace.summary_rows)
         self._set_detail_stackup(self.workspace.selected_stackup_id)
         self._refresh_dashboard()
         self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
-        self.statusBar().showMessage(f"Loaded {Path(path).name}")
+        self._rehydrate_project_cad_sources(project_path)
+        if self.cad_source_status_messages:
+            self.statusBar().showMessage("; ".join(self.cad_source_status_messages))
+        else:
+            self.statusBar().showMessage(f"Loaded {project_path.name}")
+
+    def _rehydrate_project_cad_sources(self, project_path: Path) -> None:
+        self.cad_source_status_messages = []
+        if not self.project.cad_documents:
+            return
+
+        displayed = False
+        for document in self.project.cad_documents:
+            source_path = document.source_path
+            source_name = Path(source_path).name if source_path else "CAD source"
+            if not source_path:
+                self.cad_source_status_messages.append("CAD source not recorded")
+                continue
+            resolved_path = resolve_project_asset_path(source_path, project_path)
+            if resolved_path is None:
+                self.cad_source_status_messages.append(
+                    f"CAD source not found: {source_name}"
+                )
+                continue
+            if not is_supported_neutral_cad(resolved_path):
+                self.cad_source_status_messages.append(
+                    f"Unsupported CAD source: {source_name}"
+                )
+                continue
+            try:
+                self.geometry_session.import_file(
+                    resolved_path,
+                    _cad_import_settings_from_document(document, self.project),
+                )
+                if hasattr(self.viewer, "display_document"):
+                    self.viewer.display_document(self.geometry_session)  # type: ignore[attr-defined]
+                displayed = True
+                self.cad_source_status_messages.append(
+                    f"Reloaded CAD source: {resolved_path.name}"
+                )
+            except UnsupportedCadFormatError:
+                self.cad_source_status_messages.append(
+                    f"Unsupported CAD source: {source_name}"
+                )
+            except FileNotFoundError:
+                self.cad_source_status_messages.append(
+                    f"CAD source not found: {source_name}"
+                )
+            except (CadKernelUnavailable, Exception) as exc:
+                self.cad_source_status_messages.append(
+                    f"CAD source unavailable: {source_name} ({exc})"
+                )
+
+        if not displayed and hasattr(self.viewer, "clear"):
+            self.viewer.clear()  # type: ignore[attr-defined]
 
     def _create_viewer(self) -> QWidget:
         try:
@@ -555,6 +630,8 @@ class CadToleranceMainWindow(QMainWindow):
         self.import_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ArrowDown), "Import", self)
         self.import_action.triggered.connect(self._open_dialog)
         self.export_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ArrowUp), "Export", self)
+        self.export_action.setToolTip("Package Project (.tolpack)")
+        self.export_action.triggered.connect(self._package_project)
         self.new_stackup_action = QAction("New Stackup", self)
         self.new_stackup_action.triggered.connect(self._start_new_stackup_workflow)
         self.add_feature_action = QAction("Add Feature", self)
@@ -823,11 +900,18 @@ class CadToleranceMainWindow(QMainWindow):
             self,
             "Open neutral CAD file or CAD tolerance project",
             "",
-            f"{PROJECT_FILTER};;{NEUTRAL_CAD_FILTER}",
+            f"{PROJECT_FILTER};;{PACKAGE_FILTER};;{NEUTRAL_CAD_FILTER}",
         )
         if not path:
             return
-        if selected_filter == PROJECT_FILTER or Path(path).suffix.lower() == ".tolproj":
+        suffix = Path(path).suffix.lower()
+        if selected_filter == PACKAGE_FILTER or suffix == PACKAGE_SUFFIX:
+            try:
+                self._open_package_file(path)
+            except Exception as exc:
+                QMessageBox.warning(self, "Project package import failed", str(exc))
+            return
+        if selected_filter == PROJECT_FILTER or suffix == ".tolproj":
             try:
                 self.load_project_file(path)
             except Exception as exc:
@@ -835,11 +919,55 @@ class CadToleranceMainWindow(QMainWindow):
             return
         self.open_cad_file(path)
 
+    def _open_package_file(self, path: str | Path) -> None:
+        package_path = Path(path)
+        output_dir = package_path.with_suffix("")
+        project_path = import_project_package(package_path, output_dir)
+        self.load_project_file(project_path)
+
+    def _package_project(self) -> None:
+        if self.project_path is None:
+            project_path, _selected_filter = QFileDialog.getSaveFileName(
+                self,
+                "Save CAD tolerance project",
+                "",
+                PROJECT_FILTER,
+            )
+            if not project_path:
+                return
+            self.project_path = save_project(self.project, project_path)
+        else:
+            save_project(self.project, self.project_path)
+
+        default_package = self.project_path.with_suffix(PACKAGE_SUFFIX)
+        path, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Package Project",
+            str(default_package),
+            PACKAGE_FILTER,
+        )
+        if not path:
+            return
+        try:
+            package_path = export_project_package(self.project_path, path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Project package export failed", str(exc))
+            self.statusBar().showMessage("Project package export failed")
+            return
+        self.statusBar().showMessage(f"Packaged project {package_path.name}")
+
     def _save_snapshot(self) -> None:
+        default_path = ""
+        if self.project_path is not None:
+            default_path = str(
+                project_asset_dir(self.project_path)
+                / "snapshots"
+                / "snapshot_summary_1.png"
+            )
         path, _selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save CAD viewer snapshot",
-            "",
+            default_path,
             "PNG image (*.png);;JPEG image (*.jpg *.jpeg)",
         )
         if not path:
@@ -874,16 +1002,26 @@ class CadToleranceMainWindow(QMainWindow):
             QMessageBox.warning(self, "Snapshot failed", str(exc))
             self.statusBar().showMessage("Snapshot failed")
             return
+        if self.project_path is not None and snapshot.image_path:
+            snapshot.image_path = project_relative_path(
+                snapshot.image_path,
+                self.project_path,
+            )
         self.project.snapshots.append(snapshot)
         if self.project.stackups:
             self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
         self.statusBar().showMessage(f"Saved snapshot {Path(snapshot.image_path).name}")
 
     def _generate_report(self) -> None:
+        default_path = ""
+        if self.project_path is not None:
+            default_path = str(
+                project_asset_dir(self.project_path) / "reports" / "report.html"
+            )
         path, _selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save Report",
-            "",
+            default_path,
             "HTML report (*.html);;All Files (*.*)",
         )
         if not path:
@@ -898,6 +1036,20 @@ class CadToleranceMainWindow(QMainWindow):
             self.statusBar().showMessage("Report generation failed")
             return
         self.statusBar().showMessage(f"Generated report {result.output_path.name}")
+
+
+def _cad_import_settings_from_document(
+    document: CadDocument,
+    project: CadToleranceProject,
+) -> CadImportSettings:
+    settings = dict(document.import_settings)
+    return CadImportSettings(
+        units=str(settings.get("units") or document.units or project.unit_system),
+        heal_shapes=bool(settings.get("heal_shapes", True)),
+        object_filter=str(settings.get("object_filter") or "solids"),
+        include_edges=bool(settings.get("include_edges", True)),
+        include_vertices=bool(settings.get("include_vertices", True)),
+    )
 
 
 def _stackup_by_id(project: CadToleranceProject, stackup_id: str) -> StackupRequirement | None:
@@ -1198,7 +1350,9 @@ def main() -> None:
     window = create_cad_tolerance_window(app)
     if len(sys.argv) > 1:
         path = Path(sys.argv[1])
-        if path.suffix.lower() == ".tolproj":
+        if path.suffix.lower() == PACKAGE_SUFFIX:
+            window._open_package_file(path)
+        elif path.suffix.lower() == ".tolproj":
             window.load_project_file(path)
         else:
             window.open_cad_file(path)
