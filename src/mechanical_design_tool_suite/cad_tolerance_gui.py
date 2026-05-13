@@ -48,8 +48,9 @@ except ImportError as exc:  # pragma: no cover - exercised only without GUI deps
 
 from .cad_geometry_occ import CadKernelUnavailable, OccCadGeometrySession
 from .cad_stackup_workflow import GuidedStackupWorkflowController, GuidedToolbarState
-from .cad_tolerance_models import CadDocument, CadToleranceProject, ShapeKind, Snapshot
+from .cad_tolerance_models import CadDocument, CadToleranceProject, ShapeKind, Snapshot, StackupRequirement
 from .cad_tolerance_project_io import load_project
+from .cad_tolerance_report import ResultDisplayProjection, generate_html_report
 from .cad_tolerance_viewmodels import (
     DETAIL_COLUMNS,
     FIDELITY_GAP_NOTES,
@@ -377,6 +378,10 @@ class ResultPanelWidget(QFrame):
         self.title = QLabel("Worst Case Results")
         self.title.setObjectName("ResultPanelTitle")
         layout.addWidget(self.title)
+        self.metrics = QLabel("")
+        self.metrics.setObjectName("ResultPanelMetrics")
+        self.metrics.setWordWrap(True)
+        layout.addWidget(self.metrics)
         bar_row = QHBoxLayout()
         self.left_bar = QFrame()
         self.left_bar.setObjectName("ResultBarFail")
@@ -391,10 +396,33 @@ class ResultPanelWidget(QFrame):
         self.warning = QLabel(NON_1D_WARNING_TEXT)
         self.warning.setObjectName("NonOneDWarningLabel")
         self.warning.setWordWrap(True)
+        self.warning.setVisible(False)
         layout.addWidget(self.warning)
 
     def set_stackup_name(self, name: str) -> None:
         self.title.setText(f"Worst Case Results for {name}")
+        self.metrics.setText("")
+        self.warning.setVisible(False)
+
+    def set_projection(self, projection: ResultDisplayProjection) -> None:
+        self.title.setText(projection.title)
+        metrics = [
+            projection.mean_label,
+            projection.standard_deviation_label,
+            projection.result_label,
+            projection.objective_label,
+        ]
+        if projection.predicted_quality_label:
+            metrics.append(projection.predicted_quality_label)
+        self.metrics.setText("    ".join(metrics))
+        if projection.warnings:
+            warning_lines = [NON_1D_WARNING_TEXT]
+            warning_lines.extend(warning.message for warning in projection.warnings)
+            self.warning.setText("! " + "\n".join(warning_lines))
+            self.warning.setVisible(True)
+        else:
+            self.warning.setText("")
+            self.warning.setVisible(False)
 
 
 class ContributionBarsWidget(QFrame):
@@ -498,6 +526,8 @@ class CadToleranceMainWindow(QMainWindow):
         self.summary_model.set_rows(self.workspace.summary_rows)
         self.detail_model.set_rows([])
         self.dashboard_badges.set_values(0, 0, "")
+        self.summary_contributions.set_rows([], "Contributions Rollup")
+        self.result_panel.set_stackup_name("Stackup")
         self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
         self.statusBar().showMessage(f"Imported {document.display_name or Path(document.source_path).name}")
 
@@ -533,6 +563,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.snapshot_action.setToolTip("Sets the current view orientation and size for the report image.")
         self.snapshot_action.triggered.connect(self._save_snapshot)
         self.generate_report_action = QAction("Generate Report", self)
+        self.generate_report_action.triggered.connect(self._generate_report)
         self.settings_action = QAction("Settings", self)
         self.back_action = QAction("Back", self)
         self.back_action.triggered.connect(self.show_summary)
@@ -726,10 +757,14 @@ class CadToleranceMainWindow(QMainWindow):
         title = selected.name if selected else "Stackup"
         self.detail_title.setText(f"{title} details")
         self.detail_model.set_rows(self.workspace.detail_rows(stackup_id))
-        self.result_panel.set_stackup_name(title)
+        projection = self.workspace.result_projection(stackup_id)
+        if projection is not None:
+            self.result_panel.set_projection(projection)
+        else:
+            self.result_panel.set_stackup_name(title)
         self.detail_contributions.set_rows(
             self.workspace.contribution_rows(stackup_id),
-            f"Statistical Contributions for {title}",
+            f"{projection.mode_label if projection else 'Statistical'} Contributions for {title}",
         )
 
     def _refresh_dashboard(self) -> None:
@@ -738,6 +773,10 @@ class CadToleranceMainWindow(QMainWindow):
             badges.objectives_met,
             badges.objectives_not_met,
             badges.sigma_rollup,
+        )
+        self.summary_contributions.set_rows(
+            self.workspace.contribution_rows(self.workspace.selected_stackup_id),
+            "Contributions Rollup",
         )
 
     def _start_new_stackup_workflow(self) -> None:
@@ -813,18 +852,85 @@ class CadToleranceMainWindow(QMainWindow):
             annotation_positions = {}
             if stackup_id:
                 annotation_positions[stackup_id] = self.workspace.annotation_position(stackup_id)
+            stackup = _stackup_by_id(self.project, stackup_id)
+            shape_ids, feature_ids = _snapshot_reference_ids(stackup)
+            warning_ids = tuple(warning.id for warning in self.workspace.warnings(stackup_id))
             snapshot = self.viewer.capture_snapshot(
                 SnapshotRequest(
                     output_path,
                     visible_stackup_ids=(stackup_id,) if stackup_id else (),
                     annotation_positions=annotation_positions,
+                    highlight_shape_ids=shape_ids,
+                    highlight_feature_ids=feature_ids,
+                    warning_ids=warning_ids,
+                    artifact_metadata={
+                        "purpose": "cad_1d_tolerance_report",
+                        "stackup_id": stackup_id,
+                        "image_role": "annotated_model_snapshot",
+                    },
                 )
             )  # type: ignore[attr-defined]
         except Exception as exc:
             QMessageBox.warning(self, "Snapshot failed", str(exc))
             self.statusBar().showMessage("Snapshot failed")
             return
+        self.project.snapshots.append(snapshot)
+        if self.project.stackups:
+            self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
         self.statusBar().showMessage(f"Saved snapshot {Path(snapshot.image_path).name}")
+
+    def _generate_report(self) -> None:
+        path, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Save Report",
+            "",
+            "HTML report (*.html);;All Files (*.*)",
+        )
+        if not path:
+            return
+        output_path = Path(path)
+        if output_path.suffix == "":
+            output_path = output_path.with_suffix(".html")
+        try:
+            result = generate_html_report(self.project, output_path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Report generation failed", str(exc))
+            self.statusBar().showMessage("Report generation failed")
+            return
+        self.statusBar().showMessage(f"Generated report {result.output_path.name}")
+
+
+def _stackup_by_id(project: CadToleranceProject, stackup_id: str) -> StackupRequirement | None:
+    for stackup in project.stackups:
+        if stackup.id == stackup_id:
+            return stackup
+    return None
+
+
+def _snapshot_reference_ids(stackup: StackupRequirement | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if stackup is None:
+        return (), ()
+    feature_ids: list[str] = []
+    shape_ids: list[str] = []
+
+    def collect(feature) -> None:
+        if feature is None:
+            return
+        if feature.id and feature.id not in feature_ids:
+            feature_ids.append(feature.id)
+        shape = feature.shape_reference
+        if shape is not None and shape.id and shape.id not in shape_ids:
+            shape_ids.append(shape.id)
+
+    collect(stackup.start_feature)
+    collect(stackup.end_feature)
+    for feature in stackup.loop_features:
+        collect(feature)
+    for feature in stackup.constraint_features:
+        collect(feature)
+    for contributor in stackup.contributors:
+        collect(contributor.source_feature)
+    return tuple(shape_ids), tuple(feature_ids)
 
 
 def _summary_by_id(rows: list[StackupSummaryRow], stackup_id: str) -> StackupSummaryRow | None:
@@ -997,6 +1103,10 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
         QLabel#ResultsSummaryTitle, QLabel#ResultPanelTitle, QLabel#ContributionTitle {
             font-weight: 700;
             color: #111111;
+        }
+        QLabel#ResultPanelMetrics {
+            color: #333333;
+            font-size: 10px;
         }
         QLabel#BadgeGreen {
             min-width: 70px;

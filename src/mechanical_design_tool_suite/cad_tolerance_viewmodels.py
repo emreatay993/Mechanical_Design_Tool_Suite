@@ -10,6 +10,12 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPen, QPixmap, Q
 from PyQt6.QtWidgets import QApplication, QStyle
 
 from .cad_tolerance_methods import calculate_stackup
+from .cad_tolerance_report import (
+    ResultDisplayProjection,
+    build_contribution_projection,
+    build_dashboard_projection,
+    build_result_display,
+)
 from .cad_stackup_workflow import GUIDED_STACKUP_STEP_LABELS
 from .cad_tolerance_models import (
     AnalysisMode,
@@ -118,6 +124,7 @@ class CadToleranceWorkspaceViewModel:
     summary_rows: list[StackupSummaryRow] = field(default_factory=list)
     detail_rows_by_stackup_id: dict[str, list[StackupDetailRow]] = field(default_factory=dict)
     contribution_rows_by_stackup_id: dict[str, list[ContributionBarRow]] = field(default_factory=dict)
+    result_projections_by_stackup_id: dict[str, ResultDisplayProjection] = field(default_factory=dict)
     warnings_by_stackup_id: dict[str, list[NonOneDWarning]] = field(default_factory=dict)
     annotation_positions_by_stackup_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     dashboard_badges: DashboardBadges = field(default_factory=DashboardBadges)
@@ -193,17 +200,34 @@ class CadToleranceWorkspaceViewModel:
 
     @classmethod
     def from_project(cls, project: CadToleranceProject) -> "CadToleranceWorkspaceViewModel":
-        summary_rows = [_summary_row_from_stackup(stackup, project) for stackup in project.stackups]
-        detail_rows = {stackup.id: _detail_rows_from_stackup(stackup) for stackup in project.stackups}
+        projected_rows, projected_badges = build_dashboard_projection(project)
+        summary_rows = [
+            StackupSummaryRow(
+                row.stackup_id,
+                row.status,
+                row.name,
+                row.nominal,
+                row.objective,
+                row.target_quality,
+                row.results,
+                row.predicted_quality,
+                row.dimension_count,
+                row.has_warning,
+            )
+            for row in projected_rows
+        ]
+        detail_rows = {stackup.id: _detail_rows_from_stackup(stackup, project) for stackup in project.stackups}
         contributions = {stackup.id: _contribution_rows_from_stackup(stackup, project) for stackup in project.stackups}
+        result_projections = {
+            stackup.id: build_result_display(stackup, project=project)
+            for stackup in project.stackups
+        }
         warnings = {stackup.id: list(stackup.warnings) for stackup in project.stackups}
         annotation_positions = {
             stackup.id: dict(stackup.annotation_position)
             for stackup in project.stackups
             if stackup.annotation_position
         }
-        failed = sum(1 for row in summary_rows if row.status == ResultStatus.FAIL)
-        met = sum(1 for row in summary_rows if row.status != ResultStatus.FAIL)
         selected = summary_rows[0].stackup_id if summary_rows else ""
         return cls(
             project_title=project.title,
@@ -211,9 +235,14 @@ class CadToleranceWorkspaceViewModel:
             summary_rows=summary_rows,
             detail_rows_by_stackup_id=detail_rows,
             contribution_rows_by_stackup_id=contributions,
+            result_projections_by_stackup_id=result_projections,
             warnings_by_stackup_id=warnings,
             annotation_positions_by_stackup_id=annotation_positions,
-            dashboard_badges=DashboardBadges(met, failed, _sigma_rollup_from_rows(summary_rows)),
+            dashboard_badges=DashboardBadges(
+                projected_badges.objectives_met,
+                projected_badges.objectives_not_met,
+                projected_badges.sigma_rollup,
+            ),
             selected_stackup_id=selected,
         )
 
@@ -234,6 +263,14 @@ class CadToleranceWorkspaceViewModel:
     def contribution_rows(self, stackup_id: str | None = None) -> list[ContributionBarRow]:
         active_id = stackup_id or self.selected_stackup_id
         return list(self.contribution_rows_by_stackup_id.get(active_id, []))
+
+    def result_projection(self, stackup_id: str | None = None) -> ResultDisplayProjection | None:
+        active_id = stackup_id or self.selected_stackup_id
+        return self.result_projections_by_stackup_id.get(active_id)
+
+    def warnings(self, stackup_id: str | None = None) -> list[NonOneDWarning]:
+        active_id = stackup_id or self.selected_stackup_id
+        return list(self.warnings_by_stackup_id.get(active_id, []))
 
     def annotation_position(self, stackup_id: str | None = None) -> dict[str, Any]:
         active_id = stackup_id or self.selected_stackup_id
@@ -408,7 +445,10 @@ def _summary_row_from_stackup(stackup: StackupRequirement, project: CadTolerance
     )
 
 
-def _detail_rows_from_stackup(stackup: StackupRequirement) -> list[StackupDetailRow]:
+def _detail_rows_from_stackup(
+    stackup: StackupRequirement,
+    project: CadToleranceProject | None = None,
+) -> list[StackupDetailRow]:
     rows: list[StackupDetailRow] = []
     last_part = ""
     for contributor in stackup.contributors:
@@ -446,7 +486,7 @@ def _detail_rows_from_stackup(stackup: StackupRequirement) -> list[StackupDetail
                 source_note=contributor.source_note,
             )
         )
-    result = calculate_stackup(stackup)
+    result = calculate_stackup(stackup, project.settings if project else None)
     rows.append(
         StackupDetailRow(
             stackup.name,
@@ -469,10 +509,9 @@ def _detail_rows_from_stackup(stackup: StackupRequirement) -> list[StackupDetail
 
 
 def _contribution_rows_from_stackup(stackup: StackupRequirement, project: CadToleranceProject) -> list[ContributionBarRow]:
-    result = calculate_stackup(stackup, project.settings)
     return [
-        ContributionBarRow(item.name, round(item.percent, 1))
-        for item in result.contributors
+        ContributionBarRow(item.label, item.percent, item.tolerance_box, item.datum)
+        for item in build_contribution_projection(stackup, project=project)
     ]
 
 

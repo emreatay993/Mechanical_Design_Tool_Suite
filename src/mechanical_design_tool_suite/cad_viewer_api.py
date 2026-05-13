@@ -135,6 +135,10 @@ class SnapshotRequest:
     output_path: Path
     visible_stackup_ids: tuple[str, ...] = ()
     annotation_positions: dict[str, Any] = field(default_factory=dict)
+    highlight_shape_ids: tuple[str, ...] = ()
+    highlight_feature_ids: tuple[str, ...] = ()
+    warning_ids: tuple[str, ...] = ()
+    artifact_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class CadViewer(Protocol):
