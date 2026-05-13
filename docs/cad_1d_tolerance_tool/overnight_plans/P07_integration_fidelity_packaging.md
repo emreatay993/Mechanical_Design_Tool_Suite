@@ -30,7 +30,7 @@ Add a packaged-project export/import path for sharing or archiving a study. Use 
 - Packaged project export/import: support packaging a `.tolproj` and its managed assets into a single `.tolpack` archive, and loading/unpacking that archive back into an equivalent project folder.
 - UI fidelity gap list against visual evidence.
 - UI fidelity gap list against the targeted visual review, including exact unreadable labels/symbols that need new crops.
-- Packaging/dependency notes for the primary CAD viewer runtime: Python 3.12, `pythonocc-core 7.7.2=*novtk*`, PyQt6, `load_backend("pyqt6")`, and `qtViewer3d`/AIS/V3d. Confirm PyQt5/Qt5 and Conda `pyqt` are not introduced.
+- Packaging/dependency notes for the primary CAD viewer runtime: Python 3.12, `pythonocc-core 7.9.3=*novtk*`, NumPy 1.26, PyQt6, `load_backend("pyqt6")`, and `qtViewer3d`/AIS/V3d. Confirm PyQt5/Qt5 and Conda `pyqt` are not introduced.
 - End-to-end confirmation that viewer selection and report snapshots remain B-Rep-backed through `ShapeReference` / `FeatureReference` ids, not PyVista/VTK or mesh-only ids.
 - Final verification notes.
 

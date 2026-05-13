@@ -6,6 +6,7 @@ Sources:
 
 - https://github.com/lucide-icons/lucide/blob/main/icons/trash-2.svg
 - https://github.com/lucide-icons/lucide/blob/main/icons/download.svg
+- https://github.com/lucide-icons/lucide/blob/main/icons/file-axis-3d.svg
 
 Project: https://github.com/lucide-icons/lucide
 License: ISC, with these icons derived from Feather under MIT.

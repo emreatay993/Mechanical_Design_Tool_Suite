@@ -23,7 +23,7 @@ Targeted visual review is complete and tracked in `extracted_specs/2026-05-12_ez
 - New script entry point candidate: `cad-1d-tolerance-gui = "mechanical_design_tool_suite.cad_tolerance_gui:main"`.
 - New project type: `.tolproj` JSON with `project_type = "cad_1d_tolerance"`.
 - New optional CAD dependency group should be considered, such as `cad = [...]`, once the OCCT binding choice is proven.
-- CAD viewer development environment: `environment-cad312.yml`, using Python 3.12, `pythonocc-core 7.7.2=*novtk*`, and PyQt6 from the project dependencies.
+- CAD viewer development environment: `environment-cad312.yml`, using Python 3.12, `pythonocc-core 7.9.3=*novtk*`, NumPy 1.26, and PyQt6 from the project dependencies.
 - New docs and overnight plans live under `docs/cad_1d_tolerance_tool/`.
 
 ## Execution Tasks

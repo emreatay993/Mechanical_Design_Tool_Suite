@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools==82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,10 +8,10 @@ version = "0.1.0"
 description = "Desktop suite for mechanical design calculation tools."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["PyQt6>=6.6", "pyvista>=0.43", "pyvistaqt>=0.11", "openpyxl>=3.1"]
+dependencies = ["PyQt6>=6.6", "numpy>=1.26,<2", "pyvista>=0.43", "pyvistaqt>=0.11", "openpyxl>=3.1"]
 
 [project.optional-dependencies]
-build = ["pyinstaller>=6.13"]
+build = ["pyinstaller==6.20.0"]
 
 [project.scripts]
 mechanical-design-tool-suite = "mechanical_design_tool_suite.launcher:main"

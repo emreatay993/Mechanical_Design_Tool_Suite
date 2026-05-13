@@ -82,7 +82,7 @@ load_backend("pyqt6")
 from OCC.Display.qtDisplay import qtViewer3d
 ```
 
-The `mdts-cad312` environment uses `pythonocc-core 7.7.2` with the `novtk` OCCT build. That build intentionally removes the OCCT/VTK bridge while preserving STEP/IGES import, B-Rep topology, AIS presentation, V3d views, Graphic3d styling, and SelectMgr selection support. It avoids the Conda Qt5 dependency chain that conflicts with PyQt6.
+The `mdts-cad312` environment uses `pythonocc-core 7.9.3` with the `novtk` OCCT build and NumPy pinned to the 1.26 line for PyVista/VTK compatibility. That OCCT build intentionally removes the OCCT/VTK bridge while preserving STEP/IGES import, B-Rep topology, AIS presentation, V3d views, Graphic3d styling, and SelectMgr selection support. It avoids the Conda Qt5 dependency chain that conflicts with PyQt6.
 
 The viewer layer owns transient runtime objects:
 

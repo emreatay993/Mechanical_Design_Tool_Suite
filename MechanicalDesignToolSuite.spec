@@ -25,6 +25,7 @@ entry_scripts = [
     ("BoltCalculationGui", project_root / "scripts" / "run_gui.py"),
     ("ToleranceAnalysis", project_root / "scripts" / "run_tolerance_analysis.py"),
     ("ToleranceAnalysisVNext", project_root / "scripts" / "run_tolerance_vnext_analysis.py"),
+    ("Cad1DTolerance", project_root / "scripts" / "run_cad_1d_tolerance.py"),
 ]
 
 
@@ -32,8 +33,64 @@ datas = []
 binaries = []
 hiddenimports = []
 
+
+def collect_conda_dll_dependencies(package_name):
+    """Collect DLL dependencies that conda keeps in Library/bin."""
+
+    try:
+        import importlib
+        import pefile
+    except Exception:
+        return []
+
+    try:
+        package = importlib.import_module(package_name)
+    except Exception:
+        return []
+
+    package_file = getattr(package, "__file__", None)
+    if not package_file:
+        return []
+
+    package_root = Path(package_file).resolve().parent
+    library_bin = Path(sys.prefix) / "Library" / "bin"
+    if not library_bin.exists():
+        return []
+
+    dlls_by_name = {path.name.lower(): path for path in library_bin.glob("*.dll")}
+    queue = list(package_root.rglob("*.pyd"))
+    seen_files = set()
+    collected = {}
+
+    while queue:
+        file_path = queue.pop()
+        file_key = str(file_path).lower()
+        if file_key in seen_files:
+            continue
+        seen_files.add(file_key)
+
+        try:
+            pe = pefile.PE(str(file_path), fast_load=True)
+            pe.parse_data_directories(
+                directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]]
+            )
+        except Exception:
+            continue
+
+        for entry in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):
+            dll_name = entry.dll.decode(errors="ignore").lower()
+            dll_path = dlls_by_name.get(dll_name)
+            if dll_path is None or dll_name in collected:
+                continue
+            collected[dll_name] = dll_path
+            queue.append(dll_path)
+
+    return [(str(path), ".") for path in sorted(collected.values())]
+
+
 for package_name in (
     "mechanical_design_tool_suite",
+    "OCC",
     "PyQt6",
     "pyvista",
     "vtk",
@@ -48,6 +105,7 @@ for package_name in (
 
 hiddenimports += collect_submodules("mechanical_design_tool_suite")
 hiddenimports += collect_submodules("openpyxl")
+binaries += collect_conda_dll_dependencies("OCC")
 hiddenimports += [
     "PyQt6.QtQml",
     "PyQt6.QtQuick",

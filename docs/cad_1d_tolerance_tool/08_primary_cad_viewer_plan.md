@@ -7,7 +7,7 @@ The primary CAD viewer must use OCCT/OpenCascade B-Rep presentation through AIS/
 The approved Python prototype path is:
 
 - Python 3.12 environment from `environment-cad312.yml`.
-- `pythonocc-core 7.7.2` with the `novtk` OCCT build.
+- `pythonocc-core 7.9.3` with the `novtk` OCCT build.
 - `OCC.Display.backend.load_backend("pyqt6")`.
 - `OCC.Display.qtDisplay.qtViewer3d` / `OCC.Display.OCCViewer.Viewer3d`.
 - Live OCCT shapes supplied by `OccCadGeometrySession.kernel_shape()`.
@@ -97,7 +97,8 @@ The final viewer should add:
 Use `environment-cad312.yml` for CAD viewer development. The package combination to preserve is:
 
 - Python `3.12`
-- `pythonocc-core 7.7.2=*novtk*`
+- `pythonocc-core 7.9.3=*novtk*`
+- `numpy=1.26.*`
 - PyQt6 from project dependencies
 
 Do not install Conda `pyqt`, `pyqt5`, or a non-`novtk` `pythonocc-core` build into the CAD runtime. The non-`novtk` build can pull Conda Qt5 into the environment and break PyQt6.

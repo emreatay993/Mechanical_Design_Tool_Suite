@@ -3,7 +3,8 @@ channels:
   - conda-forge
 dependencies:
   - python=3.12
-  - pythonocc-core=7.7.2=*novtk*
+  - numpy=1.26.*
+  - pythonocc-core=7.9.3=*novtk*
   - pip
   - pip:
       - -e .

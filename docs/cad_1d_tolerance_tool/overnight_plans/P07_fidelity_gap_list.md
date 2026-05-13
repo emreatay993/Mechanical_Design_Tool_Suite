@@ -34,7 +34,7 @@ Manual smoke in `mdts-cad312` opened `tests/fixtures/cad_1d_tolerance/sample_cad
 
 ## Packaging And Runtime Notes
 
-- Primary CAD runtime remains Python 3.12, PyQt6, and `pythonocc-core 7.7.2=*novtk*`.
+- Primary CAD runtime remains Python 3.12, PyQt6, NumPy 1.26, and `pythonocc-core 7.9.3=*novtk*`.
 - The viewer path still calls `OCC.Display.backend.load_backend("pyqt6")` before importing `qtViewer3d`.
 - P07 did not introduce PyQt5, Qt5, Conda `pyqt`, native commercial CAD import, external CAD add-ins, or a mesh-authoritative viewer path.
 - Rehydrated viewer sessions continue to pass live OCCT B-Rep shapes through `OccCadGeometrySession.kernel_shape()` and the `cad_viewer_api.py` boundary. Persisted data remains serializable `ShapeReference` / `FeatureReference` ids and asset paths.

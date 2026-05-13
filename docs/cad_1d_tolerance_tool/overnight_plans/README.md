@@ -38,7 +38,7 @@ The primary CAD viewer path is OCCT/OpenCascade B-Rep presentation through AIS/V
 
 Do not implement PyVista, VTK, STL/OBJ, or tessellated meshes as the authoritative CAD viewer path. Meshes may be secondary diagnostics only. Selection, measurement, stackup references, persistence, and reports must remain tied to B-Rep-backed `ShapeReference` and `FeatureReference` ids.
 
-Use `environment-cad312.yml` or an equivalent Python 3.12 environment with `pythonocc-core 7.7.2=*novtk*` and PyQt6. Do not install Conda `pyqt`, PyQt5, Qt5, or a non-`novtk` pythonocc build into the primary CAD runtime. If pythonocc's PyQt6 `qtViewer3d` path proves unstable, preserve `cad_viewer_api.py` and escalate to a small C++ Qt6 + OCCT viewport component rather than switching the primary viewer to a mesh-only stack.
+Use `environment-cad312.yml` or an equivalent Python 3.12 environment with `pythonocc-core 7.9.3=*novtk*`, NumPy 1.26, and PyQt6. Do not install Conda `pyqt`, PyQt5, Qt5, or a non-`novtk` pythonocc build into the primary CAD runtime. If pythonocc's PyQt6 `qtViewer3d` path proves unstable, preserve `cad_viewer_api.py` and escalate to a small C++ Qt6 + OCCT viewport component rather than switching the primary viewer to a mesh-only stack.
 
 ## Packet Order
 

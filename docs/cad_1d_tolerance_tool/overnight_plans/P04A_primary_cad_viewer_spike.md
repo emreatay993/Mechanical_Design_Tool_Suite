@@ -8,7 +8,7 @@ Prove the final-product CAD viewer direction: OCCT AIS/V3d embedded in PyQt6, fe
 
 You are a `gpt-5.5` `xhigh` worker in `C:\Users\emre_\PycharmProjects\Mechanical_Design_Tool_Suite`. Your task is P04A Primary CAD Viewer Spike. Reread `overnight_plans/README.md`, `07_implementation_plan.md`, `02_requirements.md`, `03_ui_ux_design_spec.md`, `05_architecture_and_persistence.md`, `06_verification_validation_plan.md`, `08_primary_cad_viewer_plan.md`, and `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` before editing. After every context compaction, reread those files and this packet.
 
-Use `environment-cad312.yml` or an equivalent Python 3.12 runtime with `pythonocc-core 7.7.2=*novtk*` and PyQt6. The viewer must call `OCC.Display.backend.load_backend("pyqt6")` before importing `OCC.Display.qtDisplay.qtViewer3d`.
+Use `environment-cad312.yml` or an equivalent Python 3.12 runtime with `pythonocc-core 7.9.3=*novtk*`, NumPy 1.26, and PyQt6. The viewer must call `OCC.Display.backend.load_backend("pyqt6")` before importing `OCC.Display.qtDisplay.qtViewer3d`.
 
 ## Conservative Write Scope
 

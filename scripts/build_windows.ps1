@@ -21,7 +21,7 @@ param(
     [switch]$DebugBuild,
     [switch]$DebugRun,
     [switch]$RunOnly,
-    [ValidateSet("Launcher", "Bolt", "Tolerance", "ToleranceVNext")]
+    [ValidateSet("Launcher", "Bolt", "Tolerance", "ToleranceVNext", "Cad1D")]
     [string]$Program = "Launcher",
     [string]$Python = "python"
 )
@@ -32,19 +32,22 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptDir "..")
 $specPath = Join-Path $repoRoot "MechanicalDesignToolSuite.spec"
 $distDir = Join-Path $repoRoot "dist\MechanicalDesignToolSuite"
+$constraintsPath = Join-Path $repoRoot "requirements-windows-py312.lock.txt"
 $launcherExePath = Join-Path $distDir "MechanicalDesignToolSuite.exe"
 $programExePaths = @{
     Launcher = $launcherExePath
     Bolt = Join-Path $distDir "BoltCalculationGui.exe"
     Tolerance = Join-Path $distDir "ToleranceAnalysis.exe"
     ToleranceVNext = Join-Path $distDir "ToleranceAnalysisVNext.exe"
+    Cad1D = Join-Path $distDir "Cad1DTolerance.exe"
 }
 $selectedExePath = $programExePaths[$Program]
 $expectedExePaths = @(
     $launcherExePath,
     $programExePaths["Bolt"],
     $programExePaths["Tolerance"],
-    $programExePaths["ToleranceVNext"]
+    $programExePaths["ToleranceVNext"],
+    $programExePaths["Cad1D"]
 )
 $debugFlagPaths = @(
     (Join-Path $repoRoot "build\mdts_debug_build.flag"),
@@ -91,13 +94,21 @@ if ($DebugRun -and -not $Launch -and -not $RunOnly) {
     $Launch = $true
 }
 
+$previousPythonNoUserSite = [Environment]::GetEnvironmentVariable("PYTHONNOUSERSITE", "Process")
 Push-Location $repoRoot
 try {
+    [Environment]::SetEnvironmentVariable("PYTHONNOUSERSITE", "1", "Process")
+
     if (-not $RunOnly) {
         Write-Host "Using Python:" (& $Python --version)
 
         Write-Host "Installing runtime and build dependencies..."
-        & $Python -m pip install -e ".[build]"
+        if (Test-Path -LiteralPath $constraintsPath) {
+            & $Python -m pip install -e ".[build]" -c $constraintsPath
+        }
+        else {
+            & $Python -m pip install -e ".[build]"
+        }
         if ($LASTEXITCODE -ne 0) {
             throw "Dependency installation failed."
         }
@@ -152,5 +163,6 @@ try {
     }
 }
 finally {
+    Restore-ProcessEnvironment -Name "PYTHONNOUSERSITE" -PreviousValue $previousPythonNoUserSite
     Pop-Location
 }

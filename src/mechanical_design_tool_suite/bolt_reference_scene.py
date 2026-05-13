@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Iterable
 
 from PyQt6.QtCore import Qt, QTimer
@@ -68,6 +69,8 @@ class BoltReferenceSceneWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         try:
+            if _qt_platform_is_offscreen():
+                raise RuntimeError("PyVistaQt scene disabled under QT_QPA_PLATFORM=offscreen.")
             from pyvistaqt import QtInteractor
 
             self._plotter = QtInteractor(self)
@@ -482,6 +485,10 @@ class BoltReferenceSceneWidget(QWidget):
         self._apply_axis_font_sizes()
         if self._plotter is not None and self._results:
             self._resize_refresh_timer.start()
+
+
+def _qt_platform_is_offscreen() -> bool:
+    return os.environ.get("QT_QPA_PLATFORM", "").casefold() == "offscreen"
 
 
 def _import_pyvista() -> Any:

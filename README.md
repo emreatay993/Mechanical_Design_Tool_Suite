@@ -1,7 +1,8 @@
 # Mechanical Design Tool Suite
 
 Desktop suite for mechanical design calculation tools, currently including
-the bolt calculator and tolerance analysis workspaces.
+the bolt calculator, tolerance analysis workspaces, and the CAD 1D tolerance
+prototype.
 
 ## Install On A New Development Machine
 
@@ -82,11 +83,12 @@ mechanical-design-tool-suite
 ```
 
 `environment-cad312.yml` pins Python 3.12 and
-`pythonocc-core=7.7.2=*novtk*` from `conda-forge`, then installs this package in
-editable mode. Keep that `novtk` build unless you have a specific reason to
-change it; it avoids pulling in Conda Qt5 while preserving STEP/IGES import,
-B-Rep topology, AIS/V3d display, and selection support. PyQt6 should come from
-the project dependency install, not from Conda `pyqt` or PyQt5.
+`pythonocc-core=7.9.3=*novtk*` from `conda-forge`, with NumPy pinned to the
+1.26 line for the PyVista/VTK toolchain, then installs this package in editable
+mode. Keep that `novtk` build unless you have a specific reason to change it; it
+avoids pulling in Conda Qt5 while preserving STEP/IGES import, B-Rep topology,
+AIS/V3d display, and selection support. PyQt6 should come from the project
+dependency install, not from Conda `pyqt` or PyQt5.
 
 After this setup:
 
@@ -149,6 +151,21 @@ Or through the editable-install entry point:
 ```powershell
 tolerance-analysis-vnext-gui
 ```
+
+The CAD-based 1D tolerance prototype is available as:
+
+```powershell
+python scripts\run_cad_1d_tolerance.py
+```
+
+Or through the editable-install entry point:
+
+```powershell
+cad-1d-tolerance-gui
+```
+
+Use the `mdts-cad312` environment described above when you need live STEP/IGES
+import and the OCCT AIS/V3d viewer.
 
 The vNext app defaults to Fusion light styling. More modern UI styles can be
 selected when available:
@@ -224,7 +241,7 @@ dist\MechanicalDesignToolSuite\MechanicalDesignToolSuite.exe
 ```
 
 The same folder also contains direct launchers for the bolt calculation GUI,
-the legacy tolerance GUI, and the vNext tolerance GUI. See
+the legacy tolerance GUI, the vNext tolerance GUI, and the CAD 1D tolerance GUI. See
 [`docs/pyinstaller_install_guide.md`](docs/pyinstaller_install_guide.md) for the
 full build and troubleshooting guide.
 
@@ -247,5 +264,5 @@ To run an existing packaged executable with temporary debug logging enabled:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -RunOnly -DebugRun -Program Launcher
 ```
 
-Valid `-Program` values are `Launcher`, `Bolt`, `Tolerance`, and
-`ToleranceVNext`.
+Valid `-Program` values are `Launcher`, `Bolt`, `Tolerance`, `ToleranceVNext`,
+and `Cad1D`.

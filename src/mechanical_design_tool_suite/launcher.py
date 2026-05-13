@@ -6,10 +6,12 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QByteArray, QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
+from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -70,6 +72,16 @@ PROGRAMS = (
         module_name="mechanical_design_tool_suite.tolerance_vnext_gui",
         icon_kind="vnext",
     ),
+    ProgramDescriptor(
+        key="cad-1d-tolerance",
+        title="CAD 1D Tolerance Tool",
+        subtitle="STEP/IGES stackups with OCCT CAD viewing",
+        description="Open the CAD-based 1D tolerance analysis prototype.",
+        accent="#c76a16",
+        exe_name="Cad1DTolerance.exe",
+        module_name="mechanical_design_tool_suite.cad_tolerance_gui",
+        icon_kind="cad-1d",
+    ),
 )
 
 
@@ -98,8 +110,10 @@ class LauncherWindow(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(18)
-        for column, program in enumerate(PROGRAMS):
-            grid.addWidget(ProgramCard(program, self._launch_program), 0, column)
+        column_count = 2 if len(PROGRAMS) > 3 else len(PROGRAMS)
+        for index, program in enumerate(PROGRAMS):
+            row, column = divmod(index, column_count)
+            grid.addWidget(ProgramCard(program, self._launch_program), row, column)
         root.addLayout(grid, stretch=1)
 
         footer = QLabel(
@@ -248,7 +262,7 @@ def _program_icon(kind: str, accent: str, size: int) -> QPixmap:
         painter.drawLine(int(size * 0.34), int(size * 0.24), int(size * 0.34), int(size * 0.70))
         painter.drawLine(int(size * 0.66), int(size * 0.24), int(size * 0.66), int(size * 0.70))
         painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "+/-")
-    else:
+    elif kind == "vnext":
         painter.drawRoundedRect(
             int(size * 0.23),
             int(size * 0.24),
@@ -261,9 +275,50 @@ def _program_icon(kind: str, accent: str, size: int) -> QPixmap:
         painter.drawLine(int(size * 0.50), int(size * 0.68), int(size * 0.50), int(size * 0.78))
         painter.drawLine(int(size * 0.33), int(size * 0.42), int(size * 0.45), int(size * 0.52))
         painter.drawLine(int(size * 0.45), int(size * 0.52), int(size * 0.68), int(size * 0.34))
+    else:
+        _draw_cad_icon(painter, accent_color, size)
 
     painter.end()
     return pixmap
+
+
+def _draw_cad_icon(painter: QPainter, accent_color: QColor, size: int) -> None:
+    if _render_svg_icon(painter, "file-axis-3d.svg", accent_color.name(), size):
+        return
+
+    painter.drawRect(
+        int(size * 0.28),
+        int(size * 0.20),
+        int(size * 0.44),
+        int(size * 0.58),
+    )
+    painter.drawLine(int(size * 0.60), int(size * 0.20), int(size * 0.72), int(size * 0.32))
+    painter.drawLine(int(size * 0.60), int(size * 0.20), int(size * 0.60), int(size * 0.32))
+    painter.drawLine(int(size * 0.33), int(size * 0.66), int(size * 0.56), int(size * 0.43))
+    painter.drawLine(int(size * 0.33), int(size * 0.44), int(size * 0.33), int(size * 0.66))
+    painter.drawLine(int(size * 0.33), int(size * 0.66), int(size * 0.67), int(size * 0.66))
+
+
+def _render_svg_icon(painter: QPainter, icon_name: str, accent: str, size: int) -> bool:
+    try:
+        icon_path = resources.files("mechanical_design_tool_suite").joinpath(
+            "qml",
+            "assets",
+            "icons",
+            icon_name,
+        )
+        svg_text = icon_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        return False
+
+    svg_text = svg_text.replace('stroke="currentColor"', f'stroke="{accent}"')
+    renderer = QSvgRenderer(QByteArray(svg_text.encode("utf-8")))
+    if not renderer.isValid():
+        return False
+
+    margin = size * 0.22
+    renderer.render(painter, QRectF(margin, margin, size - (2 * margin), size - (2 * margin)))
+    return True
 
 
 def _apply_launcher_style(app: QApplication) -> None:
