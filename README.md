@@ -3,6 +3,103 @@
 Desktop suite for mechanical design calculation tools, currently including
 the bolt calculator and tolerance analysis workspaces.
 
+## Install On A New Development Machine
+
+Use this path when the target computer does not already have the project,
+PyQt6, PyVista, or OpenCascade/pythonocc installed.
+
+### Standard install: bolt tool, STL reference parts, and non-CAD tests
+
+This install is enough for the suite launcher, bolt calculations, the embedded
+bolt 3D scene, STL reference-part loading, and the non-OCCT test suite. It does
+not enable STEP/IGES import because that needs OpenCascade through
+`pythonocc-core`.
+
+```powershell
+git clone https://github.com/emreatay993/Mechanical_Design_Tool_Suite.git
+cd Mechanical_Design_Tool_Suite
+
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+python -m pip install --upgrade pip
+python -m pip install -e .
+
+$env:PYTHONPATH="src"
+python -m unittest discover -s tests
+mechanical-design-tool-suite
+```
+
+The editable install brings in the normal GUI/runtime dependencies declared in
+`pyproject.toml`, including `PyQt6`, `pyvista`, `pyvistaqt`, and `openpyxl`.
+The bolt tool can load `.stl` reference parts in this setup. If `pyvistaqt` is
+missing or the local Qt/OpenGL stack cannot initialize, the app still opens and
+the `3D Scene` tab shows an embedded-scene placeholder instead of crashing.
+
+### CAD install: STEP/IGES reference parts and OCCT viewer tests
+
+Use this path when the machine needs STEP/STP or IGES/IGS import. Do not rely on
+`pip install pythonocc-core` for this project; on common Windows/Python
+combinations it may not be available from PyPI. Use the pinned Conda
+environment instead.
+
+If the machine does not have Conda yet, install Miniforge first. Miniforge is
+the recommended lightweight Conda distribution here because it is already
+configured for `conda-forge`, where `pythonocc-core` is available.
+
+Option A, from PowerShell with Windows Package Manager:
+
+```powershell
+winget install -e --id CondaForge.Miniforge3
+```
+
+Option B, if `winget` is unavailable:
+
+1. Open the official conda-forge Miniforge download page:
+   <https://conda-forge.org/download/>
+2. Download the Windows x86_64 Miniforge installer.
+3. Run the installer for the current user.
+4. Open a new "Miniforge Prompt" or a new PowerShell window after installation.
+
+Confirm Conda is available:
+
+```powershell
+conda --version
+```
+
+Then create the project CAD environment from the repository root:
+
+```powershell
+conda env create -f environment-cad312.yml
+conda activate mdts-cad312
+
+$env:PYTHONNOUSERSITE="1"
+$env:PYTHONPATH="src"
+
+python -c "import OCC; from OCC.Display.backend import load_backend; load_backend('pyqt6'); print('OCCT/PyQt6 backend OK')"
+python -m unittest discover -s tests
+mechanical-design-tool-suite
+```
+
+`environment-cad312.yml` pins Python 3.12 and
+`pythonocc-core=7.7.2=*novtk*` from `conda-forge`, then installs this package in
+editable mode. Keep that `novtk` build unless you have a specific reason to
+change it; it avoids pulling in Conda Qt5 while preserving STEP/IGES import,
+B-Rep topology, AIS/V3d display, and selection support. PyQt6 should come from
+the project dependency install, not from Conda `pyqt` or PyQt5.
+
+After this setup:
+
+- `.stl` reference parts load as mesh-only visual references in the bolt tool.
+- `.step`, `.stp`, `.iges`, and `.igs` reference parts use the OCCT/pythonocc
+  path and are converted to visual meshes for the bolt scene.
+- The CAD 1D tolerance viewer can use the OCCT AIS/V3d backend when the local
+  display driver supports it.
+
+If CAD imports fail, first confirm that `conda activate mdts-cad312` is active,
+`PYTHONNOUSERSITE=1` is set, and `python -c "import OCC"` succeeds in that same
+terminal.
+
 ## Run The Suite Launcher
 
 From the repository root:
@@ -102,8 +199,10 @@ Run the package backend tests:
 $env:PYTHONPATH="src"; python -m unittest discover -s tests
 ```
 
-The editable install also installs the PyVista dependency used by the 3D node
-contour window.
+The standard editable install covers PyVista/PyVistaQt visualization and skips
+OCCT-specific tests when OpenCascade/pythonocc is not installed. To run the real
+STEP/IGES and OCCT viewer paths, use the `mdts-cad312` environment described
+above.
 
 ## Build Windows Executables
 

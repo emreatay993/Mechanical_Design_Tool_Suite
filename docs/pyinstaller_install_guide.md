@@ -8,6 +8,46 @@ This guide builds the GUI suite as a Windows onedir PyInstaller package.
 - A fresh virtual environment is recommended
 - Run commands from the repository root
 
+The standard PyInstaller build targets the launcher, bolt tool, and tolerance
+apps with the normal `pyproject.toml` dependencies. It includes the PyVista /
+PyVistaQt stack used by the bolt 3D scene and STL reference-part visualization.
+
+OpenCascade/pythonocc is not a pip-only dependency in this project. If a build
+machine must exercise STEP/IGES reference geometry or the OCCT CAD viewer, first
+install Miniforge if Conda is not already available.
+
+From PowerShell with Windows Package Manager:
+
+```powershell
+winget install -e --id CondaForge.Miniforge3
+```
+
+If `winget` is unavailable, download the Windows x86_64 installer from the
+official conda-forge Miniforge download page:
+
+```text
+https://conda-forge.org/download/
+```
+
+After installing, open a new Miniforge Prompt or PowerShell window and verify:
+
+```powershell
+conda --version
+```
+
+Then create and activate the pinned CAD environment from the repository root:
+
+```powershell
+conda env create -f environment-cad312.yml
+conda activate mdts-cad312
+$env:PYTHONNOUSERSITE="1"
+```
+
+That environment uses Python 3.12 and `pythonocc-core=7.7.2=*novtk*` from
+`conda-forge`, while PyQt6 is installed through the project dependencies. Avoid
+adding Conda `pyqt`, PyQt5, Qt5, or a non-`novtk` `pythonocc-core` build unless
+you are deliberately revalidating the CAD runtime.
+
 ## Build Command
 
 ```powershell
