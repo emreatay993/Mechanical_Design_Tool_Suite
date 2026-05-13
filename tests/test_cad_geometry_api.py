@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
-import zipfile
 
 from mechanical_design_tool_suite.cad_geometry_api import (
     CadImportSettings,
@@ -36,7 +35,8 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
 
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "cad_1d_tolerance"
-CATIA_CASTER_ZIP_FIXTURE = FIXTURE_DIR / "caster-assembly-7.snapshot.4.zip"
+CASTER_WHELL_FIXTURE_DIR = FIXTURE_DIR / "caster_whell_v0"
+CASTER_WHELL_STEP_FIXTURE = CASTER_WHELL_FIXTURE_DIR / "caster_wheel.stp"
 PYTHONOCC_PIP_BLOCKER = (
     "Local check: `python -m pip install --dry-run pythonocc-core` returned "
     "`No matching distribution found for pythonocc-core`."
@@ -63,23 +63,15 @@ class CadGeometryApiTest(unittest.TestCase):
                 with self.assertRaises(UnsupportedCadFormatError):
                     cad_format_from_path(filename)
 
-    def test_catia_zip_fixture_is_tracked_as_unsupported_native_cad(self) -> None:
-        self.assertTrue(CATIA_CASTER_ZIP_FIXTURE.exists())
+    def test_caster_whell_step_fixture_tracks_real_caster_geometry(self) -> None:
+        self.assertTrue(CASTER_WHELL_STEP_FIXTURE.exists())
+        self.assertEqual(
+            cad_format_from_path(CASTER_WHELL_STEP_FIXTURE),
+            CadFileFormat.STEP,
+        )
+        self.assertTrue(is_supported_neutral_cad(CASTER_WHELL_STEP_FIXTURE))
 
-        with zipfile.ZipFile(CATIA_CASTER_ZIP_FIXTURE, "r") as archive:
-            names = sorted(archive.namelist())
-
-        self.assertIn("Assemblage.CATProduct", names)
-        self.assertIn("P1 0,357kg.CATPart", names)
-        self.assertTrue(any(name.lower().endswith(".catpart") for name in names))
-        self.assertTrue(any(name.lower().endswith(".catproduct") for name in names))
-        self.assertFalse(any(is_supported_neutral_cad(name) for name in names))
-
-        for filename in (
-            CATIA_CASTER_ZIP_FIXTURE.name,
-            "Assemblage.CATProduct",
-            "P1 0,357kg.CATPart",
-        ):
+        for filename in ("Assemblage.CATProduct", "P1 0,357kg.CATPart"):
             with self.subTest(filename=filename):
                 self.assertFalse(is_supported_neutral_cad(filename))
                 with self.assertRaises(UnsupportedCadFormatError):
@@ -264,6 +256,21 @@ class OccCadGeometryAdapterTest(unittest.TestCase):
         document = session.import_file(fixture)
 
         self.assertEqual(document.file_format, CadFileFormat.STEP)
+        self.assertTrue(session.assembly_tree())
+        self.assertTrue(session.shape_references())
+        self.assertTrue(session.feature_references())
+
+    def test_caster_whell_step_fixture_imports_when_occ_is_available(self) -> None:
+        if not is_occ_available():
+            self.skipTest(f"{OCC_DEPENDENCY_MESSAGE} {PYTHONOCC_PIP_BLOCKER}")
+        if not CASTER_WHELL_STEP_FIXTURE.exists():
+            self.skipTest(f"Caster STEP fixture is not present: {CASTER_WHELL_STEP_FIXTURE}")
+
+        session = OccCadGeometrySession()
+        document = session.import_file(CASTER_WHELL_STEP_FIXTURE)
+
+        self.assertEqual(document.file_format, CadFileFormat.STEP)
+        self.assertEqual(document.display_name, "caster_wheel.stp")
         self.assertTrue(session.assembly_tree())
         self.assertTrue(session.shape_references())
         self.assertTrue(session.feature_references())

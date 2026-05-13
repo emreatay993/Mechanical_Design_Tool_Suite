@@ -10,7 +10,7 @@ This directory is reserved for small, trackable fixtures for the CAD 1D toleranc
 | CAD1D-IGES-BREP-001 | `neutral_iges_single_part.igs` | Minimal IGES B-Rep part with planar and cylindrical faces. | IGES import support and shape reference serialization smoke tests. |
 | CAD1D-NON1D-001 | `offset_rotational_warning.step` | Neutral fixture with laterally offset or rotationally sensitive features. | Non-1D warning heuristic tests. |
 | CAD1D-PROJECT-001 | `sample_cad_1d_project.tolproj` | Deterministic project JSON using CAD references and several contributors. | Persistence, report, and UI model tests after P02/P04/P06. |
-| CAD1D-NATIVE-CATIA-ZIP-001 | `caster-assembly-7.snapshot.4.zip` | User-provided caster wheel archive containing CATIA native `.CATProduct`/`.CATPart` files and reference JPEGs. | Negative fixture proving native commercial CAD archives remain unsupported by the neutral STEP/IGES P0 import path. |
+| CAD1D-CASTER-WHELL-STEP-001 | `caster_whell_v0/caster_wheel.stp` | User-provided caster wheel assembly converted from CATIA native files to STEP. | Real caster geometry import smoke tests in the OCCT `mdts-cad312` runtime. |
 | BOLT-REF-STL-001 | `simple_reference.stl` | Minimal ASCII STL mesh in millimeters for bolt visual reference overlays. | Reference geometry import, mesh metadata, and bolt GUI reference-tree tests. |
 
 ## Constraints
@@ -18,8 +18,7 @@ This directory is reserved for small, trackable fixtures for the CAD 1D toleranc
 - Keep fixtures small enough for source control review.
 - Prefer ASCII filenames and stable units in millimeters.
 - Do not commit commercial or proprietary CAD files.
-- STEP/IGES fixtures must be neutral-format only for P0.
-- The CATIA caster archive is retained only as a user-provided negative fixture; it must not be treated as an accepted import fixture until a future native-CAD packet explicitly adds that scope.
+- STEP/IGES fixtures are the only accepted B-Rep import fixtures for P0.
 - If a binary CAD fixture is too large or licensing is unclear, document the generator script or external storage location instead of committing the file.
 
 ## P03 Neutral CAD Adapter Status

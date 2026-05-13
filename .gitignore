@@ -14,3 +14,8 @@ docs/cad_1d_tolerance_tool/source_artifacts/demos/*
 !docs/cad_1d_tolerance_tool/source_artifacts/demos/README.md
 docs/cad_1d_tolerance_tool/source_artifacts/screenshots/*
 !docs/cad_1d_tolerance_tool/source_artifacts/screenshots/README.md
+
+# User-provided caster fixture: track only the STEP test export.
+tests/fixtures/cad_1d_tolerance/caster_whell_v0/*.CATProduct
+tests/fixtures/cad_1d_tolerance/caster_whell_v0/*.CATPart
+tests/fixtures/cad_1d_tolerance/caster_whell_v0/*.jpeg
