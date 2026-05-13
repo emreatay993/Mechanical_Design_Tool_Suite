@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
+import zipfile
 
 from mechanical_design_tool_suite.cad_geometry_api import (
     CadImportSettings,
@@ -35,6 +36,7 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
 
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "cad_1d_tolerance"
+CATIA_CASTER_ZIP_FIXTURE = FIXTURE_DIR / "caster-assembly-7.snapshot.4.zip"
 PYTHONOCC_PIP_BLOCKER = (
     "Local check: `python -m pip install --dry-run pythonocc-core` returned "
     "`No matching distribution found for pythonocc-core`."
@@ -56,6 +58,28 @@ class CadGeometryApiTest(unittest.TestCase):
                 self.assertTrue(is_supported_neutral_cad(filename))
 
         for filename in ("native.sldprt", "mesh.stl", "viewer.obj"):
+            with self.subTest(filename=filename):
+                self.assertFalse(is_supported_neutral_cad(filename))
+                with self.assertRaises(UnsupportedCadFormatError):
+                    cad_format_from_path(filename)
+
+    def test_catia_zip_fixture_is_tracked_as_unsupported_native_cad(self) -> None:
+        self.assertTrue(CATIA_CASTER_ZIP_FIXTURE.exists())
+
+        with zipfile.ZipFile(CATIA_CASTER_ZIP_FIXTURE, "r") as archive:
+            names = sorted(archive.namelist())
+
+        self.assertIn("Assemblage.CATProduct", names)
+        self.assertIn("P1 0,357kg.CATPart", names)
+        self.assertTrue(any(name.lower().endswith(".catpart") for name in names))
+        self.assertTrue(any(name.lower().endswith(".catproduct") for name in names))
+        self.assertFalse(any(is_supported_neutral_cad(name) for name in names))
+
+        for filename in (
+            CATIA_CASTER_ZIP_FIXTURE.name,
+            "Assemblage.CATProduct",
+            "P1 0,357kg.CATPart",
+        ):
             with self.subTest(filename=filename):
                 self.assertFalse(is_supported_neutral_cad(filename))
                 with self.assertRaises(UnsupportedCadFormatError):
