@@ -24,6 +24,10 @@ from .visualization import (
 
 REFERENCE_COLOR = "#9fb4c8"
 SELECTED_EDGE_COLOR = "#f0b429"
+BOLT_NODE_SIZE_DEFAULT = 22
+BOLT_NODE_SIZE_MIN = 8
+BOLT_NODE_SIZE_MAX = 56
+BOLT_NODE_SIZE_STEP = 2
 
 
 class BoltReferenceSceneWidget(QWidget):
@@ -41,6 +45,7 @@ class BoltReferenceSceneWidget(QWidget):
         self._reference_mesh_assets: dict[str, list[ReferenceMeshAsset]] = {}
         self._selected_reference_part_ids: set[str] = set()
         self._axis_visibility = {"x": True, "y": True, "z": True}
+        self._bolt_node_size = BOLT_NODE_SIZE_DEFAULT
         self._results: list[BoltCalculationResult] = []
         self._scalar_name = "Margin"
         self._last_result_geometry_key: tuple[tuple[str, float | None, float | None, float | None], ...] = ()
@@ -110,6 +115,10 @@ class BoltReferenceSceneWidget(QWidget):
     def last_draw_reset_camera(self) -> bool | None:
         return self._last_draw_reset_camera
 
+    @property
+    def bolt_node_size(self) -> int:
+        return self._bolt_node_size
+
     def set_results(
         self,
         results: list[BoltCalculationResult],
@@ -156,7 +165,7 @@ class BoltReferenceSceneWidget(QWidget):
             name="bolt_result_nodes",
             scalars=self._scalar_name,
             render_points_as_spheres=True,
-            point_size=22,
+            point_size=self._bolt_node_size,
             cmap=VISUALIZATION_CMAP,
             clim=local_scalar_range(scalar_values),
             scalar_bar_args=scalar_bar_args,
@@ -226,6 +235,15 @@ class BoltReferenceSceneWidget(QWidget):
         self._axis_visibility[key] = bool(visible)
         self._apply_axis_visibility()
         self._render()
+
+    def set_bolt_node_size(self, point_size: int) -> None:
+        self._bolt_node_size = _clamp_bolt_node_size(point_size)
+        if self._results and results_have_coordinates(self._results):
+            self._draw_results(reset_camera=False)
+
+    def adjust_bolt_node_size(self, delta: int) -> int:
+        self.set_bolt_node_size(self._bolt_node_size + int(delta))
+        return self._bolt_node_size
 
     def clear_results(self) -> None:
         self.set_results([], self._scalar_name)
@@ -395,6 +413,10 @@ def _result_geometry_key(
         )
         for result in results
     )
+
+
+def _clamp_bolt_node_size(point_size: int) -> int:
+    return max(BOLT_NODE_SIZE_MIN, min(BOLT_NODE_SIZE_MAX, int(point_size)))
 
 
 def _set_actor_visibility(actor: Any, visible: bool) -> None:

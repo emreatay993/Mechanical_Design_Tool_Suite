@@ -122,6 +122,17 @@ class GuiStateTest(unittest.TestCase):
         self.assertFalse(self.window.scene_widget.axis_visibility["y"])
         self.assertFalse(self.window.scene_widget.axis_visibility["z"])
 
+    def test_bolt_node_size_slider_and_shortcut_update_scene_state(self) -> None:
+        self.window.bolt_node_size_slider.setValue(30)
+        self.app.processEvents()
+
+        self.assertEqual(self.window.scene_widget.bolt_node_size, 30)
+        self.assertEqual(self.window.bolt_node_size_label.text(), "Bolt node size: 30")
+
+        self.window._adjust_bolt_node_size(2)
+        self.assertEqual(self.window.scene_widget.bolt_node_size, 32)
+        self.assertEqual(self.window.bolt_node_size_slider.value(), 32)
+
 
 if __name__ == "__main__":
     unittest.main()

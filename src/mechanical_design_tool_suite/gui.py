@@ -8,7 +8,14 @@ from pathlib import Path
 
 try:
     from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QColor, QFont, QFontDatabase, QPalette
+    from PyQt6.QtGui import (
+        QColor,
+        QFont,
+        QFontDatabase,
+        QKeySequence,
+        QPalette,
+        QShortcut,
+    )
     from PyQt6.QtWidgets import (
         QAbstractItemView,
         QApplication,
@@ -53,7 +60,13 @@ from .calculations import (
     calculate_bolt_group,
     resolve_constants,
 )
-from .bolt_reference_scene import BoltReferenceSceneWidget
+from .bolt_reference_scene import (
+    BOLT_NODE_SIZE_DEFAULT,
+    BOLT_NODE_SIZE_MAX,
+    BOLT_NODE_SIZE_MIN,
+    BOLT_NODE_SIZE_STEP,
+    BoltReferenceSceneWidget,
+)
 from .io import ParsedTable, parse_load_table
 from .reference_geometry import (
     REFERENCE_DEFAULT_OPACITY,
@@ -100,6 +113,8 @@ class BoltCalculationApp(QMainWindow):
         self.reference_parts: dict[str, ReferencePart] = {}
         self.reference_tree_items: dict[str, QTreeWidgetItem] = {}
         self._suppress_reference_tree_events = False
+        self._suppress_bolt_node_size_events = False
+        self._scene_shortcuts: list[QShortcut] = []
         self.scene_window: _SceneWindow | None = None
 
         self.setWindowTitle("Bolt Calculation Tool Prototype")
@@ -279,6 +294,7 @@ class BoltCalculationApp(QMainWindow):
         self.margin_basis_combo.currentTextChanged.connect(self._mark_input_dirty)
         self.scalar_combo.currentTextChanged.connect(self._on_scalar_changed)
         self.results_table.itemSelectionChanged.connect(self._on_result_selection_changed)
+        self._install_scene_shortcuts()
         self._set_result_actions_enabled(False)
 
     def _build_scene_tab(self) -> QWidget:
@@ -366,6 +382,24 @@ class BoltCalculationApp(QMainWindow):
         axis_row.addStretch(1)
         layout.addLayout(axis_row)
 
+        self.bolt_node_size_label = QLabel(
+            f"Bolt node size: {BOLT_NODE_SIZE_DEFAULT}"
+        )
+        self.bolt_node_size_label.setObjectName("ControlLabel")
+        layout.addWidget(self.bolt_node_size_label)
+        self.bolt_node_size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bolt_node_size_slider.setRange(BOLT_NODE_SIZE_MIN, BOLT_NODE_SIZE_MAX)
+        self.bolt_node_size_slider.setSingleStep(BOLT_NODE_SIZE_STEP)
+        self.bolt_node_size_slider.setPageStep(BOLT_NODE_SIZE_STEP * 2)
+        self.bolt_node_size_slider.setValue(BOLT_NODE_SIZE_DEFAULT)
+        self.bolt_node_size_slider.setToolTip(
+            "Change bolt node sphere size. Shortcuts: Ctrl++ / Ctrl+-."
+        )
+        self.bolt_node_size_slider.valueChanged.connect(
+            self._on_bolt_node_size_changed
+        )
+        layout.addWidget(self.bolt_node_size_slider)
+
         self.reference_tree = QTreeWidget()
         self.reference_tree.setHeaderLabels(["Name"])
         self.reference_tree.setSelectionMode(
@@ -419,6 +453,33 @@ class BoltCalculationApp(QMainWindow):
             )
         )
         return checkbox
+
+    def _install_scene_shortcuts(self) -> None:
+        shortcuts = (
+            ("Ctrl++", BOLT_NODE_SIZE_STEP),
+            ("Ctrl+=", BOLT_NODE_SIZE_STEP),
+            ("Ctrl+-", -BOLT_NODE_SIZE_STEP),
+        )
+        for sequence, delta in shortcuts:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(
+                lambda delta_value=delta: self._adjust_bolt_node_size(delta_value)
+            )
+            self._scene_shortcuts.append(shortcut)
+
+    def _on_bolt_node_size_changed(self, value: int) -> None:
+        self.bolt_node_size_label.setText(f"Bolt node size: {value}")
+        if self._suppress_bolt_node_size_events:
+            return
+        self.scene_widget.set_bolt_node_size(value)
+
+    def _adjust_bolt_node_size(self, delta: int) -> None:
+        size = self.scene_widget.adjust_bolt_node_size(delta)
+        self._suppress_bolt_node_size_events = True
+        self.bolt_node_size_slider.setValue(size)
+        self._suppress_bolt_node_size_events = False
+        self.bolt_node_size_label.setText(f"Bolt node size: {size}")
 
     def _readonly_value(self, text: str) -> QLabel:
         label = QLabel(text)

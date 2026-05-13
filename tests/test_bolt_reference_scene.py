@@ -8,7 +8,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pyvista as pv
 from PyQt6.QtWidgets import QApplication
 
-from mechanical_design_tool_suite.bolt_reference_scene import BoltReferenceSceneWidget
+from mechanical_design_tool_suite.bolt_reference_scene import (
+    BOLT_NODE_SIZE_DEFAULT,
+    BOLT_NODE_SIZE_MAX,
+    BOLT_NODE_SIZE_MIN,
+    BOLT_NODE_SIZE_STEP,
+    BoltReferenceSceneWidget,
+)
 from mechanical_design_tool_suite.calculations import calculate_bolt_group, resolve_constants
 from mechanical_design_tool_suite.reference_geometry import (
     ReferenceMeshAsset,
@@ -84,6 +90,25 @@ class BoltReferenceSceneWidgetTest(unittest.TestCase):
 
         self.widget.set_results(results, "Fiber Stress", reset_camera=True)
         self.assertTrue(self.widget.last_draw_reset_camera)
+
+    def test_bolt_node_size_is_adjustable_and_clamped_without_camera_reset(self) -> None:
+        results = calculate_bolt_group(
+            example_scenario_loads(),
+            resolve_constants(".2500-28", "MINOR"),
+        )
+        self.widget.set_results(results, "Margin")
+
+        self.widget.set_bolt_node_size(BOLT_NODE_SIZE_DEFAULT + BOLT_NODE_SIZE_STEP)
+        self.assertEqual(
+            self.widget.bolt_node_size,
+            BOLT_NODE_SIZE_DEFAULT + BOLT_NODE_SIZE_STEP,
+        )
+        self.assertFalse(self.widget.last_draw_reset_camera)
+
+        self.widget.adjust_bolt_node_size(10_000)
+        self.assertEqual(self.widget.bolt_node_size, BOLT_NODE_SIZE_MAX)
+        self.widget.adjust_bolt_node_size(-10_000)
+        self.assertEqual(self.widget.bolt_node_size, BOLT_NODE_SIZE_MIN)
 
     def test_scalar_legend_is_left_vertical_and_scales_with_window_size(self) -> None:
         self.widget.resize(420, 300)
