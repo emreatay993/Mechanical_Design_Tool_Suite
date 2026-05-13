@@ -18,6 +18,7 @@ mechanical-design-tool-suite = "mechanical_design_tool_suite.launcher:main"
 bolt-calc-gui = "mechanical_design_tool_suite.gui:main"
 tolerance-analysis-gui = "mechanical_design_tool_suite.tolerance_gui:main"
 tolerance-analysis-vnext-gui = "mechanical_design_tool_suite.tolerance_vnext_gui:main"
+cad-1d-tolerance-gui = "mechanical_design_tool_suite.cad_tolerance_gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
