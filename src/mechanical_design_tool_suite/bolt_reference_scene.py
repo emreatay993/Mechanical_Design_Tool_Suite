@@ -43,6 +43,8 @@ class BoltReferenceSceneWidget(QWidget):
         self._axis_visibility = {"x": True, "y": True, "z": True}
         self._results: list[BoltCalculationResult] = []
         self._scalar_name = "Margin"
+        self._last_result_geometry_key: tuple[tuple[str, float | None, float | None, float | None], ...] = ()
+        self._last_draw_reset_camera: bool | None = None
         self._active_scalar_bar_title: str | None = None
         self._last_scalar_bar_args: dict[str, Any] = {}
         self._resize_refresh_timer = QTimer(self)
@@ -104,18 +106,32 @@ class BoltReferenceSceneWidget(QWidget):
     def last_scalar_bar_args(self) -> dict[str, Any]:
         return dict(self._last_scalar_bar_args)
 
+    @property
+    def last_draw_reset_camera(self) -> bool | None:
+        return self._last_draw_reset_camera
+
     def set_results(
         self,
         results: list[BoltCalculationResult],
         scalar_name: str,
+        reset_camera: bool | None = None,
     ) -> None:
         """Display bolt result nodes with the selected scalar contour."""
 
-        self._results = list(results)
+        next_results = list(results)
+        geometry_key = _result_geometry_key(next_results)
+        should_reset_camera = (
+            bool(geometry_key and geometry_key != self._last_result_geometry_key)
+            if reset_camera is None
+            else bool(reset_camera)
+        )
+        self._results = next_results
         self._scalar_name = scalar_name
-        self._draw_results(reset_camera=True)
+        self._last_result_geometry_key = geometry_key
+        self._draw_results(reset_camera=should_reset_camera)
 
     def _draw_results(self, reset_camera: bool) -> None:
+        self._last_draw_reset_camera = bool(reset_camera)
         self._clear_bolt_actors()
         if (
             self._plotter is None
@@ -126,7 +142,7 @@ class BoltReferenceSceneWidget(QWidget):
             return
 
         pv = _import_pyvista()
-        scalar_values = scalar_values_for_results(self._results, scalar_name)
+        scalar_values = scalar_values_for_results(self._results, self._scalar_name)
         points = [
             (result.load.x_mm, result.load.y_mm, result.load.z_mm)
             for result in self._results
@@ -134,18 +150,18 @@ class BoltReferenceSceneWidget(QWidget):
         cloud = pv.PolyData(points)
         for name, getter in SCALAR_CHOICES.items():
             cloud[name] = [getter(result) for result in self._results]
-        scalar_bar_args = self._scalar_bar_args(scalar_name)
+        scalar_bar_args = self._scalar_bar_args(self._scalar_name)
         self._bolt_actor = self._plotter.add_mesh(
             cloud,
             name="bolt_result_nodes",
-            scalars=scalar_name,
+            scalars=self._scalar_name,
             render_points_as_spheres=True,
             point_size=22,
             cmap=VISUALIZATION_CMAP,
             clim=local_scalar_range(scalar_values),
             scalar_bar_args=scalar_bar_args,
         )
-        self._active_scalar_bar_title = scalar_name
+        self._active_scalar_bar_title = self._scalar_name
         self._last_scalar_bar_args = scalar_bar_args
         self._label_actor = self._plotter.add_point_labels(
             points,
@@ -365,6 +381,20 @@ def _import_pyvista() -> Any:
     except ImportError as exc:
         raise RuntimeError("PyVista is required for the bolt reference scene.") from exc
     return pv
+
+
+def _result_geometry_key(
+    results: list[BoltCalculationResult],
+) -> tuple[tuple[str, float | None, float | None, float | None], ...]:
+    return tuple(
+        (
+            result.load.name,
+            result.load.x_mm,
+            result.load.y_mm,
+            result.load.z_mm,
+        )
+        for result in results
+    )
 
 
 def _set_actor_visibility(actor: Any, visible: bool) -> None:

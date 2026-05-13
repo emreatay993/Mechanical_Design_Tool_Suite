@@ -66,10 +66,24 @@ class BoltReferenceSceneWidgetTest(unittest.TestCase):
         )
 
         self.widget.set_results(results, "Margin")
+        self.assertTrue(self.widget.last_draw_reset_camera)
         self.widget.set_results(results, "Fiber Stress")
+        self.assertFalse(self.widget.last_draw_reset_camera)
         self.widget.clear_results()
 
         self.assertEqual(self.widget.reference_part_ids, ())
+
+    def test_explicit_camera_reset_override_is_available(self) -> None:
+        results = calculate_bolt_group(
+            example_scenario_loads(),
+            resolve_constants(".2500-28", "MINOR"),
+        )
+
+        self.widget.set_results(results, "Margin", reset_camera=False)
+        self.assertFalse(self.widget.last_draw_reset_camera)
+
+        self.widget.set_results(results, "Fiber Stress", reset_camera=True)
+        self.assertTrue(self.widget.last_draw_reset_camera)
 
     def test_scalar_legend_is_left_vertical_and_scales_with_window_size(self) -> None:
         self.widget.resize(420, 300)
