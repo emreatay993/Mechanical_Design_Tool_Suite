@@ -44,6 +44,24 @@ The deeper pre-implementation visual review has already been completed. Do not s
 | P06 | Results dashboard and report generation | After P01; can use fixture projects |
 | P07 | Integration, fidelity pass, and packaging spike | Last |
 
+## Completed Packet Contracts
+
+### P02 Project Persistence
+
+P02 is implemented and pushed in commit `d91e321` (`Add CAD tolerance project persistence`). Later packets must use the existing CAD persistence module instead of creating a parallel JSON shape or alternate serializer:
+
+- API: `src/mechanical_design_tool_suite/cad_tolerance_project_io.py`
+- Public functions: `save_project(project, path)`, `load_project(path)`, and `migrate_project_data(data)`
+- Project suffix: `.tolproj`
+- Required envelope: `project_type = "cad_1d_tolerance"` and current `schema_version = 2`
+- Serialization authority: P01 `CadToleranceProject.to_dict()` / `CadToleranceProject.from_dict()` and nested domain object serializers
+- Migration policy: load through `migrate_project_data`; schema v1 is migrated to v2, unsupported future schema versions fail explicitly
+- Forward-compatible fields: unknown keys under a valid known schema are ignored by the domain loader
+- Fixture: `tests/fixtures/cad_1d_tolerance/sample_cad_1d_project.tolproj`
+- Verification: `$env:PYTHONPATH="src"; python -m unittest tests.test_cad_tolerance_project_io`
+
+Future UI, workflow, report, and integration packets should round-trip projects through `load_project` / `save_project` and extend the P01 domain model deliberately if new persisted fields are needed. Do not persist Qt, OCCT, AIS/V3d, or other runtime handles in `.tolproj`; store serializable ids, metadata, references, snapshots, and report manifest entries only.
+
 ## Neutral CAD Constraint
 
 P0 CAD support is limited to non-commercial neutral formats: STEP AP203/AP214/AP242 and IGES. Native Inventor, CATIA, NX, Creo, SOLIDWORKS, JT, and direct CAD add-ins are out of scope for initial implementation.
