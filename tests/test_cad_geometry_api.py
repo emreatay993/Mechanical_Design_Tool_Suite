@@ -3,6 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
+from mechanical_design_tool_suite.cad_display_style import (
+    display_color_for_part,
+    normalize_rgb_triplet,
+    rgb_bytes_to_unit,
+)
 from mechanical_design_tool_suite.cad_geometry_api import (
     CadImportSettings,
     GeometryIndex,
@@ -44,6 +49,13 @@ PYTHONOCC_PIP_BLOCKER = (
 
 
 class CadGeometryApiTest(unittest.TestCase):
+    def test_display_style_palette_is_stable_and_normalized(self) -> None:
+        self.assertEqual(display_color_for_part("top_plate:1", 1), (66, 84, 150))
+        self.assertEqual(display_color_for_part("axle_support:1", 2), (165, 109, 61))
+        self.assertEqual(display_color_for_part("wheel:1", 3), (217, 196, 116))
+        self.assertEqual(normalize_rgb_triplet((-10, 127.6, 300)), (0, 128, 255))
+        self.assertEqual(rgb_bytes_to_unit((255, 128, 0)), (1.0, 128 / 255.0, 0.0))
+
     def test_neutral_format_detection_is_limited_to_step_and_iges(self) -> None:
         cases = {
             "part.step": CadFileFormat.STEP,
@@ -259,6 +271,16 @@ class OccCadGeometryAdapterTest(unittest.TestCase):
         self.assertTrue(session.assembly_tree())
         self.assertTrue(session.shape_references())
         self.assertTrue(session.feature_references())
+        body_colors = [
+            child.display_color
+            for root in session.assembly_tree()
+            for child in root.children
+            if child.node_type == AssemblyNodeType.BODY
+        ]
+        self.assertTrue(body_colors)
+        self.assertTrue(all(color is not None for color in body_colors))
+        if len(body_colors) > 1:
+            self.assertGreater(len(set(body_colors)), 1)
 
     def test_caster_whell_step_fixture_imports_when_occ_is_available(self) -> None:
         if not is_occ_available():

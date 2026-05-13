@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from .cad_geometry_api import CadGeometrySession, feature_from_shape_reference
-from .cad_tolerance_models import FeatureReference, ShapeKind, ShapeReference, Snapshot
+from .cad_display_style import display_color_for_part, rgb_bytes_to_unit
+from .cad_tolerance_models import (
+    AssemblyNode,
+    FeatureReference,
+    ShapeKind,
+    ShapeReference,
+    Snapshot,
+)
 from .cad_viewer_api import (
     CadCameraState,
     CadViewerError,
@@ -34,10 +41,17 @@ try:
     from PyQt6.QtCore import pyqtSignal
     from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
+    from OCC.Core.Aspect import Aspect_GFM_VER, Aspect_TOL_SOLID
     from OCC.Display.backend import load_backend
 
     load_backend("pyqt6")
     from OCC.Core.AIS import AIS_Shape
+    from OCC.Core.Graphic3d import (
+        Graphic3d_MaterialAspect,
+        Graphic3d_NOM_SATIN,
+        Graphic3d_TypeOfShadingModel_Phong,
+    )
+    from OCC.Core.Prs3d import Prs3d_LineAspect
     from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
     from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_VERTEX
     from OCC.Display.qtDisplay import qtViewer3d
@@ -47,6 +61,12 @@ except Exception as exc:  # pragma: no cover - exercised without CAD deps.
     QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
     AIS_Shape = None  # type: ignore[assignment]
+    Aspect_GFM_VER = None  # type: ignore[assignment]
+    Aspect_TOL_SOLID = None  # type: ignore[assignment]
+    Graphic3d_MaterialAspect = None  # type: ignore[assignment]
+    Graphic3d_NOM_SATIN = None  # type: ignore[assignment]
+    Graphic3d_TypeOfShadingModel_Phong = None  # type: ignore[assignment]
+    Prs3d_LineAspect = None  # type: ignore[assignment]
     Quantity_Color = None  # type: ignore[assignment]
     Quantity_TOC_RGB = None  # type: ignore[assignment]
     TopAbs_EDGE = None  # type: ignore[assignment]
@@ -126,6 +146,7 @@ if _IMPORT_ERROR is None:
                 self._display = self._viewer._display
                 self._context = self._display.Context
                 self._display.SetModeShaded()
+                self._apply_view_style()
                 self._display.register_select_callback(self._on_occ_selection)
                 self._initialized = True
                 self._apply_selection_modes()
@@ -150,18 +171,22 @@ if _IMPORT_ERROR is None:
             if not shape_refs and ShapeKind.BODY in display_kinds:
                 shape_refs = session.shape_references()
 
-            for shape_ref in shape_refs:
+            for display_index, shape_ref in enumerate(shape_refs, start=1):
                 occ_shape = self._kernel_shapes_by_shape_id.get(shape_ref.id)
                 if occ_shape is None:
                     continue
+                color_rgb = _shape_display_rgb(session, shape_ref, display_index)
                 ais_shapes = self._display.DisplayShape(  # type: ignore[union-attr]
                     occ_shape,
-                    color=_quantity_color((0.74, 0.78, 0.82)),
+                    material=Graphic3d_MaterialAspect(Graphic3d_NOM_SATIN),
+                    color=_quantity_color(color_rgb),
                     transparency=0.0,
                     update=False,
                 )
                 if not ais_shapes:
                     continue
+                for ais_shape in ais_shapes:
+                    _apply_object_style(ais_shape, color_rgb)
                 self._displayed_ais_by_shape_id[shape_ref.id] = ais_shapes[0]
                 self._displayed_shape_refs[shape_ref.id] = shape_ref
 
@@ -320,6 +345,48 @@ if _IMPORT_ERROR is None:
                     self._context.Activate(AIS_Shape.SelectionMode(topology_mode), True)
             self._context.UpdateSelected(True)
 
+        def _apply_view_style(self) -> None:
+            """Apply viewport styling without making OCC version-specific calls fatal."""
+
+            _try_call(
+                self._display.set_bg_gradient_color,
+                [196, 198, 200],
+                [232, 233, 235],
+                Aspect_GFM_VER,
+            )
+            _try_call(self._display.display_triedron)
+
+            viewer = getattr(self._display, "Viewer", None)
+            if viewer is not None:
+                _try_call(viewer.SetDefaultLights)
+                _try_call(viewer.SetLightOn)
+                _try_call(
+                    viewer.SetDefaultShadingModel,
+                    Graphic3d_TypeOfShadingModel_Phong,
+                )
+
+            view = getattr(self._display, "View", None)
+            if view is not None:
+                _try_call(view.SetLightOn)
+                _try_call(view.SetShadingModel, Graphic3d_TypeOfShadingModel_Phong)
+                try:
+                    params = view.ChangeRenderingParams()
+                    params.IsAntialiasingEnabled = True
+                    params.NbMsaaSamples = 4
+                    params.ShadingModel = Graphic3d_TypeOfShadingModel_Phong
+                except Exception:
+                    pass
+
+            if self._context is not None:
+                drawer = self._context.DefaultDrawer()
+                boundary = Prs3d_LineAspect(
+                    _quantity_color((0.17, 0.19, 0.21)),
+                    Aspect_TOL_SOLID,
+                    1.0,
+                )
+                _try_call(drawer.SetFaceBoundaryDraw, True)
+                _try_call(drawer.SetFaceBoundaryAspect, boundary)
+
         def _on_occ_selection(self, selected_shapes: list[Any], *screen_args: Any) -> None:
             selections: list[CadViewerSelection] = []
             screen_position = _screen_position(screen_args)
@@ -390,8 +457,64 @@ def _highlight_style(role: HighlightRole) -> tuple[tuple[float, float, float], f
     return styles[role]
 
 
+def _shape_display_rgb(
+    session: CadGeometrySession,
+    shape_ref: ShapeReference,
+    display_index: int,
+) -> tuple[float, float, float]:
+    display_color = _assembly_display_color(session, shape_ref.assembly_path)
+    if display_color is None:
+        part_name = (
+            shape_ref.assembly_path[-1]
+            if shape_ref.assembly_path
+            else shape_ref.fallback_display_name
+        )
+        display_color = display_color_for_part(part_name, display_index)
+    return rgb_bytes_to_unit(display_color)
+
+
+def _assembly_display_color(
+    session: CadGeometrySession,
+    assembly_path: list[str],
+) -> tuple[int, int, int] | None:
+    if not assembly_path:
+        return None
+    for root in session.assembly_tree():
+        match = _find_assembly_node_by_path(root, assembly_path)
+        if match is not None and match.display_color is not None:
+            return match.display_color
+    return None
+
+
+def _find_assembly_node_by_path(
+    node: AssemblyNode,
+    path: list[str],
+) -> AssemblyNode | None:
+    if not path or node.name != path[0]:
+        return None
+    if len(path) == 1:
+        return node
+    for child in node.children:
+        match = _find_assembly_node_by_path(child, path[1:])
+        if match is not None:
+            return match
+    return None
+
+
+def _apply_object_style(ais_shape: Any, color_rgb: tuple[float, float, float]) -> None:
+    _try_call(ais_shape.SetColor, _quantity_color(color_rgb))
+    _try_call(ais_shape.SetMaterial, Graphic3d_MaterialAspect(Graphic3d_NOM_SATIN))
+
+
 def _quantity_color(rgb: tuple[float, float, float]) -> Any:
     return Quantity_Color(float(rgb[0]), float(rgb[1]), float(rgb[2]), Quantity_TOC_RGB)
+
+
+def _try_call(callable_obj: Any, *args: Any) -> None:
+    try:
+        callable_obj(*args)
+    except Exception:
+        pass
 
 
 def _topods_same(a: Any, b: Any) -> bool:

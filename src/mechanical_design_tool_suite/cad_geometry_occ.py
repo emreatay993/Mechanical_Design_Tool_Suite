@@ -10,6 +10,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
 
+from .cad_display_style import display_color_for_part
 from .cad_geometry_api import (
     CadGeometryError,
     CadGeometrySession,
@@ -167,6 +168,7 @@ class OccCadGeometrySession(CadGeometrySession):
                 name=f"Body {body_index}",
                 node_type=AssemblyNodeType.BODY,
                 parent_id=root_node.id,
+                display_color=display_color_for_part(f"Body {body_index}", body_index),
                 source_label=f"body:{body_index}",
             )
             root_node.children.append(body_node)
