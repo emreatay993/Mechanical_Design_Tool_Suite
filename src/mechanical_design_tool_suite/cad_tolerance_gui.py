@@ -47,7 +47,8 @@ except ImportError as exc:  # pragma: no cover - exercised only without GUI deps
     ) from exc
 
 from .cad_geometry_occ import CadKernelUnavailable, OccCadGeometrySession
-from .cad_tolerance_models import CadDocument, ShapeKind, Snapshot
+from .cad_stackup_workflow import GuidedStackupWorkflowController, GuidedToolbarState
+from .cad_tolerance_models import CadDocument, CadToleranceProject, ShapeKind, Snapshot
 from .cad_tolerance_project_io import load_project
 from .cad_tolerance_viewmodels import (
     DETAIL_COLUMNS,
@@ -62,7 +63,7 @@ from .cad_tolerance_viewmodels import (
     ContributionBarRow,
     StackupSummaryRow,
 )
-from .cad_viewer_api import CadCameraState, CadViewer, CadViewerUnavailable, HighlightRole, SnapshotRequest, StandardView, ViewerSelectionMode
+from .cad_viewer_api import CadCameraState, CadViewer, CadViewerSelection, CadViewerUnavailable, HighlightRole, SnapshotRequest, StandardView, ViewerSelectionMode
 from .cad_viewer_occ import OccCadViewerWidget
 
 
@@ -260,6 +261,8 @@ class CadViewportHost(QFrame):
         self.setObjectName("CadViewportHost")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.viewer = viewer
+        self._step_buttons: dict[str, QPushButton] = {}
+        self._control_buttons: dict[str, QPushButton] = {}
 
         stack = QStackedLayout(self)
         stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
@@ -305,12 +308,40 @@ class CadViewportHost(QFrame):
             button.setObjectName(f"GuidedStep{index}")
             button.setCheckable(True)
             button.setChecked(index == 0)
+            self._step_buttons[step] = button
             layout.addWidget(button, index // 2, index % 2)
+        self.guided_prompt = QLabel("Select a face, edge or vertex")
+        self.guided_prompt.setObjectName("GuidedPromptLabel")
+        self.guided_prompt.setWordWrap(True)
+        layout.addWidget(self.guided_prompt, 3, 0, 1, 2)
+        self.component_counter = QLabel("0 Components")
+        self.component_counter.setObjectName("GuidedComponentCounter")
+        self.mating_face_counter = QLabel("0 of 0 Mating Faces")
+        self.mating_face_counter.setObjectName("GuidedMatingFaceCounter")
+        layout.addWidget(self.component_counter, 3, 2)
+        layout.addWidget(self.mating_face_counter, 3, 3)
         for index, label in enumerate(("OK", "X", "+", "List")):
             button = QPushButton(label)
             button.setObjectName(f"GuidedControl{label}")
+            self._control_buttons[label] = button
             layout.addWidget(button, 4, index)
         return frame
+
+    def set_workflow_toolbar_state(self, state: GuidedToolbarState) -> None:
+        for label, button in self._step_buttons.items():
+            button.setChecked(label == state.active_label)
+        self.guided_prompt.setText(state.prompt)
+        self.component_counter.setText(state.component_count_text)
+        self.mating_face_counter.setText(state.mating_face_count_text)
+        enabled_by_label = {
+            "OK": state.check_enabled,
+            "X": state.cancel_enabled,
+            "+": state.add_enabled,
+            "List": state.list_enabled,
+        }
+        for label, enabled in enabled_by_label.items():
+            if label in self._control_buttons:
+                self._control_buttons[label].setEnabled(enabled)
 
 
 class DashboardBadgesWidget(QFrame):
@@ -425,6 +456,8 @@ class CadToleranceMainWindow(QMainWindow):
         self.geometry_session = geometry_session or OccCadGeometrySession()
         self.viewer = viewer if viewer is not None else self._create_viewer()
         self.workspace = workspace or CadToleranceWorkspaceViewModel.demo()
+        self.project = CadToleranceProject(title=self.workspace.project_title)
+        self.workflow_controller: GuidedStackupWorkflowController | None = None
 
         self.summary_model = CadStackupSummaryTableModel(self.workspace.summary_rows)
         self.detail_model = CadStackupDetailTableModel(self.workspace.detail_rows())
@@ -456,6 +489,10 @@ class CadToleranceMainWindow(QMainWindow):
         self.set_imported_document(document)
 
     def set_imported_document(self, document: CadDocument) -> None:
+        self.project = CadToleranceProject(
+            title=document.display_name or document.source_path or "Imported CAD",
+            cad_documents=[document],
+        )
         self.workspace = CadToleranceWorkspaceViewModel.from_document(document)
         self.assembly_model.set_roots(self.workspace.assembly_roots)
         self.summary_model.set_rows(self.workspace.summary_rows)
@@ -466,6 +503,7 @@ class CadToleranceMainWindow(QMainWindow):
 
     def load_project_file(self, path: str | Path) -> None:
         project = load_project(Path(path))
+        self.project = project
         self.workspace = CadToleranceWorkspaceViewModel.from_project(project)
         self.assembly_model.set_roots(self.workspace.assembly_roots)
         self.summary_model.set_rows(self.workspace.summary_rows)
@@ -488,7 +526,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.import_action.triggered.connect(self._open_dialog)
         self.export_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ArrowUp), "Export", self)
         self.new_stackup_action = QAction("New Stackup", self)
-        self.new_stackup_action.triggered.connect(lambda: self.statusBar().showMessage("Select a face, edge or vertex"))
+        self.new_stackup_action.triggered.connect(self._start_new_stackup_workflow)
         self.add_feature_action = QAction("Add Feature", self)
         self.add_feature_action.triggered.connect(lambda: self.statusBar().showMessage("Select a face, edge or vertex from the mating component"))
         self.snapshot_action = QAction("Snapshot", self)
@@ -509,7 +547,8 @@ class CadToleranceMainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("MainWorkspaceSplitter")
         splitter.addWidget(self._create_left_browser())
-        splitter.addWidget(CadViewportHost(self.viewer))
+        self.viewport_host = CadViewportHost(self.viewer)
+        splitter.addWidget(self.viewport_host)
         splitter.addWidget(self._create_analysis_pane())
         splitter.setSizes([250, 720, 620])
         root_layout.addWidget(splitter, 1)
@@ -667,6 +706,9 @@ class CadToleranceMainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.summary_table.doubleClicked.connect(lambda index: self._open_summary_index(index.row()))
         self.summary_table.activated.connect(lambda index: self._open_summary_index(index.row()))
+        selection_signal = getattr(self.viewer, "selection_changed", None)
+        if selection_signal is not None and hasattr(selection_signal, "connect"):
+            selection_signal.connect(self.handle_viewer_selections)
 
     def _open_summary_index(self, row: int) -> None:
         if row < 0 or row >= self.summary_model.rowCount():
@@ -697,6 +739,42 @@ class CadToleranceMainWindow(QMainWindow):
             badges.objectives_not_met,
             badges.sigma_rollup,
         )
+
+    def _start_new_stackup_workflow(self) -> None:
+        self.workflow_controller = GuidedStackupWorkflowController(
+            self.geometry_session,
+            self.project,
+        )
+        update = self.workflow_controller.start_new_stackup()
+        self._apply_workflow_update(update)
+
+    def handle_viewer_selections(self, selections: list[CadViewerSelection] | tuple[CadViewerSelection, ...]) -> None:
+        if self.workflow_controller is None or not selections:
+            return
+        try:
+            update = self.workflow_controller.apply_selection(selections[0])
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc))
+            return
+        self._apply_workflow_update(update)
+
+    def _apply_workflow_update(self, update) -> None:
+        self.viewport_host.set_workflow_toolbar_state(update.toolbar)
+        if hasattr(self.viewer, "set_selection_modes"):
+            self.viewer.set_selection_modes(update.selection_filter.viewer_mode_set)  # type: ignore[attr-defined]
+        if hasattr(self.geometry_session, "set_selection_filter"):
+            self.geometry_session.set_selection_filter(update.selection_filter.shape_kind_set)
+        for highlight in update.highlights:
+            if hasattr(self.viewer, "highlight"):
+                self.viewer.highlight(highlight.shape_reference, highlight.role)  # type: ignore[attr-defined]
+        self.statusBar().showMessage(update.selection_filter.prompt)
+        if update.stackup is not None:
+            self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
+            self.summary_model.set_rows(self.workspace.summary_rows)
+            self._set_detail_stackup(update.stackup.id)
+            self._refresh_dashboard()
+            self.add_feature_action.setEnabled(True)
+            self.generate_report_action.setEnabled(True)
 
     def show_summary(self) -> None:
         self.analysis_stack.setCurrentWidget(self.summary_page)
@@ -731,7 +809,17 @@ class CadToleranceMainWindow(QMainWindow):
         if output_path.suffix == "":
             output_path = output_path.with_suffix(".png")
         try:
-            snapshot = self.viewer.capture_snapshot(SnapshotRequest(output_path))  # type: ignore[attr-defined]
+            stackup_id = self.workspace.selected_stackup_id
+            annotation_positions = {}
+            if stackup_id:
+                annotation_positions[stackup_id] = self.workspace.annotation_position(stackup_id)
+            snapshot = self.viewer.capture_snapshot(
+                SnapshotRequest(
+                    output_path,
+                    visible_stackup_ids=(stackup_id,) if stackup_id else (),
+                    annotation_positions=annotation_positions,
+                )
+            )  # type: ignore[attr-defined]
         except Exception as exc:
             QMessageBox.warning(self, "Snapshot failed", str(exc))
             self.statusBar().showMessage("Snapshot failed")

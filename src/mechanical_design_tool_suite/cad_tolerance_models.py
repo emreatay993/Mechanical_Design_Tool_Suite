@@ -758,6 +758,9 @@ class StackupRequirement:
     end_feature: FeatureReference | None = None
     direction: Vector3D = field(default_factory=lambda: Vector3D(1.0, 0.0, 0.0))
     annotation_plane: AnnotationPlane = field(default_factory=AnnotationPlane)
+    loop_features: list[FeatureReference] = field(default_factory=list)
+    constraint_features: list[FeatureReference] = field(default_factory=list)
+    annotation_position: dict[str, Any] = field(default_factory=dict)
     warnings: list[NonOneDWarning] = field(default_factory=list)
     id: str = field(default_factory=lambda: new_id("stackup"))
 
@@ -779,6 +782,11 @@ class StackupRequirement:
             "end_feature": self.end_feature.to_dict() if self.end_feature else None,
             "direction": self.direction.to_list(),
             "annotation_plane": self.annotation_plane.to_dict(),
+            "loop_features": [feature.to_dict() for feature in self.loop_features],
+            "constraint_features": [
+                feature.to_dict() for feature in self.constraint_features
+            ],
+            "annotation_position": dict(self.annotation_position),
             "warnings": [warning.to_dict() for warning in self.warnings],
         }
 
@@ -800,6 +808,23 @@ class StackupRequirement:
             end_feature=FeatureReference.from_dict(data.get("end_feature")),
             direction=Vector3D.from_iterable(data.get("direction", [1.0, 0.0, 0.0])),
             annotation_plane=AnnotationPlane.from_dict(data.get("annotation_plane")),
+            loop_features=[
+                feature
+                for feature in (
+                    FeatureReference.from_dict(item)
+                    for item in data.get("loop_features", [])
+                )
+                if feature is not None
+            ],
+            constraint_features=[
+                feature
+                for feature in (
+                    FeatureReference.from_dict(item)
+                    for item in data.get("constraint_features", [])
+                )
+                if feature is not None
+            ],
+            annotation_position=dict(data.get("annotation_position") or {}),
             warnings=[
                 NonOneDWarning.from_dict(item) for item in data.get("warnings", [])
             ],

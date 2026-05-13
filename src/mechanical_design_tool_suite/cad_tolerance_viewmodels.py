@@ -10,6 +10,7 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPen, QPixmap, Q
 from PyQt6.QtWidgets import QApplication, QStyle
 
 from .cad_tolerance_methods import calculate_stackup
+from .cad_stackup_workflow import GUIDED_STACKUP_STEP_LABELS
 from .cad_tolerance_models import (
     AnalysisMode,
     AssemblyNode,
@@ -41,15 +42,7 @@ SUMMARY_COLUMNS = (
 
 DETAIL_COLUMNS = ("Name", "Sens", "Nominal", "Tolerance", "Datum")
 
-GUIDED_STACKUP_STEPS = (
-    "Selection 1",
-    "Width 1",
-    "Selection 2",
-    "Width 2",
-    "Direction",
-    "Analysis Plane",
-    "Dimension Location",
-)
+GUIDED_STACKUP_STEPS = GUIDED_STACKUP_STEP_LABELS
 
 NON_1D_WARNING_TEXT = "Calculated results are ignoring potentially significant 3D effects"
 
@@ -97,6 +90,10 @@ class StackupDetailRow:
     status: ResultStatus | None = None
     shared_with: tuple[str, ...] = ()
     warning: bool = False
+    contributor_id: str = ""
+    source_feature_id: str = ""
+    generated: bool = False
+    source_note: str = ""
 
 
 @dataclass(frozen=True)
@@ -122,6 +119,7 @@ class CadToleranceWorkspaceViewModel:
     detail_rows_by_stackup_id: dict[str, list[StackupDetailRow]] = field(default_factory=dict)
     contribution_rows_by_stackup_id: dict[str, list[ContributionBarRow]] = field(default_factory=dict)
     warnings_by_stackup_id: dict[str, list[NonOneDWarning]] = field(default_factory=dict)
+    annotation_positions_by_stackup_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     dashboard_badges: DashboardBadges = field(default_factory=DashboardBadges)
     selected_stackup_id: str = ""
     fidelity_gap_notes: tuple[str, ...] = FIDELITY_GAP_NOTES
@@ -199,6 +197,11 @@ class CadToleranceWorkspaceViewModel:
         detail_rows = {stackup.id: _detail_rows_from_stackup(stackup) for stackup in project.stackups}
         contributions = {stackup.id: _contribution_rows_from_stackup(stackup, project) for stackup in project.stackups}
         warnings = {stackup.id: list(stackup.warnings) for stackup in project.stackups}
+        annotation_positions = {
+            stackup.id: dict(stackup.annotation_position)
+            for stackup in project.stackups
+            if stackup.annotation_position
+        }
         failed = sum(1 for row in summary_rows if row.status == ResultStatus.FAIL)
         met = sum(1 for row in summary_rows if row.status != ResultStatus.FAIL)
         selected = summary_rows[0].stackup_id if summary_rows else ""
@@ -209,6 +212,7 @@ class CadToleranceWorkspaceViewModel:
             detail_rows_by_stackup_id=detail_rows,
             contribution_rows_by_stackup_id=contributions,
             warnings_by_stackup_id=warnings,
+            annotation_positions_by_stackup_id=annotation_positions,
             dashboard_badges=DashboardBadges(met, failed, _sigma_rollup_from_rows(summary_rows)),
             selected_stackup_id=selected,
         )
@@ -230,6 +234,10 @@ class CadToleranceWorkspaceViewModel:
     def contribution_rows(self, stackup_id: str | None = None) -> list[ContributionBarRow]:
         active_id = stackup_id or self.selected_stackup_id
         return list(self.contribution_rows_by_stackup_id.get(active_id, []))
+
+    def annotation_position(self, stackup_id: str | None = None) -> dict[str, Any]:
+        active_id = stackup_id or self.selected_stackup_id
+        return dict(self.annotation_positions_by_stackup_id.get(active_id, {}))
 
     def select_stackup(self, stackup_id: str) -> None:
         self.selected_stackup_id = stackup_id
@@ -419,6 +427,8 @@ def _detail_rows_from_stackup(stackup: StackupRequirement) -> list[StackupDetail
                     _datum_text(contributor),
                     "feature",
                     shared_with=tuple(contributor.shared_with_stackup_ids),
+                    source_feature_id=contributor.source_feature.id if contributor.source_feature else "",
+                    source_note=contributor.source_note,
                 )
             )
         rows.append(
@@ -430,6 +440,10 @@ def _detail_rows_from_stackup(stackup: StackupRequirement) -> list[StackupDetail
                 _datum_text(contributor),
                 "dimension",
                 shared_with=tuple(contributor.shared_with_stackup_ids),
+                contributor_id=contributor.id,
+                source_feature_id=contributor.source_feature.id if contributor.source_feature else "",
+                generated=contributor.source_note.startswith("Generated from guided stackup"),
+                source_note=contributor.source_note,
             )
         )
     result = calculate_stackup(stackup)
