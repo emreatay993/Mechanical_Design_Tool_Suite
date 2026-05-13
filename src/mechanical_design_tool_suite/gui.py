@@ -19,10 +19,12 @@ try:
         QHBoxLayout,
         QHeaderView,
         QLabel,
+        QInputDialog,
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
         QPushButton,
+        QSlider,
         QSizePolicy,
         QSplitter,
         QStatusBar,
@@ -31,6 +33,8 @@ try:
         QTabWidget,
         QTableWidget,
         QTableWidgetItem,
+        QTreeWidget,
+        QTreeWidgetItem,
         QVBoxLayout,
         QWidget,
     )
@@ -48,12 +52,38 @@ from .calculations import (
     calculate_bolt_group,
     resolve_constants,
 )
+from .bolt_reference_scene import BoltReferenceSceneWidget
 from .io import ParsedTable, parse_load_table
+from .reference_geometry import (
+    REFERENCE_DEFAULT_OPACITY,
+    ReferenceGeometryService,
+    ReferencePart,
+    ReferencePartImportResult,
+)
 from .sample_data import example_scenario_table_text
 from .visualization import SCALAR_CHOICES, open_pyvista_plot, results_have_coordinates
 
 
 CRITERIA_LABEL = "ExampleScenario / INCO718 BAR / 250 C"
+
+
+class _SceneWindow(QMainWindow):
+    """Pop-out window that restores the scene widget when closed."""
+
+    def __init__(self, restore_callback, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._restore_callback = restore_callback
+        self.setWindowTitle("Bolt 3D Scene")
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override.
+        self._restore_callback()
+        super().closeEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override.
+        if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
+            self.showNormal()
+            return
+        super().keyPressEvent(event)
 
 
 class BoltCalculationApp(QMainWindow):
@@ -64,6 +94,11 @@ class BoltCalculationApp(QMainWindow):
         self.results: list[BoltCalculationResult] = []
         self.parsed_table: ParsedTable | None = None
         self._suppress_input_dirty = False
+        self.reference_service = ReferenceGeometryService()
+        self.reference_parts: dict[str, ReferencePart] = {}
+        self.reference_tree_items: dict[str, QTreeWidgetItem] = {}
+        self._suppress_reference_tree_events = False
+        self.scene_window: _SceneWindow | None = None
 
         self.setWindowTitle("Bolt Calculation Tool Prototype")
         self.resize(1360, 840)
@@ -222,6 +257,8 @@ class BoltCalculationApp(QMainWindow):
         )
         self.output_tabs.addTab(self.results_table, "Results")
 
+        self.output_tabs.addTab(self._build_scene_tab(), "3D Scene")
+
         self.trace_text = QPlainTextEdit()
         self.trace_text.setReadOnly(True)
         self.trace_text.setFont(QFont("Consolas", 10))
@@ -238,8 +275,107 @@ class BoltCalculationApp(QMainWindow):
         self.input_text.textChanged.connect(self._mark_input_dirty)
         self.bolt_size_combo.currentTextChanged.connect(self._mark_input_dirty)
         self.margin_basis_combo.currentTextChanged.connect(self._mark_input_dirty)
+        self.scalar_combo.currentTextChanged.connect(self._on_scalar_changed)
         self.results_table.itemSelectionChanged.connect(self._on_result_selection_changed)
         self._set_result_actions_enabled(False)
+
+    def _build_scene_tab(self) -> QWidget:
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        self.scene_host = QFrame()
+        self.scene_host.setObjectName("SceneHost")
+        self.scene_host_layout = QVBoxLayout(self.scene_host)
+        self.scene_host_layout.setContentsMargins(0, 0, 0, 0)
+        self.scene_host_layout.setSpacing(0)
+        self.scene_widget = BoltReferenceSceneWidget()
+        self.scene_host_layout.addWidget(self.scene_widget)
+        splitter.addWidget(self.scene_host)
+
+        side_panel = QFrame()
+        side_panel.setObjectName("SceneSidePanel")
+        side_panel.setMinimumWidth(280)
+        side_panel.setMaximumWidth(380)
+        layout = QVBoxLayout(side_panel)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        title = QLabel("Reference Parts")
+        title.setObjectName("ControlLabel")
+        layout.addWidget(title)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        self.add_reference_button = self._button(
+            "Add",
+            QStyle.StandardPixmap.SP_DialogOpenButton,
+            self._add_reference_part_from_dialog,
+        )
+        self.rename_reference_button = self._button(
+            "Rename",
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+            self._rename_selected_reference_part,
+        )
+        self.delete_reference_button = self._button(
+            "Delete",
+            QStyle.StandardPixmap.SP_TrashIcon,
+            self._delete_selected_reference_parts,
+        )
+        button_row.addWidget(self.add_reference_button)
+        button_row.addWidget(self.rename_reference_button)
+        button_row.addWidget(self.delete_reference_button)
+        layout.addLayout(button_row)
+
+        window_row = QHBoxLayout()
+        window_row.setSpacing(6)
+        self.window_scene_button = self._button(
+            "Window",
+            QStyle.StandardPixmap.SP_TitleBarNormalButton,
+            self._open_scene_windowed,
+        )
+        self.fullscreen_scene_button = self._button(
+            "Fullscreen",
+            QStyle.StandardPixmap.SP_TitleBarMaxButton,
+            self._open_scene_fullscreen,
+        )
+        window_row.addWidget(self.window_scene_button)
+        window_row.addWidget(self.fullscreen_scene_button)
+        layout.addLayout(window_row)
+
+        self.reference_tree = QTreeWidget()
+        self.reference_tree.setHeaderLabels(["Name"])
+        self.reference_tree.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        self.reference_tree.setAlternatingRowColors(True)
+        self.reference_tree.itemSelectionChanged.connect(
+            self._on_reference_tree_selection_changed
+        )
+        self.reference_tree.itemChanged.connect(self._on_reference_tree_item_changed)
+        layout.addWidget(self.reference_tree, 1)
+
+        self.reference_opacity_label = QLabel("Opacity: -")
+        self.reference_opacity_label.setObjectName("ControlLabel")
+        layout.addWidget(self.reference_opacity_label)
+        self.reference_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.reference_opacity_slider.setRange(0, 100)
+        self.reference_opacity_slider.setValue(int(REFERENCE_DEFAULT_OPACITY * 100))
+        self.reference_opacity_slider.valueChanged.connect(
+            self._on_reference_opacity_changed
+        )
+        layout.addWidget(self.reference_opacity_slider)
+
+        self.scene_hint_label = QLabel(
+            "Check items to show or hide them. Select parts to change opacity."
+        )
+        self.scene_hint_label.setWordWrap(True)
+        self.scene_hint_label.setObjectName("SceneHint")
+        layout.addWidget(self.scene_hint_label)
+
+        splitter.addWidget(side_panel)
+        splitter.setSizes([760, 300])
+        self._set_reference_controls_enabled()
+        return splitter
 
     def _combo(self, values: list[str]) -> QComboBox:
         combo = QComboBox()
@@ -337,6 +473,202 @@ class BoltCalculationApp(QMainWindow):
         self._replace_input(table_text)
         self._set_status(f"Imported {Path(path).name}.")
 
+    def _add_reference_part_from_dialog(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Add reference geometry",
+            "",
+            (
+                "Reference geometry (*.step *.stp *.iges *.igs *.stl);;"
+                "Neutral CAD (*.step *.stp *.iges *.igs);;"
+                "STL meshes (*.stl);;All files (*.*)"
+            ),
+        )
+        if not path:
+            return
+        try:
+            self._import_reference_part(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Reference import failed", str(exc))
+
+    def _open_scene_windowed(self) -> None:
+        self._open_scene_window(fullscreen=False)
+
+    def _open_scene_fullscreen(self) -> None:
+        self._open_scene_window(fullscreen=True)
+
+    def _open_scene_window(self, fullscreen: bool) -> None:
+        if self.scene_window is None:
+            self.scene_host_layout.removeWidget(self.scene_widget)
+            self.scene_window = _SceneWindow(self._restore_scene_to_tab, self)
+            self.scene_window.setCentralWidget(self.scene_widget)
+            self.scene_window.resize(1180, 760)
+        if fullscreen:
+            self.scene_window.showFullScreen()
+        else:
+            self.scene_window.showNormal()
+            self.scene_window.show()
+        self.scene_window.raise_()
+        self.scene_window.activateWindow()
+
+    def _restore_scene_to_tab(self) -> None:
+        window = self.scene_window
+        if window is None:
+            return
+        self.scene_window = None
+        window.takeCentralWidget()
+        self.scene_host_layout.addWidget(self.scene_widget)
+
+    def _import_reference_part(self, path: str | Path) -> ReferencePart:
+        result = self.reference_service.import_part(path)
+        self._add_reference_import_result(result)
+        self._set_status(
+            f"Added reference part {result.part.name} with "
+            f"{len(result.mesh_assets)} mesh asset(s)."
+        )
+        return result.part
+
+    def _add_reference_import_result(self, result: ReferencePartImportResult) -> None:
+        part = result.part
+        self.reference_parts[part.id] = part
+        self.scene_widget.add_reference_part(part, result.mesh_assets)
+        self._append_reference_tree_item(part)
+        self._select_reference_part_ids([part.id])
+
+    def _append_reference_tree_item(self, part: ReferencePart) -> None:
+        item = QTreeWidgetItem([part.name])
+        item.setData(0, Qt.ItemDataRole.UserRole, part.id)
+        item.setFlags(
+            item.flags()
+            | Qt.ItemFlag.ItemIsUserCheckable
+            | Qt.ItemFlag.ItemIsSelectable
+            | Qt.ItemFlag.ItemIsEnabled
+        )
+        item.setCheckState(
+            0,
+            Qt.CheckState.Checked
+            if part.display_state.visible
+            else Qt.CheckState.Unchecked,
+        )
+        item.setToolTip(0, str(Path(part.source_path)))
+        self._suppress_reference_tree_events = True
+        self.reference_tree.addTopLevelItem(item)
+        self._suppress_reference_tree_events = False
+        self.reference_tree_items[part.id] = item
+
+    def _delete_selected_reference_parts(self) -> None:
+        selected_ids = self._selected_reference_part_ids()
+        if not selected_ids:
+            return
+        for part_id in selected_ids:
+            self._remove_reference_tree_item(part_id)
+            self.reference_parts.pop(part_id, None)
+            self.scene_widget.remove_reference_part(part_id)
+        self._set_reference_controls_enabled()
+        self._set_status(f"Deleted {len(selected_ids)} reference part(s).")
+
+    def _rename_selected_reference_part(self) -> None:
+        selected_ids = self._selected_reference_part_ids()
+        if len(selected_ids) != 1:
+            return
+        part = self.reference_parts[selected_ids[0]]
+        name, accepted = QInputDialog.getText(
+            self,
+            "Rename reference part",
+            "Name",
+            text=part.name,
+        )
+        if not accepted:
+            return
+        try:
+            self._rename_reference_part(part.id, name)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Rename failed", str(exc))
+
+    def _rename_reference_part(self, part_id: str, name: str) -> None:
+        part = self.reference_parts[part_id]
+        self.scene_widget.rename_reference_part(part_id, name)
+        item = self.reference_tree_items.get(part_id)
+        if item is not None:
+            self._suppress_reference_tree_events = True
+            item.setText(0, part.name)
+            self._suppress_reference_tree_events = False
+        self._set_status(f"Renamed reference part to {part.name}.")
+
+    def _remove_reference_tree_item(self, part_id: str) -> None:
+        item = self.reference_tree_items.pop(part_id, None)
+        if item is None:
+            return
+        index = self.reference_tree.indexOfTopLevelItem(item)
+        if index >= 0:
+            self._suppress_reference_tree_events = True
+            self.reference_tree.takeTopLevelItem(index)
+            self._suppress_reference_tree_events = False
+
+    def _on_reference_tree_selection_changed(self) -> None:
+        if self._suppress_reference_tree_events:
+            return
+        selected_ids = self._selected_reference_part_ids()
+        self.scene_widget.select_reference_parts(selected_ids)
+        self._set_reference_controls_enabled()
+
+    def _on_reference_tree_item_changed(
+        self,
+        item: QTreeWidgetItem,
+        _column: int,
+    ) -> None:
+        if self._suppress_reference_tree_events:
+            return
+        part_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if not part_id or part_id not in self.reference_parts:
+            return
+        self.scene_widget.set_reference_visibility(
+            str(part_id),
+            item.checkState(0) == Qt.CheckState.Checked,
+        )
+
+    def _on_reference_opacity_changed(self, value: int) -> None:
+        opacity = value / 100.0
+        self.reference_opacity_label.setText(f"Opacity: {value}%")
+        if self._suppress_reference_tree_events:
+            return
+        for part_id in self._selected_reference_part_ids():
+            self.scene_widget.set_reference_opacity(part_id, opacity)
+
+    def _selected_reference_part_ids(self) -> list[str]:
+        selected_ids: list[str] = []
+        for item in self.reference_tree.selectedItems():
+            part_id = item.data(0, Qt.ItemDataRole.UserRole)
+            if part_id:
+                selected_ids.append(str(part_id))
+        return selected_ids
+
+    def _select_reference_part_ids(self, part_ids: list[str]) -> None:
+        wanted = set(part_ids)
+        self._suppress_reference_tree_events = True
+        self.reference_tree.clearSelection()
+        for part_id, item in self.reference_tree_items.items():
+            item.setSelected(part_id in wanted)
+        self._suppress_reference_tree_events = False
+        self.scene_widget.select_reference_parts(wanted)
+        self._set_reference_controls_enabled()
+
+    def _set_reference_controls_enabled(self) -> None:
+        selected_ids = self._selected_reference_part_ids()
+        has_selection = bool(selected_ids)
+        self.rename_reference_button.setEnabled(len(selected_ids) == 1)
+        self.delete_reference_button.setEnabled(has_selection)
+        self.reference_opacity_slider.setEnabled(has_selection)
+        if not has_selection:
+            self.reference_opacity_label.setText("Opacity: -")
+            return
+        first_part = self.reference_parts[selected_ids[0]]
+        value = int(round(first_part.display_state.opacity * 100.0))
+        self._suppress_reference_tree_events = True
+        self.reference_opacity_slider.setValue(value)
+        self._suppress_reference_tree_events = False
+        self.reference_opacity_label.setText(f"Opacity: {value}%")
+
     def _replace_input(self, text: str) -> None:
         self._suppress_input_dirty = True
         self.input_text.setPlainText(text)
@@ -355,6 +687,7 @@ class BoltCalculationApp(QMainWindow):
         self.preview_table.setRowCount(0)
         self.results_table.setRowCount(0)
         self.trace_text.setPlainText("")
+        self.scene_widget.clear_results()
         self.rows_label.setText("Rows: -")
         self.fail_label.setText("Failures: -")
         self.governing_label.setText("Governing: -")
@@ -378,11 +711,12 @@ class BoltCalculationApp(QMainWindow):
         self.results = results
         self._fill_preview(parsed)
         self._fill_results(results)
+        self.scene_widget.set_results(results, self.scalar_combo.currentText())
         self._fill_trace(parsed, results)
         self._update_summary(results)
         self._set_result_actions_enabled(True)
         self.input_tabs.setCurrentIndex(1)
-        self.output_tabs.setCurrentIndex(0)
+        self.output_tabs.setCurrentIndex(1 if results_have_coordinates(results) else 0)
         self._select_governing_row()
 
     def _fill_preview(self, parsed: ParsedTable) -> None:
@@ -572,6 +906,10 @@ formulas, but complete prototype constants are currently documented for .2500-28
             open_pyvista_plot(self.results, self.scalar_combo.currentText())
         except Exception as exc:
             QMessageBox.warning(self, "Visualization unavailable", str(exc))
+
+    def _on_scalar_changed(self) -> None:
+        if self.results:
+            self.scene_widget.set_results(self.results, self.scalar_combo.currentText())
 
     def _on_result_selection_changed(self) -> None:
         if self.parsed_table is None or not self.results:
@@ -832,6 +1170,20 @@ def _apply_fusion_light_style(app: QApplication) -> None:
             border-radius: 4px;
             padding: 5px 8px;
             color: #263442;
+        }
+        QFrame#SceneSidePanel {
+            background: #ffffff;
+            border-left: 1px solid #d2dbe5;
+        }
+        QLabel#ScenePlaceholder {
+            background: #ffffff;
+            border: 1px solid #d2dbe5;
+            color: #52616f;
+            font-weight: 600;
+        }
+        QLabel#SceneHint {
+            color: #52616f;
+            font-size: 10px;
         }
         QComboBox, QPushButton {
             background: #ffffff;

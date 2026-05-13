@@ -10,6 +10,7 @@ This directory is reserved for small, trackable fixtures for the CAD 1D toleranc
 | CAD1D-IGES-BREP-001 | `neutral_iges_single_part.igs` | Minimal IGES B-Rep part with planar and cylindrical faces. | IGES import support and shape reference serialization smoke tests. |
 | CAD1D-NON1D-001 | `offset_rotational_warning.step` | Neutral fixture with laterally offset or rotationally sensitive features. | Non-1D warning heuristic tests. |
 | CAD1D-PROJECT-001 | `sample_cad_1d_project.tolproj` | Deterministic project JSON using CAD references and several contributors. | Persistence, report, and UI model tests after P02/P04/P06. |
+| BOLT-REF-STL-001 | `simple_reference.stl` | Minimal ASCII STL mesh in millimeters for bolt visual reference overlays. | Reference geometry import, mesh metadata, and bolt GUI reference-tree tests. |
 
 ## Constraints
 
