@@ -14,6 +14,11 @@ from .cad_tolerance_models import CadFileFormat, ShapeKind
 
 
 REFERENCE_DEFAULT_OPACITY = 0.35
+STL_UNIT_SCALE_TO_MM = {
+    "mm": 1.0,
+    "m": 1000.0,
+    "inch": 25.4,
+}
 
 
 class ReferenceGeometryFormat(str, Enum):
@@ -42,6 +47,10 @@ class UnsupportedReferenceGeometryFormatError(ValueError):
 
 class ReferenceGeometryImportError(RuntimeError):
     """Raised when a supported reference geometry file cannot be meshed."""
+
+
+class UnsupportedReferenceGeometryUnitError(ValueError):
+    """Raised when STL source units cannot be converted to internal mm units."""
 
 
 def new_reference_id(prefix: str) -> str:
@@ -107,6 +116,8 @@ class ReferencePart:
         )
         self.metadata = dict(self.metadata)
         self.mesh_count = int(self.mesh_count)
+        if self.file_format == ReferenceGeometryFormat.STL:
+            self.units = normalize_stl_units(self.units)
 
     def rename(self, name: str) -> None:
         cleaned = name.strip()
@@ -187,29 +198,48 @@ class ReferencePartImportResult:
 class ReferenceGeometryService:
     """Load visual reference geometry without changing bolt calculations."""
 
-    def import_part(self, path: str | Path) -> ReferencePartImportResult:
+    def import_part(
+        self,
+        path: str | Path,
+        stl_units: str = "mm",
+    ) -> ReferencePartImportResult:
         input_path = Path(path)
         file_format = reference_format_from_path(input_path)
         if not input_path.exists():
             raise FileNotFoundError(f"Reference geometry file does not exist: {input_path}")
         if file_format == ReferenceGeometryFormat.STL:
-            return self._import_stl(input_path)
+            return self._import_stl(input_path, stl_units)
         return self._import_neutral_cad(input_path, file_format)
 
-    def _import_stl(self, path: Path) -> ReferencePartImportResult:
+    def _import_stl(self, path: Path, stl_units: str) -> ReferencePartImportResult:
         pv = _import_pyvista()
+        units = normalize_stl_units(stl_units)
+        scale_to_mm = stl_scale_to_mm(units)
         mesh = _coerce_pyvista_mesh(pv.read(str(path)))
+        mesh = _scale_mesh_to_mm(mesh, scale_to_mm)
         part = _make_reference_part(
             path=path,
             file_format=ReferenceGeometryFormat.STL,
             mesh_count=1,
-            metadata={"loader": "pyvista", "mesh_only": True},
+            units=units,
+            metadata={
+                "loader": "pyvista",
+                "mesh_only": True,
+                "source_units": units,
+                "display_units": "mm",
+                "scale_to_mm": scale_to_mm,
+            },
         )
         asset = ReferenceMeshAsset(
             part_id=part.id,
             name=part.name,
             mesh=mesh,
-            metadata=_mesh_metadata(mesh),
+            metadata={
+                **_mesh_metadata(mesh),
+                "source_units": units,
+                "display_units": "mm",
+                "scale_to_mm": scale_to_mm,
+            },
         )
         return ReferencePartImportResult(part=part, mesh_assets=[asset])
 
@@ -285,6 +315,31 @@ def is_supported_reference_geometry(path: str | Path) -> bool:
     return Path(path).suffix.lower() in SUPPORTED_REFERENCE_GEOMETRY_SUFFIXES
 
 
+def normalize_stl_units(units: str) -> str:
+    value = str(units or "mm").strip().lower()
+    aliases = {
+        "millimeter": "mm",
+        "millimeters": "mm",
+        "metre": "m",
+        "meter": "m",
+        "meters": "m",
+        "metres": "m",
+        "in": "inch",
+        "inches": "inch",
+    }
+    value = aliases.get(value, value)
+    if value not in STL_UNIT_SCALE_TO_MM:
+        supported = ", ".join(STL_UNIT_SCALE_TO_MM)
+        raise UnsupportedReferenceGeometryUnitError(
+            f"Unsupported STL source units {units!r}. Supported units: {supported}."
+        )
+    return value
+
+
+def stl_scale_to_mm(units: str) -> float:
+    return STL_UNIT_SCALE_TO_MM[normalize_stl_units(units)]
+
+
 def _make_reference_part(
     path: Path,
     file_format: ReferenceGeometryFormat,
@@ -338,6 +393,14 @@ def _coerce_pyvista_mesh(mesh: Any) -> Any:
     if n_points <= 0 or n_cells <= 0:
         raise ReferenceGeometryImportError("Reference geometry mesh is empty.")
     return mesh
+
+
+def _scale_mesh_to_mm(mesh: Any, scale_to_mm: float) -> Any:
+    if scale_to_mm == 1.0:
+        return mesh
+    scaled = mesh.copy(deep=True) if hasattr(mesh, "copy") else mesh
+    scaled.points = scaled.points * float(scale_to_mm)
+    return scaled
 
 
 def _mesh_metadata(mesh: Any) -> dict[str, Any]:

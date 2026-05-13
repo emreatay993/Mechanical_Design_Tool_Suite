@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .calculations import BoltCalculationResult
@@ -35,12 +35,20 @@ class BoltReferenceSceneWidget(QWidget):
         self._plotter_error: Exception | None = None
         self._bolt_actor: Any | None = None
         self._label_actor: Any | None = None
+        self._grid_actor: Any | None = None
         self._reference_actors_by_part_id: dict[str, list[Any]] = {}
         self._reference_parts: dict[str, ReferencePart] = {}
         self._reference_mesh_assets: dict[str, list[ReferenceMeshAsset]] = {}
         self._selected_reference_part_ids: set[str] = set()
+        self._axis_visibility = {"x": True, "y": True, "z": True}
         self._results: list[BoltCalculationResult] = []
         self._scalar_name = "Margin"
+        self._active_scalar_bar_title: str | None = None
+        self._last_scalar_bar_args: dict[str, Any] = {}
+        self._resize_refresh_timer = QTimer(self)
+        self._resize_refresh_timer.setSingleShot(True)
+        self._resize_refresh_timer.setInterval(120)
+        self._resize_refresh_timer.timeout.connect(self._refresh_results_after_resize)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -51,7 +59,8 @@ class BoltReferenceSceneWidget(QWidget):
             self._plotter = QtInteractor(self)
             layout.addWidget(self._plotter)
             self._plotter.add_axes()
-            self._plotter.show_grid()
+            self._grid_actor = self._plotter.show_grid()
+            self._apply_axis_visibility()
         except Exception as exc:  # pragma: no cover - depends on optional runtime.
             self._plotter_error = exc
             placeholder = QLabel(
@@ -82,6 +91,19 @@ class BoltReferenceSceneWidget(QWidget):
     def reference_parts(self) -> tuple[ReferencePart, ...]:
         return tuple(self._reference_parts.values())
 
+    @property
+    def axis_visibility(self) -> dict[str, bool]:
+        return dict(self._axis_visibility)
+
+    @property
+    def axis_font_sizes(self) -> dict[str, int]:
+        title_size, label_size = self._axis_font_sizes()
+        return {"title": title_size, "label": label_size}
+
+    @property
+    def last_scalar_bar_args(self) -> dict[str, Any]:
+        return dict(self._last_scalar_bar_args)
+
     def set_results(
         self,
         results: list[BoltCalculationResult],
@@ -91,6 +113,9 @@ class BoltReferenceSceneWidget(QWidget):
 
         self._results = list(results)
         self._scalar_name = scalar_name
+        self._draw_results(reset_camera=True)
+
+    def _draw_results(self, reset_camera: bool) -> None:
         self._clear_bolt_actors()
         if (
             self._plotter is None
@@ -109,6 +134,7 @@ class BoltReferenceSceneWidget(QWidget):
         cloud = pv.PolyData(points)
         for name, getter in SCALAR_CHOICES.items():
             cloud[name] = [getter(result) for result in self._results]
+        scalar_bar_args = self._scalar_bar_args(scalar_name)
         self._bolt_actor = self._plotter.add_mesh(
             cloud,
             name="bolt_result_nodes",
@@ -117,19 +143,18 @@ class BoltReferenceSceneWidget(QWidget):
             point_size=22,
             cmap=VISUALIZATION_CMAP,
             clim=local_scalar_range(scalar_values),
-            scalar_bar_args={
-                "title": scalar_name,
-                "n_labels": 5,
-                "fmt": "%.3g",
-            },
+            scalar_bar_args=scalar_bar_args,
         )
+        self._active_scalar_bar_title = scalar_name
+        self._last_scalar_bar_args = scalar_bar_args
         self._label_actor = self._plotter.add_point_labels(
             points,
             [result.load.name for result in self._results],
             name="bolt_result_labels",
-            font_size=11,
+            font_size=self._point_label_font_size(),
         )
-        self._plotter.reset_camera()
+        if reset_camera:
+            self._plotter.reset_camera()
         self._render()
 
     def add_reference_part(
@@ -178,6 +203,14 @@ class BoltReferenceSceneWidget(QWidget):
                 _set_actor_selected(actor, part.display_state.selected)
         self._render()
 
+    def set_axis_visibility(self, axis: str, visible: bool) -> None:
+        key = str(axis).lower()
+        if key not in self._axis_visibility:
+            raise ValueError("Axis must be one of: x, y, z.")
+        self._axis_visibility[key] = bool(visible)
+        self._apply_axis_visibility()
+        self._render()
+
     def clear_results(self) -> None:
         self.set_results([], self._scalar_name)
 
@@ -213,6 +246,12 @@ class BoltReferenceSceneWidget(QWidget):
             self._bolt_actor = None
             self._label_actor = None
             return
+        if self._active_scalar_bar_title:
+            try:
+                self._plotter.remove_scalar_bar(self._active_scalar_bar_title)
+            except Exception:
+                pass
+            self._active_scalar_bar_title = None
         for actor in (self._bolt_actor, self._label_actor):
             if actor is not None:
                 try:
@@ -238,6 +277,86 @@ class BoltReferenceSceneWidget(QWidget):
             self._plotter.render()
         except Exception:
             pass
+
+    def _apply_axis_visibility(self) -> None:
+        if self._grid_actor is None:
+            return
+        setters = {
+            "x": "SetXAxisVisibility",
+            "y": "SetYAxisVisibility",
+            "z": "SetZAxisVisibility",
+        }
+        for axis, setter_name in setters.items():
+            setter = getattr(self._grid_actor, setter_name, None)
+            if setter is not None:
+                setter(bool(self._axis_visibility[axis]))
+        if hasattr(self._grid_actor, "SetVisibility"):
+            self._grid_actor.SetVisibility(any(self._axis_visibility.values()))
+        self._apply_axis_font_sizes()
+
+    def _axis_font_sizes(self) -> tuple[int, int]:
+        short_edge = max(1, min(self.width(), self.height()))
+        title_size = max(10, min(24, int(short_edge / 32)))
+        label_size = max(8, min(20, int(short_edge / 42)))
+        return title_size, label_size
+
+    def _apply_axis_font_sizes(self) -> None:
+        if self._grid_actor is None:
+            return
+        title_size, label_size = self._axis_font_sizes()
+        for axis_index in range(3):
+            title_property_getter = getattr(
+                self._grid_actor,
+                "GetTitleTextProperty",
+                None,
+            )
+            label_property_getter = getattr(
+                self._grid_actor,
+                "GetLabelTextProperty",
+                None,
+            )
+            _set_text_property_font_size(
+                title_property_getter,
+                axis_index,
+                title_size,
+            )
+            _set_text_property_font_size(
+                label_property_getter,
+                axis_index,
+                label_size,
+            )
+
+    def _scalar_bar_args(self, title: str) -> dict[str, Any]:
+        short_edge = max(1, min(self.width(), self.height()))
+        title_font_size = max(8, min(22, int(short_edge / 34)))
+        label_font_size = max(7, min(18, int(short_edge / 44)))
+        return {
+            "title": title,
+            "n_labels": 5,
+            "fmt": "%.3g",
+            "vertical": True,
+            "position_x": 0.02,
+            "position_y": 0.14,
+            "width": 0.08,
+            "height": 0.72,
+            "title_font_size": title_font_size,
+            "label_font_size": label_font_size,
+            "shadow": False,
+        }
+
+    def _point_label_font_size(self) -> int:
+        short_edge = max(1, min(self.width(), self.height()))
+        return max(8, min(16, int(short_edge / 52)))
+
+    def _refresh_results_after_resize(self) -> None:
+        if self._results and results_have_coordinates(self._results):
+            self._draw_results(reset_camera=False)
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override.
+        super().resizeEvent(event)
+        self._apply_axis_font_sizes()
+        if self._plotter is not None and self._results:
+            self._resize_refresh_timer.start()
 
 
 def _import_pyvista() -> Any:
@@ -277,5 +396,19 @@ def _set_actor_selected(actor: Any, selected: bool) -> None:
             prop.SetLineWidth(2.0)
         else:
             prop.EdgeVisibilityOff()
+    except Exception:
+        pass
+
+
+def _set_text_property_font_size(
+    property_getter: Any,
+    axis_index: int,
+    font_size: int,
+) -> None:
+    if property_getter is None:
+        return
+    try:
+        text_property = property_getter(axis_index)
+        text_property.SetFontSize(int(font_size))
     except Exception:
         pass

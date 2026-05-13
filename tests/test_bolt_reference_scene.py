@@ -71,6 +71,46 @@ class BoltReferenceSceneWidgetTest(unittest.TestCase):
 
         self.assertEqual(self.widget.reference_part_ids, ())
 
+    def test_scalar_legend_is_left_vertical_and_scales_with_window_size(self) -> None:
+        self.widget.resize(420, 300)
+        small_args = self.widget._scalar_bar_args("Margin")
+        small_label_size = self.widget._point_label_font_size()
+
+        self.widget.resize(1400, 950)
+        large_args = self.widget._scalar_bar_args("Margin")
+        large_label_size = self.widget._point_label_font_size()
+
+        self.assertTrue(small_args["vertical"])
+        self.assertEqual(small_args["position_x"], 0.02)
+        self.assertLess(small_args["position_x"], 0.1)
+        self.assertEqual(small_args["height"], 0.72)
+        self.assertGreater(large_args["title_font_size"], small_args["title_font_size"])
+        self.assertGreaterEqual(
+            large_args["label_font_size"],
+            small_args["label_font_size"],
+        )
+        self.assertGreaterEqual(large_label_size, small_label_size)
+
+    def test_axis_visibility_state_can_be_toggled_per_axis(self) -> None:
+        self.widget.set_axis_visibility("x", False)
+        self.widget.set_axis_visibility("z", False)
+
+        self.assertFalse(self.widget.axis_visibility["x"])
+        self.assertTrue(self.widget.axis_visibility["y"])
+        self.assertFalse(self.widget.axis_visibility["z"])
+        with self.assertRaises(ValueError):
+            self.widget.set_axis_visibility("roll", True)
+
+    def test_axis_label_fonts_scale_with_window_size(self) -> None:
+        self.widget.resize(360, 260)
+        small_sizes = self.widget.axis_font_sizes
+
+        self.widget.resize(1500, 980)
+        large_sizes = self.widget.axis_font_sizes
+
+        self.assertGreater(large_sizes["title"], small_sizes["title"])
+        self.assertGreater(large_sizes["label"], small_sizes["label"])
+
 
 if __name__ == "__main__":
     unittest.main()

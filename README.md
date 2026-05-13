@@ -179,6 +179,10 @@ units before calculation.
 The GUI opens with the reference ExampleScenario already calculated. Result
 actions enable only when valid data is available, and selecting a result row
 updates the trace panel with that bolt's detailed calculation breakdown.
+The bolt `3D Scene` tab can add visual reference parts. STL files are unitless,
+so select the STL source units (`mm`, `m`, or `inch`) before import; the mesh is
+scaled into the bolt tool's internal millimeter coordinate system. The same
+panel can also show or hide the X, Y, and Z scene axes.
 
 The implemented calculation path is the documented `.2500-28` ExampleScenario
 reference case. Other bolt sizes appear in source lookup formulas, but complete

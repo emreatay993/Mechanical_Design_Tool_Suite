@@ -12,6 +12,7 @@ try:
     from PyQt6.QtWidgets import (
         QAbstractItemView,
         QApplication,
+        QCheckBox,
         QComboBox,
         QFileDialog,
         QFrame,
@@ -59,6 +60,7 @@ from .reference_geometry import (
     ReferenceGeometryService,
     ReferencePart,
     ReferencePartImportResult,
+    STL_UNIT_SCALE_TO_MM,
 )
 from .sample_data import example_scenario_table_text
 from .visualization import SCALAR_CHOICES, open_pyvista_plot, results_have_coordinates
@@ -342,6 +344,28 @@ class BoltCalculationApp(QMainWindow):
         window_row.addWidget(self.fullscreen_scene_button)
         layout.addLayout(window_row)
 
+        self.stl_units_combo = self._combo(list(STL_UNIT_SCALE_TO_MM))
+        self.stl_units_combo.setCurrentText("mm")
+        self.stl_units_combo.setToolTip(
+            "STL files do not store reliable units. Select the source units "
+            "used when the STL was exported; the mesh is scaled to mm."
+        )
+        layout.addWidget(self._control("STL source units", self.stl_units_combo))
+
+        axis_label = QLabel("Scene axes")
+        axis_label.setObjectName("ControlLabel")
+        layout.addWidget(axis_label)
+        axis_row = QHBoxLayout()
+        axis_row.setSpacing(8)
+        self.axis_x_checkbox = self._axis_checkbox("X", "x")
+        self.axis_y_checkbox = self._axis_checkbox("Y", "y")
+        self.axis_z_checkbox = self._axis_checkbox("Z", "z")
+        axis_row.addWidget(self.axis_x_checkbox)
+        axis_row.addWidget(self.axis_y_checkbox)
+        axis_row.addWidget(self.axis_z_checkbox)
+        axis_row.addStretch(1)
+        layout.addLayout(axis_row)
+
         self.reference_tree = QTreeWidget()
         self.reference_tree.setHeaderLabels(["Name"])
         self.reference_tree.setSelectionMode(
@@ -383,6 +407,18 @@ class BoltCalculationApp(QMainWindow):
         combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         combo.setMinimumHeight(30)
         return combo
+
+    def _axis_checkbox(self, label: str, axis: str) -> QCheckBox:
+        checkbox = QCheckBox(label)
+        checkbox.setChecked(True)
+        checkbox.setToolTip(f"Show or hide the scene {label} axis.")
+        checkbox.toggled.connect(
+            lambda checked, axis_name=axis: self.scene_widget.set_axis_visibility(
+                axis_name,
+                checked,
+            )
+        )
+        return checkbox
 
     def _readonly_value(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -519,12 +555,19 @@ class BoltCalculationApp(QMainWindow):
         window.takeCentralWidget()
         self.scene_host_layout.addWidget(self.scene_widget)
 
-    def _import_reference_part(self, path: str | Path) -> ReferencePart:
-        result = self.reference_service.import_part(path)
+    def _import_reference_part(
+        self,
+        path: str | Path,
+        stl_units: str | None = None,
+    ) -> ReferencePart:
+        result = self.reference_service.import_part(
+            path,
+            stl_units=stl_units or self.stl_units_combo.currentText(),
+        )
         self._add_reference_import_result(result)
         self._set_status(
             f"Added reference part {result.part.name} with "
-            f"{len(result.mesh_assets)} mesh asset(s)."
+            f"{len(result.mesh_assets)} mesh asset(s). Units: {result.part.units}."
         )
         return result.part
 
@@ -550,7 +593,7 @@ class BoltCalculationApp(QMainWindow):
             if part.display_state.visible
             else Qt.CheckState.Unchecked,
         )
-        item.setToolTip(0, str(Path(part.source_path)))
+        item.setToolTip(0, f"{Path(part.source_path)}\nUnits: {part.units}")
         self._suppress_reference_tree_events = True
         self.reference_tree.addTopLevelItem(item)
         self._suppress_reference_tree_events = False

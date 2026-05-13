@@ -16,9 +16,12 @@ from mechanical_design_tool_suite.reference_geometry import (
     ReferenceGeometryService,
     ReferencePart,
     UnsupportedReferenceGeometryFormatError,
+    UnsupportedReferenceGeometryUnitError,
     clamp_opacity,
     is_supported_reference_geometry,
+    normalize_stl_units,
     reference_format_from_path,
+    stl_scale_to_mm,
 )
 
 
@@ -69,6 +72,7 @@ class ReferenceGeometryModelTest(unittest.TestCase):
             source_path="bracket.stl",
             file_format=ReferenceGeometryFormat.STL,
             mesh_count=1,
+            units="inch",
         )
 
         part.rename("Support bracket")
@@ -77,9 +81,19 @@ class ReferenceGeometryModelTest(unittest.TestCase):
         self.assertEqual(round_tripped.id, "ref_part")
         self.assertEqual(round_tripped.name, "Support bracket")
         self.assertEqual(round_tripped.file_format, ReferenceGeometryFormat.STL)
+        self.assertEqual(round_tripped.units, "inch")
         self.assertEqual(round_tripped.display_state.opacity, REFERENCE_DEFAULT_OPACITY)
         with self.assertRaises(ValueError):
             part.rename("   ")
+
+    def test_stl_unit_aliases_and_scale_factors(self) -> None:
+        self.assertEqual(normalize_stl_units("millimeters"), "mm")
+        self.assertEqual(normalize_stl_units("in"), "inch")
+        self.assertEqual(stl_scale_to_mm("mm"), 1.0)
+        self.assertEqual(stl_scale_to_mm("m"), 1000.0)
+        self.assertEqual(stl_scale_to_mm("inch"), 25.4)
+        with self.assertRaises(UnsupportedReferenceGeometryUnitError):
+            normalize_stl_units("feet")
 
 
 class ReferenceGeometryServiceTest(unittest.TestCase):
@@ -89,11 +103,35 @@ class ReferenceGeometryServiceTest(unittest.TestCase):
         self.assertEqual(result.part.file_format, ReferenceGeometryFormat.STL)
         self.assertEqual(result.part.mesh_count, 1)
         self.assertEqual(result.part.name, "simple_reference")
+        self.assertEqual(result.part.units, "mm")
         self.assertTrue(result.part.metadata["mesh_only"])
+        self.assertEqual(result.part.metadata["scale_to_mm"], 1.0)
         self.assertEqual(len(result.mesh_assets), 1)
         self.assertGreater(result.mesh_assets[0].n_points, 0)
         self.assertGreater(result.mesh_assets[0].n_cells, 0)
         self.assertEqual(result.mesh_assets[0].part_id, result.part.id)
+
+    def test_stl_import_scales_source_units_to_internal_mm(self) -> None:
+        service = ReferenceGeometryService()
+        cases = {
+            "mm": 10.0,
+            "inch": 254.0,
+            "m": 10000.0,
+        }
+
+        for units, expected_max in cases.items():
+            with self.subTest(units=units):
+                result = service.import_part(STL_FIXTURE, stl_units=units)
+                bounds = result.mesh_assets[0].mesh.bounds
+
+                self.assertEqual(result.part.units, units)
+                self.assertAlmostEqual(bounds[1], expected_max)
+                self.assertAlmostEqual(bounds[3], expected_max)
+                self.assertEqual(result.part.metadata["display_units"], "mm")
+                self.assertEqual(
+                    result.mesh_assets[0].metadata["scale_to_mm"],
+                    stl_scale_to_mm(units),
+                )
 
     def test_step_import_to_mesh_is_guarded_by_occ_availability(self) -> None:
         if not is_occ_available():

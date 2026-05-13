@@ -64,9 +64,11 @@ class GuiStateTest(unittest.TestCase):
         self.assertEqual(self.window.visualization_label.text(), "Visualization: no coordinates")
 
     def test_reference_part_tree_controls_update_scene_state(self) -> None:
+        self.window.stl_units_combo.setCurrentText("inch")
         part = self.window._import_reference_part(STL_FIXTURE)
         self.app.processEvents()
 
+        self.assertEqual(part.units, "inch")
         self.assertEqual(self.window.reference_tree.topLevelItemCount(), 1)
         self.assertEqual(self.window.scene_widget.reference_part_ids, (part.id,))
         self.assertTrue(self.window.delete_reference_button.isEnabled())
@@ -77,6 +79,7 @@ class GuiStateTest(unittest.TestCase):
         self.assertAlmostEqual(part.display_state.opacity, 0.62)
 
         item = self.window.reference_tree.topLevelItem(0)
+        self.assertIn("Units: inch", item.toolTip(0))
         item.setCheckState(0, Qt.CheckState.Unchecked)
         self.app.processEvents()
         self.assertFalse(part.display_state.visible)
@@ -105,6 +108,19 @@ class GuiStateTest(unittest.TestCase):
         self.app.processEvents()
         self.assertIsNone(self.window.scene_window)
         self.assertIs(self.window.scene_widget.parent(), self.window.scene_host)
+
+    def test_scene_axis_checkboxes_update_scene_visibility_state(self) -> None:
+        self.assertTrue(self.window.scene_widget.axis_visibility["x"])
+        self.assertTrue(self.window.scene_widget.axis_visibility["y"])
+        self.assertTrue(self.window.scene_widget.axis_visibility["z"])
+
+        self.window.axis_y_checkbox.setChecked(False)
+        self.window.axis_z_checkbox.setChecked(False)
+        self.app.processEvents()
+
+        self.assertTrue(self.window.scene_widget.axis_visibility["x"])
+        self.assertFalse(self.window.scene_widget.axis_visibility["y"])
+        self.assertFalse(self.window.scene_widget.axis_visibility["z"])
 
 
 if __name__ == "__main__":
