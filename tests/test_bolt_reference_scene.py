@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -22,6 +23,7 @@ from mechanical_design_tool_suite.reference_geometry import (
     ReferenceGeometryFormat,
 )
 from mechanical_design_tool_suite.sample_data import example_scenario_loads
+from mechanical_design_tool_suite.visualization import format_hover_text, hover_prompt_text
 
 
 class BoltReferenceSceneWidgetTest(unittest.TestCase):
@@ -109,6 +111,97 @@ class BoltReferenceSceneWidgetTest(unittest.TestCase):
         self.assertEqual(self.widget.bolt_node_size, BOLT_NODE_SIZE_MAX)
         self.widget.adjust_bolt_node_size(-10_000)
         self.assertEqual(self.widget.bolt_node_size, BOLT_NODE_SIZE_MIN)
+
+    def test_embedded_hover_overlay_shows_current_bolt_scalar_and_cleans_up(self) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeInteractor:
+            def __init__(self) -> None:
+                self.observers: dict[int, object] = {}
+                self.removed: list[int] = []
+
+            def AddObserver(self, event_name: str, callback: object) -> int:
+                captured["observer_event"] = event_name
+                self.observers[42] = callback
+                return 42
+
+            def RemoveObserver(self, observer_id: int) -> None:
+                self.removed.append(observer_id)
+                captured["removed_observer"] = observer_id
+
+            def GetEventPosition(self) -> tuple[int, int]:
+                return (12, 34)
+
+        class FakeIren:
+            def __init__(self) -> None:
+                self.interactor = FakeInteractor()
+
+        class FakeHoverActor:
+            def __init__(self, text: str) -> None:
+                self.text = {2: text}
+
+            def get_text(self, position: int) -> str:
+                return self.text[position]
+
+            def set_text(self, position: int, text: str) -> None:
+                self.text[position] = text
+                captured["hover_text"] = text
+
+        class FakePlotter:
+            def __init__(self) -> None:
+                self.iren = FakeIren()
+                self.renderer = object()
+                self.removed_actors: list[object] = []
+
+            def add_text(self, text: str, **kwargs: object) -> FakeHoverActor:
+                captured["initial_text"] = text
+                captured["text_kwargs"] = kwargs
+                return FakeHoverActor(text)
+
+            def remove_actor(self, actor: object, render: bool = False) -> None:
+                self.removed_actors.append(actor)
+                captured["removed_actor"] = actor
+                captured["removed_render"] = render
+
+            def render(self) -> None:
+                captured["rendered"] = True
+
+        fake_picker = mock.Mock()
+        fake_picker.GetPointId.return_value = 0
+        fake_picker_class = mock.Mock(return_value=fake_picker)
+        fake_plotter = FakePlotter()
+        self.widget._plotter = fake_plotter
+        self.widget._scalar_name = "Margin"
+
+        with mock.patch(
+            "vtkmodules.vtkRenderingCore.vtkPointPicker",
+            fake_picker_class,
+        ):
+            self.widget._install_hover_overlay(
+                node_actor="node_actor",
+                node_names=["BOLT01"],
+                scalar_values=[0.123456],
+            )
+
+        self.assertEqual(captured["initial_text"], hover_prompt_text("Margin"))
+        self.assertEqual(captured["text_kwargs"]["position"], "upper_left")
+        self.assertEqual(captured["observer_event"], "MouseMoveEvent")
+        fake_picker.AddPickList.assert_called_once_with("node_actor")
+
+        callback = fake_plotter.iren.interactor.observers[42]
+        callback(None, "MouseMoveEvent")
+        self.assertEqual(
+            captured["hover_text"],
+            format_hover_text("BOLT01", "Margin", 0.123456),
+        )
+        fake_picker.Pick.assert_called_once_with(12, 34, 0, fake_plotter.renderer)
+
+        hover_actor = self.widget._hover_actor
+        self.widget._clear_hover_overlay()
+        self.assertEqual(captured["removed_observer"], 42)
+        self.assertIs(captured["removed_actor"], hover_actor)
+        self.assertFalse(captured["removed_render"])
+        self.assertIsNone(self.widget._hover_actor)
 
     def test_scalar_legend_is_left_vertical_and_scales_with_window_size(self) -> None:
         self.widget.resize(420, 300)

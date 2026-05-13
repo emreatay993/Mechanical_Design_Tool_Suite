@@ -14,8 +14,11 @@ from .reference_geometry import (
     clamp_opacity,
 )
 from .visualization import (
+    HOVER_TEXT_POSITION,
     SCALAR_CHOICES,
     VISUALIZATION_CMAP,
+    format_hover_text,
+    hover_prompt_text,
     local_scalar_range,
     results_have_coordinates,
     scalar_values_for_results,
@@ -40,6 +43,10 @@ class BoltReferenceSceneWidget(QWidget):
         self._bolt_actor: Any | None = None
         self._label_actor: Any | None = None
         self._grid_actor: Any | None = None
+        self._hover_actor: Any | None = None
+        self._hover_picker: Any | None = None
+        self._hover_callback: Any | None = None
+        self._hover_observer_id: Any | None = None
         self._reference_actors_by_part_id: dict[str, list[Any]] = {}
         self._reference_parts: dict[str, ReferencePart] = {}
         self._reference_mesh_assets: dict[str, list[ReferenceMeshAsset]] = {}
@@ -178,6 +185,11 @@ class BoltReferenceSceneWidget(QWidget):
             name="bolt_result_labels",
             font_size=self._point_label_font_size(),
         )
+        self._install_hover_overlay(
+            node_actor=self._bolt_actor,
+            node_names=[result.load.name for result in self._results],
+            scalar_values=scalar_values,
+        )
         if reset_camera:
             self._plotter.reset_camera()
         self._render()
@@ -279,7 +291,12 @@ class BoltReferenceSceneWidget(QWidget):
         if self._plotter is None:
             self._bolt_actor = None
             self._label_actor = None
+            self._hover_actor = None
+            self._hover_picker = None
+            self._hover_callback = None
+            self._hover_observer_id = None
             return
+        self._clear_hover_overlay()
         if self._active_scalar_bar_title:
             try:
                 self._plotter.remove_scalar_bar(self._active_scalar_bar_title)
@@ -294,6 +311,76 @@ class BoltReferenceSceneWidget(QWidget):
                     pass
         self._bolt_actor = None
         self._label_actor = None
+
+    def _install_hover_overlay(
+        self,
+        node_actor: Any,
+        node_names: list[str],
+        scalar_values: list[float],
+    ) -> None:
+        if self._plotter is None:
+            return
+        try:
+            from vtkmodules.vtkRenderingCore import vtkPointPicker
+        except ImportError:
+            return
+
+        hover_actor = self._plotter.add_text(
+            hover_prompt_text(self._scalar_name),
+            position="upper_left",
+            font_size=self._hover_font_size(),
+            color="black",
+            name="bolt_hover_info",
+        )
+        picker = vtkPointPicker()
+        picker.SetTolerance(0.025)
+        picker.PickFromListOn()
+        picker.AddPickList(node_actor)
+
+        def set_hover_text(text: str) -> None:
+            if hover_actor.get_text(HOVER_TEXT_POSITION) == text:
+                return
+            hover_actor.set_text(HOVER_TEXT_POSITION, text)
+            self._render()
+
+        def on_mouse_move(_interactor: Any, _event: str) -> None:
+            event_position = self._plotter.iren.interactor.GetEventPosition()
+            picker.Pick(event_position[0], event_position[1], 0, self._plotter.renderer)
+            point_id = picker.GetPointId()
+            if 0 <= point_id < len(node_names):
+                set_hover_text(
+                    format_hover_text(
+                        node_names[point_id],
+                        self._scalar_name,
+                        scalar_values[point_id],
+                    )
+                )
+                return
+            set_hover_text(hover_prompt_text(self._scalar_name))
+
+        self._hover_actor = hover_actor
+        self._hover_picker = picker
+        self._hover_callback = on_mouse_move
+        self._hover_observer_id = self._plotter.iren.interactor.AddObserver(
+            "MouseMoveEvent",
+            on_mouse_move,
+        )
+
+    def _clear_hover_overlay(self) -> None:
+        if self._plotter is not None and self._hover_observer_id is not None:
+            try:
+                self._plotter.iren.interactor.RemoveObserver(self._hover_observer_id)
+            except Exception:
+                pass
+        if self._plotter is not None and self._hover_actor is not None:
+            try:
+                self._plotter.remove_actor(self._hover_actor, render=False)
+            except Exception:
+                pass
+        self._hover_actor = None
+        self._hover_picker = None
+        self._hover_callback = None
+        self._hover_observer_id = None
 
     def _remove_reference_actors(self, part_id: str) -> None:
         if self._plotter is not None:
@@ -381,6 +468,10 @@ class BoltReferenceSceneWidget(QWidget):
     def _point_label_font_size(self) -> int:
         short_edge = max(1, min(self.width(), self.height()))
         return max(8, min(16, int(short_edge / 52)))
+
+    def _hover_font_size(self) -> int:
+        short_edge = max(1, min(self.width(), self.height()))
+        return max(9, min(18, int(short_edge / 46)))
 
     def _refresh_results_after_resize(self) -> None:
         if self._results and results_have_coordinates(self._results):
