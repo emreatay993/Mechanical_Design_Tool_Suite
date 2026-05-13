@@ -87,12 +87,28 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+entry_script_paths = {script_path.resolve() for _, script_path in entry_scripts}
+runtime_script_entries = [
+    script_entry
+    for script_entry in a.scripts
+    if Path(script_entry[1]).resolve() not in entry_script_paths
+]
+entry_script_entries = {
+    Path(script_entry[1]).resolve(): script_entry
+    for script_entry in a.scripts
+    if Path(script_entry[1]).resolve() in entry_script_paths
+}
+
 exes = []
-for index, (name, _) in enumerate(entry_scripts):
+for name, script_path in entry_scripts:
+    script_entry = entry_script_entries.get(script_path.resolve())
+    if script_entry is None:
+        raise RuntimeError(f"PyInstaller did not collect entry script: {script_path}")
+
     exes.append(
         EXE(
             pyz,
-            a.scripts[index : index + 1],
+            [*runtime_script_entries, script_entry],
             [],
             exclude_binaries=True,
             name=name,
