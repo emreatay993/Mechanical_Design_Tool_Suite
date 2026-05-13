@@ -23,6 +23,12 @@ Future CAD-specific tests should remain runnable without a live GUI where possib
 $env:PYTHONPATH="src"; python -m unittest discover -s tests -p "test_cad_tolerance*.py"
 ```
 
+Primary CAD viewer tests must run in the Python 3.12 OCCT/PyQt6 environment so the real AIS/V3d viewer stack is validated:
+
+```powershell
+$env:PYTHONNOUSERSITE="1"; $env:PYTHONPATH="src"; & "C:\ProgramData\miniforge3\envs\mdts-cad312\python.exe" -s -m unittest discover -s tests -p "test_cad_viewer*.py"
+```
+
 ## Validation Scenarios
 
 | Case | Purpose | Inputs | Expected Result | Source |
@@ -37,6 +43,7 @@ $env:PYTHONPATH="src"; python -m unittest discover -s tests -p "test_cad_toleran
 | V08 | Report generation | Stackups, snapshots, and results | HTML report with summary, snapshots, tables, and plots | Transcript `00:22:09-00:23:36` |
 | V09 | UI fidelity | Main shell and detail views | Layout, density, colors, table columns, and transitions match visual evidence | Visual sheets 002-007 |
 | V10 | Targeted visual fidelity | Main shell, guided toolbar, result plots, dashboard badges, report pages | UI matches `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` or records explicit fidelity gaps | Targeted visual review |
+| V11 | Primary OCCT viewer | STEP fixture in `mdts-cad312` with PyQt6 and `pythonocc-core` `novtk` | AIS/V3d widget initializes, renders nonblank shaded geometry, supports fit/orbit/pan/zoom, maps at least one face selection to `ShapeReference` | Requirements FR-VIEW-001A through FR-VIEW-006 |
 
 ## Neutral CAD Fixture Requirements
 
@@ -68,6 +75,7 @@ Fixture acceptance rules:
 
 - P0 domain tests cover worst-case, RSS, asymmetric tolerances, contribution ranking, and project round-trip.
 - P0 CAD tests import at least one STEP and one IGES fixture.
+- Primary viewer smoke tests prove the PyQt6 AIS/V3d widget renders nonblank geometry and selection remains B-Rep-backed, not mesh-only.
 - P0 UI tests verify the summary table and detail table column sets.
 - P0 report tests generate deterministic HTML from a fixture project.
 - Before any overnight agent claims completion, it must state which canonical docs it reread and which evidence timestamps, visual review key frames, or sheets resolved UI uncertainty.

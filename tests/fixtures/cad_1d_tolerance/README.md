@@ -18,3 +18,12 @@ This directory is reserved for small, trackable fixtures for the CAD 1D toleranc
 - Do not commit commercial or proprietary CAD files.
 - STEP/IGES fixtures must be neutral-format only for P0.
 - If a binary CAD fixture is too large or licensing is unclear, document the generator script or external storage location instead of committing the file.
+
+## P03 Neutral CAD Adapter Status
+
+- The adapter boundary is implemented in `cad_geometry_api.py`, with OCCT-specific imports confined to `cad_geometry_occ.py`.
+- Local default-Python dependency check on 2026-05-13: `OCC` and `OCP` imports were unavailable under Python 3.14.
+- Local pip install dry run on 2026-05-13: `python -m pip install --dry-run pythonocc-core` failed with `No matching distribution found for pythonocc-core` from the configured PyPI/NVIDIA indexes.
+- The local Conda environment `mdts-cad312` fixes the CAD runtime with Python 3.12, `pythonocc-core 7.7.2` using the `novtk` OCCT build, and PyQt6 from the project dependencies. It deliberately avoids Conda PyQt5/Qt5.
+- Use `C:\ProgramData\miniforge3\envs\mdts-cad312\python.exe` to run real OCCT import smoke tests and PyQt6 UI work.
+- Real STEP/IGES adapter smoke tests import the generated neutral fixtures in `mdts-cad312` and skip cleanly under environments without a compatible OCCT binding.

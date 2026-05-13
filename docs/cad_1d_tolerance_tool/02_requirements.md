@@ -29,10 +29,15 @@ Requirements in this file are derived from:
 ### Viewport And Selection
 
 - FR-VIEW-001: Render shaded CAD geometry in a central viewport with orbit, pan, zoom, fit, standard views, axis triad, and view cube or equivalent orientation widget.
+- FR-VIEW-001A: Use OCCT AIS/V3d as the primary CAD viewer and keep OCCT B-Rep topology as the authoritative selection and measurement source. Tessellated meshes may be used only as internal display caches or secondary diagnostics.
 - FR-VIEW-002: Support selectable bodies, faces, edges, vertices, axes, and inferred surface normals where exposed by the geometry kernel.
+- FR-VIEW-002A: Map every live viewer selection back to a serializable `ShapeReference` and, where possible, an inferred `FeatureReference`; do not persist raw AIS/V3d/TopoDS handles.
+- FR-VIEW-002B: Support role-based selection filters for stackup start feature, end feature, direction reference, analysis plane, loop members, and warning review.
 - FR-VIEW-003: Highlight selected geometry with translucent colors matching the demo style: green, red, blue, magenta, and yellow depending on selection role.
+- FR-VIEW-003A: Support cross-highlighting between the assembly browser, viewport picks, contributor table rows, and result/warning displays.
 - FR-VIEW-004: Draw dimension arrows, leader lines, and draggable annotation labels directly over the model.
 - FR-VIEW-005: Allow snapshots of the current viewport with annotations for reports.
+- FR-VIEW-006: The CAD viewer runtime must use PyQt6 for UI integration. PyQt5/Qt5 may not be introduced into the primary UI runtime to satisfy CAD viewer dependencies.
 
 ### Stackup Authoring
 

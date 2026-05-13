@@ -6,13 +6,14 @@ Implement dashboard result projection, contribution views, warnings, snapshots, 
 
 ## Worker Prompt
 
-You are a `gpt-5.5` `xhigh` worker in `C:\Users\emre_\PycharmProjects\Mechanical_Design_Tool_Suite`. Your task is P06 Results Dashboard And Reports. Reread `overnight_plans/README.md`, `07_implementation_plan.md`, `02_requirements.md`, `03_ui_ux_design_spec.md`, `04_data_model_and_calculation_methods.md`, `06_verification_validation_plan.md`, and `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` before editing. After every context compaction, reread those files and this packet. Use transcript timestamps `00:13:49-00:23:36` and targeted visual review sections for result/report behavior.
+You are a `gpt-5.5` `xhigh` worker in `C:\Users\emre_\PycharmProjects\Mechanical_Design_Tool_Suite`. Your task is P06 Results Dashboard And Reports. Reread `overnight_plans/README.md`, `07_implementation_plan.md`, `02_requirements.md`, `03_ui_ux_design_spec.md`, `04_data_model_and_calculation_methods.md`, `06_verification_validation_plan.md`, `08_primary_cad_viewer_plan.md`, and `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` before editing. After every context compaction, reread those files and this packet. Use transcript timestamps `00:13:49-00:23:36` and targeted visual review sections for result/report behavior.
 
 ## Conservative Write Scope
 
 - `src/mechanical_design_tool_suite/cad_tolerance_report.py`
 - `cad_tolerance_viewmodels.py`
 - `cad_tolerance_gui.py`
+- `cad_viewer_api.py` only for snapshot/highlight request contracts
 - `tests/test_cad_tolerance_report.py`
 - Report template assets only if needed and independently authored
 
@@ -23,6 +24,7 @@ You are a `gpt-5.5` `xhigh` worker in `C:\Users\emre_\PycharmProjects\Mechanical
 - Dashboard rollup badges for objectives met, objectives not met, and predicted/target sigma rollup.
 - Contribution ranking view model.
 - Non-1D warning display.
+- Snapshot and highlight requests through the viewer API using serializable camera state, `ShapeReference` / `FeatureReference` ids, and image artifact metadata. Do not persist raw AIS/V3d/TopoDS/VTK objects or mesh-only identifiers.
 - HTML report generator with dark left nav, summary, snapshots, stackup table, result section, contribution section, and warning text matching the targeted visual review structure.
 
 ## Verification

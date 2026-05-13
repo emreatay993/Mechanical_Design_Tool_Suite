@@ -26,7 +26,7 @@ Target at least 95% fidelity to the visible standalone demo workflow where feasi
 | Region | Purpose | Required Details |
 | --- | --- | --- |
 | Left model browser | Imported assembly and part hierarchy | Tree with disclosure arrows, small yellow folder/part icons, home/assembly-view icon row, light-blue selected rows. |
-| Center viewport | CAD model interaction and annotations | Light-gray background, shaded CAD rendering, axis triad bottom-left, view cube or orientation widget top-right, vertical navigation toolbar on the right edge. |
+| Center viewport | CAD model interaction and annotations | Primary viewer must be OCCT AIS/V3d embedded in PyQt6 with B-Rep-backed selection. Light-gray background, shaded CAD rendering, axis triad bottom-left, view cube or orientation widget top-right, vertical navigation toolbar on the right edge. |
 | Right analysis pane | Summary and stackup detail | Switches between summary dashboard and selected stackup detail; thin gray splitters; compact tables. |
 | Bottom/right result area | Result visualization | `Results` and `Contributions` tabs, red/green bars, green bell-curve plots, blue contribution bars. |
 

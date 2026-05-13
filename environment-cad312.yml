@@ -1,0 +1,9 @@
+name: mdts-cad312
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pythonocc-core=7.7.2=*novtk*
+  - pip
+  - pip:
+      - -e .

@@ -6,7 +6,7 @@ Prove the neutral CAD import and geometry adapter boundary using OCCT. Use `pyth
 
 ## Worker Prompt
 
-You are a `gpt-5.5` `xhigh` worker in `C:\Users\emre_\PycharmProjects\Mechanical_Design_Tool_Suite`. Your task is P03 Neutral CAD Adapter Spike. Reread `overnight_plans/README.md`, `07_implementation_plan.md`, `02_requirements.md`, and `05_architecture_and_persistence.md` before editing. After every context compaction, reread those files and this packet. If `pythonocc-core` blocks progress, document the blocker and leave the API stable enough for a C++ OCCT adapter.
+You are a `gpt-5.5` `xhigh` worker in `C:\Users\emre_\PycharmProjects\Mechanical_Design_Tool_Suite`. Your task is P03 Neutral CAD Adapter Spike. Reread `overnight_plans/README.md`, `07_implementation_plan.md`, `02_requirements.md`, `05_architecture_and_persistence.md`, and `08_primary_cad_viewer_plan.md` before editing. After every context compaction, reread those files and this packet. If `pythonocc-core` blocks progress, document the blocker and leave the API stable enough for a C++ OCCT adapter.
 
 ## Conservative Write Scope
 
@@ -22,6 +22,7 @@ You are a `gpt-5.5` `xhigh` worker in `C:\Users\emre_\PycharmProjects\Mechanical
 - OCCT-backed import attempt for STEP and IGES.
 - Assembly/shape traversal enough to populate an assembly browser.
 - Shape/feature reference extraction for bodies, faces, edges, vertices where available.
+- Live OCCT shape access behind the adapter for the future PyQt6 AIS/V3d viewer; do not expose viewer handles or add UI code in P03.
 - Basic measurement helpers for planar and cylindrical feature pairs.
 - Tests that skip clearly when optional CAD dependency is unavailable.
 
