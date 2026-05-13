@@ -1,0 +1,406 @@
+{
+  "schema_version": 2,
+  "project_type": "cad_1d_tolerance",
+  "title": "Caster tolerance study",
+  "unit_system": "mm",
+  "cad_documents": [
+    {
+      "id": "cad_doc_1",
+      "source_path": "fixtures/cad_1d_tolerance/neutral_step_two_part_loop.step",
+      "file_hash": "sha256:0123456789abcdef",
+      "file_format": "step",
+      "imported_at": "2026-05-12T20:10:00Z",
+      "units": "mm",
+      "assembly_root": {
+        "id": "asm_root",
+        "name": "Caster Assembly",
+        "node_type": "root",
+        "parent_id": "",
+        "children": [
+          {
+            "id": "asm_bracket",
+            "name": "Bracket",
+            "node_type": "part",
+            "parent_id": "asm_root",
+            "children": [],
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "display_color": [
+              180,
+              190,
+              205
+            ],
+            "source_label": "0:1"
+          },
+          {
+            "id": "asm_bushing",
+            "name": "Bushing",
+            "node_type": "part",
+            "parent_id": "asm_root",
+            "children": [],
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "display_color": [
+              80,
+              140,
+              180
+            ],
+            "source_label": "0:2"
+          }
+        ],
+        "transform": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "display_color": null,
+        "source_label": "0"
+      },
+      "display_name": "neutral_step_two_part_loop.step",
+      "import_settings": {
+        "heal_shapes": true,
+        "object_filter": "solids"
+      }
+    }
+  ],
+  "stackups": [
+    {
+      "id": "stackup_bushing_alignment",
+      "name": "Bushing ID alignment",
+      "contributors": [
+        {
+          "id": "contrib_generated_1",
+          "name": "Bracket to bushing face",
+          "nominal": 24.0,
+          "sensitivity": 1.0,
+          "tolerance": 0.15,
+          "tolerance_minus": 0.1,
+          "tolerance_plus": 0.15,
+          "tolerance_type": "limits",
+          "datum_references": [],
+          "source_feature": {
+            "id": "feature_start",
+            "name": "Bracket datum face",
+            "feature_type": "face",
+            "shape_reference": {
+              "id": "shape_start_face",
+              "document_id": "cad_doc_1",
+              "assembly_path": [
+                "Caster Assembly",
+                "Bracket"
+              ],
+              "shape_type": "face",
+              "kernel_label": "0:1:face:12",
+              "geometric_signature": {
+                "area": 420.0,
+                "normal": [
+                  1.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "fallback_display_name": "Bracket inside face"
+            },
+            "owner_part_id": "asm_bracket",
+            "datum_label": "A",
+            "point": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "axis": null,
+            "normal": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "geometric_tolerance": null,
+          "shared_with_stackup_ids": [
+            "stackup_overall_height"
+          ],
+          "include_in_stackup": true,
+          "source_note": "Generated from STEP loop selection."
+        },
+        {
+          "id": "contrib_gdt_1",
+          "name": "Manual runout to datum A",
+          "nominal": 0.0,
+          "sensitivity": 1.0,
+          "tolerance": 0.05,
+          "tolerance_minus": 0.05,
+          "tolerance_plus": 0.05,
+          "tolerance_type": "geometric",
+          "datum_references": [
+            "A"
+          ],
+          "source_feature": {
+            "id": "feature_end",
+            "name": "Bushing ID axis",
+            "feature_type": "cylinder",
+            "shape_reference": {
+              "id": "shape_end_cylinder",
+              "document_id": "cad_doc_1",
+              "assembly_path": [
+                "Caster Assembly",
+                "Bushing"
+              ],
+              "shape_type": "face",
+              "kernel_label": "0:2:face:7",
+              "geometric_signature": {
+                "radius": 12.5,
+                "axis": [
+                  1.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "fallback_display_name": "Bushing ID"
+            },
+            "owner_part_id": "asm_bushing",
+            "datum_label": "B",
+            "point": [
+              24.0,
+              0.0,
+              0.0
+            ],
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "normal": null
+          },
+          "geometric_tolerance": {
+            "id": "gdt_runout_1",
+            "control_type": "runout",
+            "tolerance_value": 0.1,
+            "datum_references": [
+              "A"
+            ],
+            "material_modifier": "",
+            "derived_minus": 0.05,
+            "derived_plus": 0.05,
+            "conversion_note": "Runout projected onto the selected stack direction."
+          },
+          "shared_with_stackup_ids": [],
+          "include_in_stackup": true,
+          "source_note": "Manual GD&T row."
+        }
+      ],
+      "objective": {
+        "objective_type": "bilateral",
+        "nominal": 24.0,
+        "tolerance_minus": 0.5,
+        "tolerance_plus": 0.75,
+        "lower_limit": null,
+        "upper_limit": null,
+        "description": "+0.75/-0.50 bushing objective"
+      },
+      "target_quality": {
+        "metric": "cpk",
+        "value": 1.67,
+        "sigma_coverage": 3.0
+      },
+      "analysis_mode": "statistical",
+      "start_feature": {
+        "id": "feature_start",
+        "name": "Bracket datum face",
+        "feature_type": "face",
+        "shape_reference": {
+          "id": "shape_start_face",
+          "document_id": "cad_doc_1",
+          "assembly_path": [
+            "Caster Assembly",
+            "Bracket"
+          ],
+          "shape_type": "face",
+          "kernel_label": "0:1:face:12",
+          "geometric_signature": {
+            "area": 420.0,
+            "normal": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "fallback_display_name": "Bracket inside face"
+        },
+        "owner_part_id": "asm_bracket",
+        "datum_label": "A",
+        "point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "axis": null,
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      },
+      "end_feature": {
+        "id": "feature_end",
+        "name": "Bushing ID axis",
+        "feature_type": "cylinder",
+        "shape_reference": {
+          "id": "shape_end_cylinder",
+          "document_id": "cad_doc_1",
+          "assembly_path": [
+            "Caster Assembly",
+            "Bushing"
+          ],
+          "shape_type": "face",
+          "kernel_label": "0:2:face:7",
+          "geometric_signature": {
+            "radius": 12.5,
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "fallback_display_name": "Bushing ID"
+        },
+        "owner_part_id": "asm_bushing",
+        "datum_label": "B",
+        "point": [
+          24.0,
+          0.0,
+          0.0
+        ],
+        "axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "normal": null
+      },
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "annotation_plane": {
+        "origin": [
+          12.0,
+          20.0,
+          0.0
+        ],
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "source_feature_id": "feature_start",
+        "display_name": "Front annotation plane"
+      },
+      "warnings": [
+        {
+          "id": "warn_offset_1",
+          "warning_kind": "offset_features",
+          "message": "Endpoint features are laterally offset from the stack direction.",
+          "severity": "warn",
+          "feature_ids": [
+            "feature_start",
+            "feature_end"
+          ],
+          "observed_value": 1.8,
+          "threshold": 1.0
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "sigma_coverage": 3.0,
+    "default_target_cpk": 1.67,
+    "lateral_offset_warning_threshold": 1.0,
+    "min_direction_alignment": 0.96,
+    "multi_interface_warning_count": 4,
+    "projection_sensitivity_warning_threshold": 0.12
+  },
+  "snapshots": [
+    {
+      "id": "snapshot_summary_1",
+      "image_path": "snapshots/bushing_alignment.png",
+      "camera": {
+        "eye": [
+          120.0,
+          80.0,
+          60.0
+        ],
+        "target": [
+          12.0,
+          0.0,
+          0.0
+        ]
+      },
+      "visible_stackup_ids": [
+        "stackup_bushing_alignment"
+      ],
+      "annotation_positions": {
+        "stackup_bushing_alignment": [
+          0.42,
+          0.58
+        ]
+      },
+      "captured_at": "2026-05-12T20:20:00Z"
+    }
+  ],
+  "reports": [
+    {
+      "id": "report_summary_1",
+      "title": "Caster tolerance report",
+      "snapshot_ids": [
+        "snapshot_summary_1"
+      ],
+      "generated_at": "2026-05-12T20:30:00Z"
+    }
+  ]
+}
