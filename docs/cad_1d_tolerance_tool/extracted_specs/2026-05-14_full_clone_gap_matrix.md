@@ -2,90 +2,110 @@
 
 Date: 2026-05-14
 
-This is the baseline coverage matrix for the requested high-fidelity EZtol-style CAD 1D tolerance clone. It is based on the full local video context pack, the timestamped transcript, the targeted visual review, fresh 10-second full-pass sheets, numbered CAD docs, and the current P07-era implementation state.
+P08 reset: this file is the traceable coverage matrix for the requested high-fidelity EZtol-style CAD 1D tolerance clone. It refines the earlier baseline matrix in place so P09-P16 can work from one evidence packet without rediscovering the video.
 
-Evidence used:
+The matrix is based on the local full video context pack, timestamped transcript, targeted visual review, fresh full-pass 10-second sheets, numbered CAD docs, and the current P07-era implementation state.
 
-- `output/transcribe/eztol-demo-media-1080p/EZtol-Demo_Media_1080p.viewer.html`
-- `output/transcribe/eztol-demo-media-1080p/EZtol-Demo_Media_1080p.timestamped_transcript.md`
-- `output/transcribe/eztol-demo-media-1080p/visual_review_2026-05-14_full_pass/full_10sec_sheet_*.jpg`
-- `docs/cad_1d_tolerance_tool/extracted_specs/2026-05-12_eztol_targeted_visual_review.md`
-- Numbered docs `01` through `09`
+## Evidence Sources
 
-Status legend:
+- Video context pack: `output/transcribe/eztol-demo-media-1080p/`
+- Transcript: `output/transcribe/eztol-demo-media-1080p/EZtol-Demo_Media_1080p.timestamped_transcript.md`
+- Segment table: `output/transcribe/eztol-demo-media-1080p/EZtol-Demo_Media_1080p.segments.tsv`
+- Targeted key frames: `output/transcribe/eztol-demo-media-1080p/visual_review_2026-05-12/key_frames/*.jpg`
+- Key-frame manifest: `output/transcribe/eztol-demo-media-1080p/visual_review_2026-05-12/key_frame_manifest.tsv`
+- Five-second sheets: `output/transcribe/eztol-demo-media-1080p/visual_review_2026-05-12/five_second_sheets/ui_5sec_sheet_*.jpg`
+- Contact sheets: `output/transcribe/eztol-demo-media-1080p/visual_evidence/sheet_*.jpg`
+- Fresh full-pass sheets: `output/transcribe/eztol-demo-media-1080p/visual_review_2026-05-14_full_pass/full_10sec_sheet_*.jpg`
+- Extracted specs: `2026-05-12_eztol_demo_extracted_spec.md` and `2026-05-12_eztol_targeted_visual_review.md`
+- Numbered CAD docs: `01_reverse_engineering_summary.md` through `09_full_clone_gap_closure_plan.md`
+- Current implementation coverage: `src/mechanical_design_tool_suite/cad_*.py` and `tests/test_cad*.py`
 
-- `met`: implemented well enough for the prototype target.
-- `partial`: visible implementation exists, but fidelity, workflow depth, tests, or polish are not yet sufficient.
-- `missing`: no meaningful implementation yet.
-- `out_of_scope`: intentionally excluded from the current neutral-CAD clone.
-- `roadmap`: worth considering after the neutral-CAD clone reaches the requested fidelity target.
+## Status Legend
+
+- `met`: implemented and covered well enough for the current prototype contract.
+- `partial`: implementation or documentation exists, but full-clone workflow depth, UI fidelity, test coverage, or polish is not sufficient.
+- `missing`: no meaningful implementation yet for the video-derived requirement.
+- `deferred`: legitimate future roadmap item, but not part of the P0 neutral-CAD clone.
+- `out_of_scope`: intentionally excluded from the neutral-CAD clone target.
 
 ## Coverage Matrix
 
-| Area | Demo-Derived Expectation | Current Status | Gap / Next Packet |
-| --- | --- | --- | --- |
-| Traditional stack-up intro | Demo opens with PowerPoint/manual stack-up context and caster drawing. | out_of_scope | Use as domain context only; do not clone slides or vendor branding. |
-| Blank product launch | EZtol-like splash/main window opens from Windows. | partial | Launcher and entry point exist, but final icon/packaged CAD runtime needs P15 validation. |
-| File open flow | Windows file dialog opens CAD assembly and hands it to import options. | partial | Basic neutral open exists; import options need exact behavior and source-status integration. P08/P15. |
-| Import options dialog | Modal import settings include units/tolerance defaults and selectable import behavior. | partial | Current dialog does not fully mirror demo options or consistently drive import behavior. P09/P12/P15. |
-| CAD source references | Loaded projects preserve source references and can show missing-source state. | met | P07 path exists; P08/P15 should verify visual status and package behavior. |
-| Project-local assets | Assets near `.tolproj` reload without absolute paths. | met | Keep covered by P07 tests; P14/P15 extend report/package assets. |
-| `.tolpack` package | Portable package export/import with deterministic, relative contents. | met | Preserve while adding report/snapshot assets. P14/P15. |
-| Main workspace layout | Left model browser, center CAD viewport, right summary/detail analysis pane, ribbon actions. | partial | Layout exists but density, control states, icons, resizing, and visual parity need P13/P15. |
-| Ribbon/toolbar actions | Compact actions for new stackup, add feature, snapshot, generate report, import/export. | partial | Buttons exist in prototype form; iconography/state wiring/final ordering need P12-P15. |
-| Model browser | Assembly tree shows real part hierarchy, body names, visibility/selection states. | partial | Current tree is too synthetic; needs XDE names, colors, stable ids, hide/show. P10/P11. |
-| CAD viewport rendering | Shaded CAD assembly with colors, gray background, triad/ViewCube/navigation. | partial | OCCT viewer path exists; color/name fidelity, selection, overlays, and navigation polish need P10/P11. |
-| STEP/IGES import | Neutral CAD formats load as supported P0 inputs. | met | Continue supporting only STEP/IGES for current scope. |
-| SAT/native import | Native/commercial formats or ACIS SAT. | out_of_scope | Removed from current code path; keep roadmap note only. |
-| Native CAD add-in | Late demo shows SOLIDWORKS/CETOL-style add-in reference. | out_of_scope | Roadmap comparator, not P0 implementation. |
-| XDE assembly metadata | Product names, colors, labels, hierarchy, and reusable shape ids survive import. | partial | Needs STEPCAF/XCAF traversal and tests with caster fixture. P10. |
-| Selection filters | Body/face/edge/vertex picking and highlighted selected items. | partial | Prototype selection is not demo-grade; needs filter states, hover, mapping, cross-highlighting. P11. |
-| Guided endpoint flow | Pick first/second endpoint, confirm/cancel/list controls, visible counters. | partial | State machine exists but lacks full UI fidelity and production selection loop. P12. |
-| Direction selection | Select stack direction with persistent axis/direction annotation. | partial | Needs exact guided prompt/control behavior and robust persistence. P12. |
-| Annotation plane | Select plane and position dimension labels in viewport. | missing | Needs draggable overlay/leader layer. P11/P12. |
-| Loop parts | Select/include loop parts and show counters/check state. | partial | Needs usable loop authoring, selected part state, and generated contributors. P12. |
-| Mating features | Identify mating faces/features between loop parts. | missing | Full native mate solving is out of scope, but selected mating-feature workflow is needed. P12. |
-| Automatic contributors | Generate dimensional contributors from selected loop geometry. | partial | Prototype contributor creation exists but not production-quality from real selected geometry. P12. |
-| Add feature workflow | Add intermediate/reference/GD&T features after initial stackup. | partial | Add Feature behavior and row integration need table/viewer coupling. P09/P12. |
-| Red/blue annotations | Viewport dimensions use red/blue vertical/horizontal callouts and leader lines. | missing | Core visual fidelity item for P11. |
-| Draggable labels | Demo moves labels/callouts to reduce overlap. | missing | Needs annotation model and viewer overlay hit-testing. P11. |
-| Summary dashboard | Multi-stackup table with OK icons, nominal/objective/target/result/predicted quality/#dims. | partial | Basic dashboard exists; exact columns, badges, color rules, and drilldown need P13. |
-| Pass/fail rollup | Round green/red counters and large red quality/objective score. | partial | Needs exact visual treatment and projection tests. P13. |
-| Detail table | Spreadsheet-like contributor grid with names, sensitivity, nominal, tolerance, datum fields. | partial | Needs full edit delegates, validation, recalculation, and persistence. P09. |
-| Inline tolerance edits | Numeric edits update worst-case/RSS/statistical result immediately. | partial | Calculation exists; editable Qt model/delegates need completion. P09. |
-| Tolerance-type dropdown | Rows can switch dimensional/tolerance behavior through dropdowns. | missing | Needed for demo parity. P09. |
-| GD&T dialog | Manual GD&T/GPS feature dialog supports runout/position-like entries and datums. | partial | Domain has partial representation; dialog UX and table integration need P09. |
-| Datum/reference handling | Datum letters/feature references appear in rows and affect contributors. | partial | Needs model fields, validation, and display parity. P09. |
-| Shared dimensions | Shared contributor markers/tooltips and consistent updates across stackups. | missing | Needed for dashboard/detail fidelity. P09/P13. |
-| Worst-case mode | Result range bar and values for worst-case analysis. | partial | Calculation exists; visual mode parity needs P13. |
-| RSS/statistical modes | Toggle between RSS/statistical displays and quality metrics. | partial | Calculations exist but UI controls/plots are incomplete. P13. |
-| Bell curve plot | Statistical result area shows green normal curve and spec lines. | partial | Prototype plot exists; layout and deterministic rendering need P13/P14. |
-| Contribution bars | Contributor contribution view with blue bars and sorted percentages. | partial | Needs demo-grade widget and report reuse. P13/P14. |
-| Non-1D warning | Warning banner/status for loops likely requiring 3D analysis. | partial | Heuristic data exists; automatic geometry-driven warnings and UX need P13. |
-| Settings dialogs | Demo shows settings/result-related dialogs and modal option panes. | partial | Need inventory in P08 and implement only product-critical settings in P09/P13/P15. |
-| Snapshots | Capture annotated CAD viewport for project/report use. | partial | Needs overlay-inclusive deterministic snapshot pipeline. P11/P14. |
-| Report save dialog | User chooses report destination and assets are written. | partial | HTML output exists; save flow and portable asset folder need P14. |
-| Browser report | Dark left nav, white content, summary, per-stackup snapshots/tables/plots. | partial | Existing report is useful but not visually close enough. P14. |
-| Report assets | Images/CSS/scripts are deterministic and relative. | partial | Needs no absolute paths and package compatibility. P14/P15. |
-| Packaged executable | CAD GUI launches from packaged Windows build. | partial | Build/runtime dependency collection needs verification. P15. |
-| CAD runtime dependencies | Correct Conda env includes PyQt6, pythonocc novtk, NumPy, ffmpeg. | met | `ffmpeg` is now included in `environment-cad312.yml`; P15 validates build. |
-| Full test discovery | CAD and non-CAD tests run with clear blocked/skipped reporting. | partial | Existing unrelated discovery crash must be reported separately; P16 defines focused fallback. |
-| Visual fidelity audit | Final screenshots/reports compared to full video evidence. | missing | P16 final audit after P08-P15. |
+| ID | Area | Video-Derived Requirement | Status | Evidence Anchor | Implementation / Gap Routing |
+| --- | --- | --- | --- | --- | --- |
+| FCE-001 | Domain context | Assembly-level stackup studies must preserve part-level controls and loop contributors. | partial | Transcript `00:00:00-00:02:12`; key frame `001_00-00-45_manual_spreadsheet_intro.jpg`; `02_requirements.md` Functional Requirements. | Domain objects and calculations exist; full UI traceability from geometry through table/report remains P09-P14 work. |
+| FCE-002 | Domain context | Linear, runout, position, profile/ISO-equivalent controls, datum references, nominal contribution, sensitivity, and variation contribution are all represented. | partial | Transcript `00:00:40-00:01:45`, `00:12:05-00:13:49`; contact sheets `sheet_001.jpg`, `sheet_004.jpg`, `sheet_005.jpg`; `04_data_model_and_calculation_methods.md` GD&T conversion. | Manual GD&T/domain fields exist; dialog fidelity, exact glyphs, and table integration remain P09. |
+| FCE-003 | Domain calculations | Manual reference case yields nominal zero and worst-case variation near `+/-0.75`. | met | Transcript `00:01:50-00:02:12`; extracted spec Stackup Semantics; `06_verification_validation_plan.md` Reference Cases. | Core 1D nominal/worst-case/RSS calculation tests support this. Preserve as regression evidence. |
+| FCE-010 | Launch/open | Standalone desktop app opens into a compact CAD workspace, not a web dashboard. | partial | Transcript `00:02:30-00:02:41`; key frame `002_00-02-35_standalone_app_launch_context.jpg`; targeted review Launch State; `03_ui_ux_design_spec.md` App Shell. | Prototype launch path exists; final icon, packaged runtime, and launch-card validation route to P15. |
+| FCE-011 | Open dialog | Windows-style open dialog includes file name/type/project fields and neutral-format filtering for the clone. | partial | Transcript `00:02:35-00:03:14`; key frame `003_00-02-50_open_file_flow.jpg`; contact sheet `sheet_001.jpg`; `02_requirements.md` FR-CAD-008. | Basic neutral open exists; exact dialog structure and file-type filtering need P15/UI polish. |
+| FCE-012 | Import options | Import options dialog includes options/select tabs, object filters, units, assembly/part options, OK/Cancel. | partial | Transcript `00:03:20-00:04:03`; key frame `004_00-03-20_import_options_dialog.jpg`; contact sheet `sheet_002.jpg`; targeted review Import Options. | Import behavior exists behind adapter; full modal option parity and source-status coupling remain P10/P15. |
+| FCE-013 | Neutral CAD import | P0 clone must import STEP AP203/AP214/AP242 and IGES B-Rep geometry. | met | User neutral-format constraint in extracted spec; `02_requirements.md` FR-CAD-001/002; `08_primary_cad_viewer_plan.md` CAD Inputs. | Geometry API and OCCT adapter cover STEP/IGES, with tests and fixture requirements. Keep native formats excluded. |
+| FCE-014 | Native/commercial import | Demo lists Inventor, CATIA, NX/JT, Creo, SOLIDWORKS, and generic file formats. | out_of_scope | Transcript `00:02:41-00:03:14`; key frame `003_00-02-50_open_file_flow.jpg`; targeted review Open Dialog; `02_requirements.md` Non-Goals. | P0 clone intentionally supports neutral formats only. Do not add native import in P09-P16. |
+| FCE-015 | Source references | Imported analysis can be converted or keep a source reference so changed models can be reattached/refreshed when feasible. | partial | Transcript `00:03:20-00:04:03`; key frame `004_00-03-20_import_options_dialog.jpg`; `02_requirements.md` FR-CAD-005/006. | Project persists source path/hash metadata; refresh/reattach UX and validation remain P10/P15. |
+| FCE-016 | Project save/package | Analysis can be saved with converted geometry info or as standalone data. | met | Transcript `00:04:27-00:04:55`; key frame `006_00-04-35_file_actions_snapshots_reports.jpg`; `05_architecture_and_persistence.md` Persistence Model. | `.tolproj` and `.tolpack` paths are implemented; P14/P15 must preserve deterministic relative assets. |
+| FCE-020 | App shell | Main workspace uses left model browser, central CAD viewport, right summary/detail pane, top ribbon, and lower result tabs. | partial | Transcript `00:04:07-00:04:55`; key frame `005_00-04-10_main_workspace_after_import.jpg`; contact sheet `sheet_002.jpg`; `03_ui_ux_design_spec.md` Main Layout. | Qt shell/viewmodels exist; visual density, resize behavior, icons, and exact pane treatment route to P13/P15. |
+| FCE-021 | Ribbon/actions | Ribbon actions include Stackup/Report/Data, New Stackup, Add Feature, Snapshot, Generate Report, Import, and Export with enabled/disabled states. | partial | Transcript `00:04:27-00:04:45`; key frames `005_00-04-10_main_workspace_after_import.jpg`, `006_00-04-35_file_actions_snapshots_reports.jpg`; targeted review Main Workspace. | Actions exist in prototype form; final ordering, icons, tooltips, and state rules route to P12-P15. |
+| FCE-022 | Model browser | Assembly tree shows product hierarchy, display names, visibility/selection states, and browser row styling. | partial | Key frame `005_00-04-10_main_workspace_after_import.jpg`; contact sheet `sheet_002.jpg`; `03_ui_ux_design_spec.md` Main Layout; `09_full_clone_gap_closure_plan.md` T03/P10. | Current tree is too synthetic; XDE names/colors/stable IDs and hide/show behavior route to P10/P11. |
+| FCE-023 | Viewport rendering | Shaded CAD assembly renders in a light-gray viewport with CAD colors where available. | partial | Transcript `00:04:07-00:04:15`; key frame `005_00-04-10_main_workspace_after_import.jpg`; `08_primary_cad_viewer_plan.md` Decision. | OCCT AIS/V3d path exists behind optional runtime; color/name fidelity and deterministic smoke coverage route to P10/P11/P15. |
+| FCE-024 | View orientation UI | Axis triad, ViewCube/orientation widget, and vertical navigation toolbar are visible and usable. | missing | Key frames `005_00-04-10_main_workspace_after_import.jpg`, `006_00-04-35_file_actions_snapshots_reports.jpg`; targeted review Snapshot Tooltip; `03_ui_ux_design_spec.md` Viewport. | Required visual fidelity item for P11. |
+| FCE-025 | Selection filters/highlights | Body/face/edge/vertex filters constrain picks by workflow role and highlight geometry with role colors. | partial | Transcript `00:05:04-00:06:43`; key frames `008` through `012`; contact sheet `sheet_002.jpg`; `08_primary_cad_viewer_plan.md` Selection And Highlighting. | Workflow filters/highlight roles exist conceptually; production OCCT selection mapping and hover/cross-highlight fidelity route to P11/P12. |
+| FCE-026 | Cross-highlighting | Browser rows, viewport picks, table rows, and result warnings cross-highlight the same referenced geometry. | partial | Targeted review Interaction Patterns; `02_requirements.md` FR-VIEW-003A; `08_primary_cad_viewer_plan.md` Phase 2. | Selection bridge is partial; full browser/viewer/table/result coupling routes to P11/P13. |
+| FCE-030 | Guided mini-toolbar | New Stackup launches floating mini-toolbar with `Selection 1`, `Width 1`, `Selection 2`, `Width 2`, `Direction`, `Analysis Plane`, and `Dimension Location`. | partial | Transcript `00:04:55-00:05:04`; key frame `007_00-05-00_new_stackup_guided_start.jpg`; targeted review Endpoint/Direction/Plane; `02_requirements.md` FR-STK-001A. | State machine includes these states; exact floating toolbar layout, counters, icons, and production event wiring route to P12. |
+| FCE-031 | Endpoint picking | User selects face, edge, or vertex endpoints to define the studied measurement. | partial | Transcript `00:05:04-00:05:24`; key frame `008_00-05-12_endpoint_selection.jpg`; contact sheet `sheet_002.jpg`; `02_requirements.md` FR-STK-002. | Workflow state and feature refs exist; live B-Rep picking fidelity and prompts route to P11/P12. |
+| FCE-032 | Direction selection | Cylindrical or ambiguous endpoints prompt for direction from edge, axis, or surface normal. | partial | Transcript `00:05:25-00:05:45`; key frame `009_00-05-28_direction_selection.jpg`; `04_data_model_and_calculation_methods.md` Non-1D heuristics. | Direction state exists; robust persistence and exact prompt/control behavior route to P12. |
+| FCE-033 | Analysis plane and label placement | User selects an analysis plane and drags the nominal annotation/label in the viewport. | partial | Transcript `00:05:45-00:06:02`, `00:15:45-00:15:55`; key frames `010_00-05-48_annotation_plane_and_label.jpg`, `034_00-15-48_snapshot_annotation_state.jpg`; targeted review Endpoint/Direction/Plane. | Annotation location data exists; true draggable overlay/leader hit-testing is missing and routes to P11/P12. |
+| FCE-034 | Loop-part selection | User selects loop parts with component counters and filtered eligible features. | partial | Transcript `00:06:02-00:06:18`; key frame `011_00-06-08_loop_part_selection.jpg`; targeted review Loop And Constraint Selection. | Workflow has loop/member state; UI counters and production geometry coupling route to P12. |
+| FCE-035 | Mating-feature selection | User selects mating faces/features between loop parts, with mating-face counters. | partial | Transcript `00:06:18-00:07:01`; key frames `012_00-06-28_constraint_feature_selection.jpg`, `013_00-06-52_stackup_selection_complete.jpg`; targeted review Loop And Constraint Selection. | Selected mating-feature workflow is needed; automatic native mate graph solving is out of scope. P12 owns usable selection flow. |
+| FCE-036 | Generated contributors | Tool derives initial dimensional contributors from selected loop geometry. | partial | Transcript `00:07:01-00:07:27`; key frames `014_00-07-05_generated_stackup_detail_table.jpg`, `015_00-07-24_auto_dimension_scheme.jpg`; `02_requirements.md` FR-STK-007. | Deterministic contributor generation exists but is not production-quality from real selected geometry. P12. |
+| FCE-037 | Add Feature/reuse | User can add intermediate/reference features and repeated parts inherit prior schemes. | partial | Transcript `00:09:19-00:10:36`; key frames `020` through `022`; contact sheets `sheet_003.jpg`, `sheet_004.jpg`; `02_requirements.md` FR-STK-008/009. | Add Feature/reuse behaviors need table/viewer coupling and shared-dimension UX. P09/P12/P13. |
+| FCE-040 | Red/blue annotation graphics | Viewport dimensions use saturated red stackup/result callouts and blue input dimension callouts with leaders. | missing | Key frames `010_00-05-48_annotation_plane_and_label.jpg`, `034_00-15-48_snapshot_annotation_state.jpg`, `050_00-23-18_report_stackup_section.jpg`; `03_ui_ux_design_spec.md` Detailed Visual Style. | Core visual fidelity item for P11/P14. |
+| FCE-041 | Draggable labels | Labels/callouts can be repositioned to reduce overlap and prepare report snapshots. | missing | Transcript `00:07:01-00:07:08`, `00:15:45-00:15:55`, `00:22:09-00:22:30`; key frame `034_00-15-48_snapshot_annotation_state.jpg`. | Requires annotation overlay model and viewer hit-testing in P11. |
+| FCE-050 | Detail table | Detail view shows dense spreadsheet-like rows for parts, features, dimensions, objectives, results, sensitivities, nominal, tolerance, and datum. | partial | Transcript `00:07:08-00:08:14`, `00:21:08-00:21:21`; key frames `014`, `017`, `044`; targeted review Generated Detail Table. | Viewmodel rows exist; full delegates, hierarchy styling, row colors, and persistence polish route to P09. |
+| FCE-051 | Inline numeric edits | Editing tolerance values such as `+/-0.05`, `+/-0.075`, and `+/-0.25` recalculates immediately. | partial | Transcript `00:08:14-00:10:14`; key frame `018_00-08-42_inline_tolerance_edit.jpg`; contact sheet `sheet_003.jpg`; `02_requirements.md` FR-TOL-005/006. | Calculations exist; production Qt editing/delegates and recalculation wiring route to P09. |
+| FCE-052 | Tolerance-type dropdown | Rows can switch between symmetric plus/minus, limits/asymmetric, and geometric/manual tolerance modes. | missing | Transcript `00:09:07-00:09:19`; key frame `019_00-09-05_tolerance_type_dropdown.jpg`; targeted review Inline Edits. | Needed for P09. Exact labels are unreadable; implement structure and record label gap. |
+| FCE-053 | Settings/defaults | Application settings provide default tolerances, default analysis type, and quality metrics. | partial | Transcript `00:07:50-00:08:14`; key frame `016_00-07-52_settings_defaults_dialog.jpg`; `03_ui_ux_design_spec.md` Screen Inventory. | Defaults exist in data/settings form; user-facing settings dialog fidelity routes to P09/P13/P15. |
+| FCE-054 | GD&T dialog | Add Geometric Tolerance dialog supports feature controlled, symbol/control type, numeric tolerance, datum/reference, OK/Cancel validation. | partial | Transcript `00:12:05-00:13:49`; key frames `025` through `029`; contact sheets `sheet_004.jpg`, `sheet_005.jpg`; targeted review GD&T And Objectives. | Domain representation is partial; dialog UX/table integration route to P09. |
+| FCE-055 | Datum/reference rows | Datum labels and references appear in table rows and affect derived contributors. | partial | Transcript `00:12:11-00:13:14`; key frames `027_00-12-54_datum_feature_entry.jpg`, `028_00-13-20_gdt_callouts_in_tree.jpg`; `04_data_model_and_calculation_methods.md` GD&T conversion. | Model fields exist; validation/display parity routes to P09. |
+| FCE-056 | Shared dimensions | Shared contributor marker/tooltips list affected stackups before or during tolerance edits. | partial | Transcript `00:21:21-00:21:42`; key frame `045_00-21-34_shared_dimension_markers.jpg`; targeted review Shared Markers; `02_requirements.md` FR-RES-008. | Shared-dimension detection exists; stacked-page icon, tooltip, and edit-warning UX route to P09/P13. |
+| FCE-060 | Worst-case/RSS math | Worst-case and RSS analysis modes calculate and compare variation against objectives. | met | Transcript `00:14:08-00:15:03`; key frame `032_00-14-52_worst_case_rss_modes.jpg`; `04_data_model_and_calculation_methods.md` Calculation Methods. | Domain tests cover worst-case/RSS; P13 owns demo-grade controls/plots. |
+| FCE-061 | Statistical quality math | Statistical mode supports Cpk/Sigma/Yield-style quality summaries and objective comparisons. | met | Transcript `00:15:03-00:15:45`, `00:28:30-00:29:12`; key frames `033_00-15-18_statistical_quality_bell_curve.jpg`, `057_00-28-30_sigma_rollup_context.jpg`; `02_requirements.md` FR-RES-004. | Cpk/Sigma/Yield computations exist; exact statistical submenu labels remain unresolved. |
+| FCE-062 | Result displays | Result panels show range bars, green/red pass/fail states, statistical bell curve, and objective/result labels. | partial | Transcript `00:14:08-00:15:45`; key frames `031` through `033`; contact sheet `sheet_005.jpg`; targeted review Mode Menus And Plots. | Projection data and prototype plots exist; visual parity and deterministic rendering route to P13/P14. |
+| FCE-063 | Non-1D warning | Dashboard/detail warns when translation-only 1D results may ignore significant 3D effects. | partial | Transcript `00:15:55-00:19:07`; key frames `035_00-16-12_non_1d_warning_intro.jpg`, `036_00-16-48_non_1d_warning_geometry.jpg`; `04_data_model_and_calculation_methods.md` Non-1D Warning Heuristics. | Scalar heuristics exist; geometry-driven warning UX and thresholds route to P13. |
+| FCE-064 | Multi-stackup dashboard | Project manages multiple stackups with model annotations and summary rows. | partial | Transcript `00:19:07-00:21:08`; key frames `040` through `043`; contact sheets `sheet_006.jpg`, `sheet_007.jpg`; `03_ui_ux_design_spec.md` Screen Inventory. | Dashboard projections exist; exact row styling, badges, columns, and selection behavior route to P13. |
+| FCE-065 | Dashboard columns/values | Summary rows include OK, Name, Nominal, Objective, Target Quality, Results, Predicted Quality, and #Dims. | partial | Transcript `00:20:22-00:21:08`; key frame `042_00-20-24_dashboard_columns_visible.jpg`; targeted review Multi-Stackup Dashboard. | Columns exist in projection; visual values, rollup badges, and row colors route to P13. |
+| FCE-066 | Drilldown navigation | Selecting a dashboard row opens stackup detail and can return to summary. | partial | Transcript `00:21:08-00:21:21`; key frame `044_00-21-10_detail_drilldown.jpg`; `03_ui_ux_design_spec.md` Interaction Patterns. | Prototype detail rows exist; exact back/export/gear icons and transitions route to P09/P13. |
+| FCE-067 | Contributions | Contributions tab ranks percent variation drivers with blue bars. | partial | Transcript `00:21:42-00:22:09`; key frame `046_00-21-54_contributions_tab.jpg`; targeted review Contributions. | Contribution ranking exists; demo-grade widget and report reuse route to P13/P14. |
+| FCE-070 | Snapshot command | Snapshot stores the current oriented view for report images. | partial | Transcript `00:04:32-00:04:38`, `00:22:09-00:22:30`; key frames `006_00-04-35_file_actions_snapshots_reports.jpg`, `047_00-22-18_report_command_context.jpg`. | Snapshot metadata/report paths exist; overlay-inclusive deterministic capture routes to P11/P14. |
+| FCE-071 | Report save flow | Generate Report opens a Windows Save Report dialog and writes report assets. | partial | Transcript `00:22:30-00:22:56`; key frame `048_00-22-42_report_save_dialog.jpg`; targeted review Save Report. | HTML generation exists; save dialog, asset folder, and portable manifest route to P14/P15. |
+| FCE-072 | Browser report layout | Browser report has dark left nav, white report canvas, title page, summary, stackup sections, snapshots, tables, plots, and contributions. | partial | Transcript `00:22:55-00:23:36`; key frames `049` through `051`; contact sheet `sheet_007.jpg`; `02_requirements.md` FR-RPT-001/004. | Report generator is useful but not visually close enough; P14 owns fidelity. |
+| FCE-080 | CAD add-in comparator | Late demo shows SOLIDWORKS/CETOL add-in ribbons, context menus, results dialogs, sensitivity plots, and animation tools. | out_of_scope | Transcript `00:17:05-00:18:26`, `00:24:18-00:25:56`; key frames `037` through `039`, `052` through `054`; targeted review CAD Add-In And Late-Demo Context. | Use as future interaction reference only. Do not implement CAD add-ins in P09-P16. |
+| FCE-081 | Full 3D solving | CETOL full 3D analysis calculates rotational effects beyond EZtol's 1D warning. | out_of_scope | Transcript `00:17:05-00:19:07`, `00:24:18-00:25:56`; key frames `038`, `039`, `053`, `054`; `04_data_model_and_calculation_methods.md` Assumptions and Limits. | P0 clone remains warning-only for non-1D effects. |
+| FCE-082 | Angular deviation result | Angular deviation can be calculated in CETOL when angular measurement is defined, but not in EZtol. | out_of_scope | Transcript `00:24:18-00:25:56`; key frame `054_00-25-12_sensitivity_plot.jpg`; extracted spec Explicit Non-Goals. | Do not add angular solve; retain non-1D warning behavior. |
+| FCE-083 | Thermal expansion | Thermal expansion is mentioned as a roadmap item, with no provision in the demonstrated release. | deferred | Transcript `00:25:59-00:26:19`; key frame `055_00-26-00_thermal_expansion_answer_context.jpg`; `02_requirements.md` Non-Goals. | Defer beyond P0. Do not add in P09-P16. |
+| FCE-084 | Native PMI import | Direct model-based dimension/PMI import is not available in the demonstrated release, though native CAD roadmap is mentioned. | deferred | Transcript `00:26:42-00:28:08`; key frame `056_00-26-50_pmi_import_answer_context.jpg`; extracted spec Explicit Non-Goals. | Manual GD&T entry is P0; direct native PMI import is deferred. |
+| FCE-085 | Sigma rollup | Summary can report rollup sigma and individual stackup sigma values. | partial | Transcript `00:28:30-00:29:12`; key frames `057_00-28-30_sigma_rollup_context.jpg`, `058_00-29-30_final_analysis_state.jpg`; targeted review Late Q&A. | Sigma computation/projection exists; exact rollup visual treatment routes to P13. |
+| FCE-086 | Pattern-fit follow-up | Late Q&A mentions evaluating hole-pattern fit with fewer holes and possible follow-up example. | deferred | Transcript `00:30:08-00:30:59`; timestamped transcript segments 278-282. | Not part of current clone acceptance; consider future examples only after P16. |
+| FCE-090 | Final visual audit | Final product must be compared against targeted key frames, five-second sheets, and full-pass 10-second sheets. | missing | `09_full_clone_gap_closure_plan.md` T09/P16; `overnight_plans/README.md` P16; full-pass sheets `full_10sec_sheet_*.jpg`. | P16 owns final screenshot/report comparison after P09-P15 land. |
 
-## Architecture Assessment
+## Unresolved Evidence Ambiguities
 
-PyQt6 plus OCCT/pythonocc remains the practical default for the product shell and first high-fidelity clone. The missing pieces are mostly product workflow, model/view editing, metadata traversal, and overlay/report fidelity rather than a fundamental language mismatch.
+- Exact GD&T symbol glyphs and material-condition modifiers are not reliably readable from available frames. Use key frames `025` through `029` and regenerate crops before final P09 UI work.
+- Exact tolerance-type dropdown labels are not fully legible in key frame `019_00-09-05_tolerance_type_dropdown.jpg`. Implement symmetric, limit/asymmetric, and geometric/manual modes; record label uncertainty.
+- Exact statistical submenu labels under `Statistical` are not fully legible in the available review artifacts. Preserve `Worst Case`, `RSS`, and `Statistical` behavior from transcript `00:14:49-00:15:45`.
+- Some key-frame labels and five-second-sheet timestamps do not align perfectly. Use key-frame filenames and the source viewer when sequence matters.
+- Five-second sheets go black after about `00:27:10`; late sigma and final-state observations rely on key frames `057` and `058`, the transcript, and earlier contact sheets.
+- Non-1D warning thresholds are not specified by the video. P13 must treat thresholds as engineering constants and test them explicitly.
 
-Escalate only the viewport component to a small C++ Qt6 + OCCT module if P11/P15 prove that pythonocc's PyQt6 `qtViewer3d` path cannot reliably support selection mapping, HiDPI focus, overlay snapshots, or packaging. Keep the Python domain, project persistence, report generation, and launcher unless a concrete blocker appears.
+## Packet Routing
 
-## Immediate Packet Mapping
+- P09 owns FCE-050 through FCE-056 plus table-facing pieces of FCE-002, FCE-037, and FCE-066.
+- P10 owns XDE/name/color/source-reference work in FCE-012, FCE-015, FCE-022, and FCE-023.
+- P11 owns FCE-024 through FCE-026, FCE-033, FCE-040, FCE-041, and overlay-inclusive parts of FCE-070.
+- P12 owns FCE-030 through FCE-037.
+- P13 owns FCE-062 through FCE-067 plus FCE-085.
+- P14 owns FCE-070 through FCE-072 and report reuse of FCE-067.
+- P15 owns launch/runtime/package polish in FCE-010, FCE-011, FCE-012, and portable assets in FCE-016/FCE-071.
+- P16 owns FCE-090 and must reclassify only with new implementation evidence, not by weakening the target.
 
-- P08: turn this baseline into a stricter evidence-by-evidence traceability matrix.
-- P09: close detail-table, tolerance editing, GD&T, datum, and shared-dimension gaps.
-- P10: close assembly/name/color/shape-id fidelity gaps.
-- P11: close viewer interaction, selection, annotation, and snapshot-overlay gaps.
-- P12: close guided stackup workflow gaps.
-- P13: close dashboard, plot, warning, and contribution visual gaps.
-- P14: close report and snapshot output gaps.
-- P15: close launcher/runtime/package gaps.
-- P16: perform the final audit against this matrix and the full video evidence.
+## Scope Guardrails
+
+P0 remains a standalone neutral-CAD clone. STEP/IGES import, manual GD&T entry, warning-only non-1D detection, and browser-style HTML reporting are in scope. Native commercial CAD import, CAD add-ins, direct native PMI import, thermal expansion, angular deviation calculation, and full 3D tolerance solving are not P0 acceptance requirements.

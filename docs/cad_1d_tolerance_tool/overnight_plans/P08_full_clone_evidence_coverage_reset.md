@@ -35,6 +35,8 @@ When uncertain, inspect the MP4 through the viewer and regenerate crops with `ff
 - Updated verification plan with any missing acceptance cases.
 - Updated overnight README if packet order or rules need clarification.
 
+The matrix row IDs are the handoff contract for P09-P16. Later packets should cite the relevant `FCE-*` rows they close, verify, defer, or leave out of scope instead of creating parallel evidence inventories.
+
 ## Required Coverage Areas
 
 - Launch/open/import flow, import options, source reference/reattach behavior.

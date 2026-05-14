@@ -44,7 +44,7 @@ $env:PYTHONNOUSERSITE="1"; $env:PYTHONPATH="src"; & "C:\ProgramData\miniforge3\e
 | V09 | UI fidelity | Main shell and detail views | Layout, density, colors, table columns, and transitions match visual evidence | Visual sheets 002-007 |
 | V10 | Targeted visual fidelity | Main shell, guided toolbar, result plots, dashboard badges, report pages | UI matches `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` or records explicit fidelity gaps | Targeted visual review |
 | V11 | Primary OCCT viewer | STEP fixture in `mdts-cad312` with PyQt6 and `pythonocc-core` `novtk` | AIS/V3d widget initializes, renders nonblank shaded geometry, supports fit/orbit/pan/zoom, maps at least one face selection to `ShapeReference` | Requirements FR-VIEW-001A through FR-VIEW-006 |
-| V12 | Full-clone evidence coverage | Whole demo video, transcript, targeted review, and fresh full-pass sheets | Coverage matrix marks each observed workflow as met, partial, missing, out of scope, or blocked | `09_full_clone_gap_closure_plan.md` / P08 |
+| V12 | Full-clone evidence coverage | Whole demo video, transcript, targeted review, fresh full-pass sheets, numbered CAD docs, and current P07-era implementation state | `extracted_specs/2026-05-14_full_clone_gap_matrix.md` marks each video-derived requirement as `met`, `partial`, `missing`, `deferred`, or `out_of_scope`, and each row cites a transcript timestamp, key frame, contact sheet, or doc section | `09_full_clone_gap_closure_plan.md` / P08 |
 | V13 | Editable detail table | Fixture project with dimensional, bonus, and GD&T contributors | Numeric/type/datum edits commit through Qt models, recalculate immediately, persist, and preserve shared-dimension warnings | P09 |
 | V14 | XDE assembly fidelity | Caster STEP plus at least one named/colorized neutral fixture | Assembly tree exposes deterministic product names, colors where available, body hierarchy, and stable shape ids without absolute paths | P10 |
 | V15 | Viewer annotations | Fixture stackup with endpoint, direction, and plane annotations | Viewport supports selection filters, cross-highlighting, red/blue dimension graphics, draggable labels, leaders, and annotated snapshots | P11 |
@@ -53,6 +53,7 @@ $env:PYTHONNOUSERSITE="1"; $env:PYTHONPATH="src"; & "C:\ProgramData\miniforge3\e
 | V18 | Report/snapshot clone fidelity | Fixture project with snapshots and multiple stackups | Deterministic browser report includes dark navigation, summary/detail sections, plots, annotated CAD images, and reusable asset paths | P14 |
 | V19 | Runtime and packaged launch | `mdts-cad312` and packaged Windows build when feasible | Launcher card opens the CAD tool, CAD runtime loads STEP/IGES, reports open, and package excludes absolute project paths | P15 |
 | V20 | Final fidelity audit | P08-P15 outputs and the full video context pack | Final matrix confirms clone coverage and lists only explicit roadmap gaps with evidence references | P16 |
+| V21 | P0 scope guardrails | Matrix rows covering late-demo native CAD, CAD add-in, PMI, thermal, angular, and 3D-solve references | P0 acceptance remains standalone STEP/IGES neutral-CAD clone behavior; native CAD import, CAD add-ins, direct native PMI import, thermal expansion, angular deviation, and full 3D solving remain `deferred` or `out_of_scope` with evidence | P08 matrix FCE-080 through FCE-084 |
 
 ## Neutral CAD Fixture Requirements
 
@@ -89,6 +90,7 @@ Fixture acceptance rules:
 - P0 report tests generate deterministic HTML from a fixture project.
 - Before any overnight agent claims completion, it must state which canonical docs it reread and which evidence timestamps, visual review key frames, or sheets resolved UI uncertainty.
 - Before P04, P05, P06, or P07 claims completion, the agent must inspect `extracted_specs/2026-05-12_eztol_targeted_visual_review.md`.
+- Before P09-P16 claims completion, the agent must cite the relevant `FCE-*` matrix rows it changed or verified and must not downgrade `missing`, `deferred`, or `out_of_scope` rows without new implementation evidence.
 
 ## Residual Risks
 
