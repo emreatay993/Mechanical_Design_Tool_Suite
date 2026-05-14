@@ -44,6 +44,15 @@ $env:PYTHONNOUSERSITE="1"; $env:PYTHONPATH="src"; & "C:\ProgramData\miniforge3\e
 | V09 | UI fidelity | Main shell and detail views | Layout, density, colors, table columns, and transitions match visual evidence | Visual sheets 002-007 |
 | V10 | Targeted visual fidelity | Main shell, guided toolbar, result plots, dashboard badges, report pages | UI matches `extracted_specs/2026-05-12_eztol_targeted_visual_review.md` or records explicit fidelity gaps | Targeted visual review |
 | V11 | Primary OCCT viewer | STEP fixture in `mdts-cad312` with PyQt6 and `pythonocc-core` `novtk` | AIS/V3d widget initializes, renders nonblank shaded geometry, supports fit/orbit/pan/zoom, maps at least one face selection to `ShapeReference` | Requirements FR-VIEW-001A through FR-VIEW-006 |
+| V12 | Full-clone evidence coverage | Whole demo video, transcript, targeted review, and fresh full-pass sheets | Coverage matrix marks each observed workflow as met, partial, missing, out of scope, or blocked | `09_full_clone_gap_closure_plan.md` / P08 |
+| V13 | Editable detail table | Fixture project with dimensional, bonus, and GD&T contributors | Numeric/type/datum edits commit through Qt models, recalculate immediately, persist, and preserve shared-dimension warnings | P09 |
+| V14 | XDE assembly fidelity | Caster STEP plus at least one named/colorized neutral fixture | Assembly tree exposes deterministic product names, colors where available, body hierarchy, and stable shape ids without absolute paths | P10 |
+| V15 | Viewer annotations | Fixture stackup with endpoint, direction, and plane annotations | Viewport supports selection filters, cross-highlighting, red/blue dimension graphics, draggable labels, leaders, and annotated snapshots | P11 |
+| V16 | Guided workflow completion | Caster STEP smoke workflow | Guided controls create a practical stackup with endpoint, direction, annotation plane, loop-part, mating-face, and generated contributor state | P12 |
+| V17 | Result/dashboard clone fidelity | Passing, failing, and warning fixture stackups | Summary badges, result range bar, statistical controls, bell curve, contribution bars, and non-1D warnings visually match evidence or document gaps | P13 |
+| V18 | Report/snapshot clone fidelity | Fixture project with snapshots and multiple stackups | Deterministic browser report includes dark navigation, summary/detail sections, plots, annotated CAD images, and reusable asset paths | P14 |
+| V19 | Runtime and packaged launch | `mdts-cad312` and packaged Windows build when feasible | Launcher card opens the CAD tool, CAD runtime loads STEP/IGES, reports open, and package excludes absolute project paths | P15 |
+| V20 | Final fidelity audit | P08-P15 outputs and the full video context pack | Final matrix confirms clone coverage and lists only explicit roadmap gaps with evidence references | P16 |
 
 ## Neutral CAD Fixture Requirements
 

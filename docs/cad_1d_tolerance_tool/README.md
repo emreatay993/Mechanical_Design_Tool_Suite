@@ -23,6 +23,8 @@ cad_1d_tolerance_tool/
   05_architecture_and_persistence.md
   06_verification_validation_plan.md
   07_implementation_plan.md
+  08_primary_cad_viewer_plan.md
+  09_full_clone_gap_closure_plan.md
 ```
 
 ## Naming
@@ -48,10 +50,15 @@ The May 12, 2026 EZtol demo extraction is now the active source for the CAD 1D t
 
 - Evidence extract: `extracted_specs/2026-05-12_eztol_demo_extracted_spec.md`
 - Targeted visual review: `extracted_specs/2026-05-12_eztol_targeted_visual_review.md`
+- Baseline full-clone gap matrix: `extracted_specs/2026-05-14_full_clone_gap_matrix.md`
 - Requirements: `02_requirements.md`
 - UI/UX design system: `03_ui_ux_design_spec.md`
 - Data/calculation model: `04_data_model_and_calculation_methods.md`
 - Architecture and persistence: `05_architecture_and_persistence.md`
+- Primary CAD viewer plan: `08_primary_cad_viewer_plan.md`
+- Full clone gap closure plan: `09_full_clone_gap_closure_plan.md`
 - Overnight worker packet set: `overnight_plans/README.md`
 
-When an implementation agent loses context or is uncertain about UI/UX, it must reread the packet README, the numbered specs, the targeted visual review, and the local video context pack at `output/transcribe/eztol-demo-media-1080p/`.
+The P00-P07 sequence produced the first end-to-end prototype. P08-P16 are the active full-clone gap closure packets for UI/UX and capability fidelity against the demo video.
+
+When an implementation agent loses context or is uncertain about UI/UX, it must reread the packet README, the numbered specs including `09_full_clone_gap_closure_plan.md`, the targeted visual review, the timestamped transcript, and the local video context pack at `output/transcribe/eztol-demo-media-1080p/`. The latest full-pass visual sheets are under `output/transcribe/eztol-demo-media-1080p/visual_review_2026-05-14_full_pass/`.

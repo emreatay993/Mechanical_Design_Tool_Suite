@@ -5,6 +5,7 @@ dependencies:
   - python=3.12
   - numpy=1.26.*
   - pythonocc-core=7.9.3=*novtk*
+  - ffmpeg
   - pip
   - pip:
       - -e .

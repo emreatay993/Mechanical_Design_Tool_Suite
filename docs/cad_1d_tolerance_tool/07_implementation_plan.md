@@ -6,7 +6,7 @@ Implement a standalone EZtol-style CAD 1D tolerance analysis tool using the exis
 
 Every overnight agent must reread this file after context compaction, then reread the specific referenced spec files before editing.
 
-Targeted visual review is complete and tracked in `extracted_specs/2026-05-12_eztol_targeted_visual_review.md`. UI, workflow, dashboard, and report workers must inspect that file and the referenced key frames before implementation.
+Targeted visual review is complete and tracked in `extracted_specs/2026-05-12_eztol_targeted_visual_review.md`. UI, workflow, dashboard, and report workers must inspect that file and the referenced key frames before implementation. P00-P07 define the first end-to-end prototype path; `09_full_clone_gap_closure_plan.md` and packets P08-P16 define the follow-on work needed for the requested high-fidelity clone.
 
 ## Key Changes
 
