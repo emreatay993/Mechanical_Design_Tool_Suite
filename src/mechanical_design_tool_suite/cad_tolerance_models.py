@@ -288,6 +288,7 @@ class AssemblyNode:
     transform: list[float] = field(default_factory=_identity_transform)
     display_color: tuple[int, int, int] | None = None
     source_label: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: new_id("asm"))
 
     def __post_init__(self) -> None:
@@ -297,6 +298,7 @@ class AssemblyNode:
         self.transform = [float(value) for value in self.transform]
         if self.display_color is not None:
             self.display_color = tuple(int(value) for value in self.display_color[:3])
+        self.metadata = dict(self.metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -308,6 +310,7 @@ class AssemblyNode:
             "transform": list(self.transform),
             "display_color": list(self.display_color) if self.display_color else None,
             "source_label": self.source_label,
+            "metadata": dict(self.metadata),
         }
 
     @classmethod
@@ -327,6 +330,7 @@ class AssemblyNode:
                 tuple(data["display_color"]) if data.get("display_color") else None
             ),
             source_label=str(data.get("source_label") or ""),
+            metadata=dict(data.get("metadata") or {}),
         )
 
 
@@ -338,12 +342,14 @@ class ShapeReference:
     kernel_label: str = ""
     geometric_signature: dict[str, Any] = field(default_factory=dict)
     fallback_display_name: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: new_id("shape"))
 
     def __post_init__(self) -> None:
         self.shape_type = _coerce_enum(ShapeKind, self.shape_type, ShapeKind.UNKNOWN)
         self.assembly_path = _string_list(self.assembly_path)
         self.geometric_signature = dict(self.geometric_signature)
+        self.metadata = dict(self.metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -354,6 +360,7 @@ class ShapeReference:
             "kernel_label": self.kernel_label,
             "geometric_signature": dict(self.geometric_signature),
             "fallback_display_name": self.fallback_display_name,
+            "metadata": dict(self.metadata),
         }
 
     @classmethod
@@ -368,6 +375,7 @@ class ShapeReference:
             kernel_label=str(data.get("kernel_label") or ""),
             geometric_signature=dict(data.get("geometric_signature") or {}),
             fallback_display_name=str(data.get("fallback_display_name") or ""),
+            metadata=dict(data.get("metadata") or {}),
         )
 
 
@@ -875,6 +883,7 @@ class CadDocument:
     assembly_root: AssemblyNode | None = None
     display_name: str = ""
     import_settings: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: new_id("cad"))
 
     def __post_init__(self) -> None:
@@ -882,6 +891,7 @@ class CadDocument:
             CadFileFormat, self.file_format, CadFileFormat.UNKNOWN
         )
         self.import_settings = dict(self.import_settings)
+        self.metadata = dict(self.metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -894,6 +904,7 @@ class CadDocument:
             "assembly_root": self.assembly_root.to_dict() if self.assembly_root else None,
             "display_name": self.display_name,
             "import_settings": dict(self.import_settings),
+            "metadata": dict(self.metadata),
         }
 
     @classmethod
@@ -914,6 +925,7 @@ class CadDocument:
             ),
             display_name=str(data.get("display_name") or ""),
             import_settings=dict(data.get("import_settings") or {}),
+            metadata=dict(data.get("metadata") or {}),
         )
 
 

@@ -10,8 +10,15 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.IGESControl import IGESControl_Writer
 from OCC.Core.Interface import Interface_Static
+from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+from OCC.Core.STEPCAFControl import STEPCAFControl_Writer
 from OCC.Core.STEPControl import STEPControl_AsIs, STEPControl_Writer
+from OCC.Core.TDataStd import TDataStd_Name
+from OCC.Core.TDocStd import TDocStd_Document
+from OCC.Core.TopLoc import TopLoc_Location
 from OCC.Core.TopoDS import TopoDS_Compound
+from OCC.Core.XCAFApp import XCAFApp_Application
+from OCC.Core.XCAFDoc import XCAFDoc_ColorGen, XCAFDoc_ColorSurf, XCAFDoc_DocumentTool
 from OCC.Core.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 
 
@@ -20,6 +27,25 @@ FIXTURE_DIR = Path(__file__).resolve().parent
 
 def main() -> None:
     write_step(FIXTURE_DIR / "neutral_step_two_part_loop.step", two_body_loop())
+    write_named_colored_step(
+        FIXTURE_DIR / "xde_named_colored_assembly.step",
+        [
+            (
+                "top_plate:1",
+                BRepPrimAPI_MakeBox(20.0, 30.0, 10.0).Shape(),
+                (51, 102, 204),
+            ),
+            (
+                "bushing:1",
+                BRepPrimAPI_MakeCylinder(
+                    gp_Ax2(gp_Pnt(35.0, 15.0, 0.0), gp_Dir(0.0, 0.0, 1.0)),
+                    5.0,
+                    10.0,
+                ).Shape(),
+                (204, 76, 26),
+            ),
+        ],
+    )
     write_iges(FIXTURE_DIR / "neutral_iges_single_part.igs", cylinder_part())
     write_step(FIXTURE_DIR / "offset_rotational_warning.step", offset_loop())
 
@@ -82,6 +108,49 @@ def write_step(path: Path, shape: object) -> None:
     write_status = writer.Write(str(path))
     if write_status != IFSelect_RetDone:
         raise RuntimeError(f"STEP write failed for {path}.")
+
+
+def write_named_colored_step(
+    path: Path,
+    named_shapes: list[tuple[str, object, tuple[int, int, int]]],
+) -> None:
+    Interface_Static.SetCVal("write.step.schema", "AP214")
+    Interface_Static.SetCVal("write.step.unit", "MM")
+    application = XCAFApp_Application.GetApplication()
+    document = TDocStd_Document("MDTV-XCAF")
+    application.NewDocument("MDTV-XCAF", document)
+    shape_tool = XCAFDoc_DocumentTool.ShapeTool(document.Main())
+    color_tool = XCAFDoc_DocumentTool.ColorTool(document.Main())
+    shape_tool.SetAutoNaming(False)
+
+    root = shape_tool.NewShape()
+    TDataStd_Name.Set(root, "xde_fixture")
+    for name, shape, color in named_shapes:
+        label = shape_tool.AddShape(shape, False)
+        TDataStd_Name.Set(label, name)
+        quantity_color = Quantity_Color(
+            color[0] / 255.0,
+            color[1] / 255.0,
+            color[2] / 255.0,
+            Quantity_TOC_RGB,
+        )
+        color_tool.SetColor(label, quantity_color, XCAFDoc_ColorGen)
+        color_tool.SetColor(label, quantity_color, XCAFDoc_ColorSurf)
+        color_tool.SetColor(shape, quantity_color, XCAFDoc_ColorGen)
+        color_tool.SetColor(shape, quantity_color, XCAFDoc_ColorSurf)
+        shape_tool.AddComponent(root, label, TopLoc_Location())
+
+    shape_tool.UpdateAssemblies()
+    writer = STEPCAFControl_Writer()
+    writer.SetNameMode(True)
+    writer.SetColorMode(True)
+    writer.SetLayerMode(True)
+    writer.SetPropsMode(True)
+    if not writer.Transfer(document):
+        raise RuntimeError(f"XDE STEP transfer failed for {path}.")
+    write_status = writer.Write(str(path))
+    if write_status != IFSelect_RetDone:
+        raise RuntimeError(f"XDE STEP write failed for {path}.")
 
 
 def write_iges(path: Path, shape: object) -> None:

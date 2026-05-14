@@ -42,10 +42,25 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "cad_1d_tolerance"
 CASTER_WHELL_FIXTURE_DIR = FIXTURE_DIR / "caster_whell_v0"
 CASTER_WHELL_STEP_FIXTURE = CASTER_WHELL_FIXTURE_DIR / "caster_wheel.stp"
+XDE_NAMED_COLORED_STEP_FIXTURE = FIXTURE_DIR / "xde_named_colored_assembly.step"
 PYTHONOCC_PIP_BLOCKER = (
     "Local check: `python -m pip install --dry-run pythonocc-core` returned "
     "`No matching distribution found for pythonocc-core`."
 )
+
+
+def _assembly_names(node: AssemblyNode) -> list[str]:
+    names = [node.name]
+    for child in node.children:
+        names.extend(_assembly_names(child))
+    return names
+
+
+def _iter_assembly_nodes(node: AssemblyNode) -> list[AssemblyNode]:
+    nodes = [node]
+    for child in node.children:
+        nodes.extend(_iter_assembly_nodes(child))
+    return nodes
 
 
 class CadGeometryApiTest(unittest.TestCase):
@@ -175,6 +190,7 @@ class CadGeometryApiTest(unittest.TestCase):
             id="asm_root",
             name="Fixture Assembly",
             node_type=AssemblyNodeType.ROOT,
+            metadata={"metadata_source": "test"},
         )
         document = CadDocument(
             id="cad_doc_1",
@@ -182,12 +198,14 @@ class CadGeometryApiTest(unittest.TestCase):
             file_format=CadFileFormat.STEP,
             assembly_root=root,
             display_name="fixture.step",
+            metadata={"cad_metadata_source": "in_memory"},
         )
         shape = ShapeReference(
             id="shape_body_1",
             document_id="cad_doc_1",
             assembly_path=["Fixture Assembly", "Body 1"],
             shape_type=ShapeKind.BODY,
+            metadata={"xde_label": "0:1:1"},
         )
         start = FeatureReference(
             id="feature_start",
@@ -232,6 +250,39 @@ class CadGeometryApiTest(unittest.TestCase):
             },
         )
 
+    def test_cad_metadata_fields_are_additive_and_serializable(self) -> None:
+        root = AssemblyNode(
+            id="asm_xde_root",
+            name="xde_fixture",
+            source_label="0:1:1:1",
+            metadata={"metadata_source": "occt_xde", "xde_label": "0:1:1:1"},
+        )
+        shape = ShapeReference(
+            id="shape_xde_face",
+            document_id="cad_xde",
+            assembly_path=["xde_fixture", "top_plate:1"],
+            shape_type=ShapeKind.FACE,
+            metadata={"metadata_source": "occt_xde", "display_color": [51, 102, 204]},
+        )
+        document = CadDocument(
+            id="cad_xde",
+            source_path="xde_named_colored_assembly.step",
+            file_format=CadFileFormat.STEP,
+            assembly_root=root,
+            display_name="xde_named_colored_assembly.step",
+            metadata={"cad_metadata_source": "occt_xde"},
+        )
+
+        loaded_document = CadDocument.from_dict(document.to_dict())
+        loaded_shape = ShapeReference.from_dict(shape.to_dict())
+
+        self.assertEqual(loaded_document.metadata["cad_metadata_source"], "occt_xde")
+        self.assertEqual(
+            loaded_document.assembly_root.metadata["xde_label"],
+            "0:1:1:1",
+        )
+        self.assertEqual(loaded_shape.metadata["display_color"], [51, 102, 204])
+
 
 class OccCadGeometryAdapterTest(unittest.TestCase):
     def test_missing_occ_dependency_reports_adapter_boundary(self) -> None:
@@ -271,22 +322,60 @@ class OccCadGeometryAdapterTest(unittest.TestCase):
         self.assertTrue(session.assembly_tree())
         self.assertTrue(session.shape_references())
         self.assertTrue(session.feature_references())
-        body_colors = [
+        assembly_names = _assembly_names(session.assembly_tree()[0])
+        self.assertFalse(
+            any("Open CASCADE STEP translator" in name for name in assembly_names)
+        )
+        display_colors = [
             child.display_color
             for root in session.assembly_tree()
-            for child in root.children
-            if child.node_type == AssemblyNodeType.BODY
+            for child in _iter_assembly_nodes(root)
+            if child.node_type in {AssemblyNodeType.PART, AssemblyNodeType.BODY}
         ]
-        self.assertTrue(body_colors)
-        self.assertTrue(all(color is not None for color in body_colors))
-        if len(body_colors) > 1:
-            self.assertGreater(len(set(body_colors)), 1)
+        self.assertTrue(display_colors)
+        self.assertTrue(all(color is not None for color in display_colors))
+        if len(display_colors) > 1:
+            self.assertGreater(len(set(display_colors)), 1)
+
+    def test_xde_step_fixture_preserves_names_colors_and_labels(self) -> None:
+        if not is_occ_available():
+            self.skipTest(f"{OCC_DEPENDENCY_MESSAGE} {PYTHONOCC_PIP_BLOCKER}")
+        if not XDE_NAMED_COLORED_STEP_FIXTURE.exists():
+            self.skipTest(
+                f"XDE STEP CAD fixture is not present: {XDE_NAMED_COLORED_STEP_FIXTURE}"
+            )
+
+        session = OccCadGeometrySession()
+        document = session.import_file(XDE_NAMED_COLORED_STEP_FIXTURE)
+        root = session.assembly_tree()[0]
+        part_nodes = {
+            node.name: node
+            for node in _iter_assembly_nodes(root)
+            if node.node_type == AssemblyNodeType.PART
+        }
+        body_refs = session.shape_references({ShapeKind.BODY})
+
+        self.assertEqual(document.file_format, CadFileFormat.STEP)
+        self.assertEqual(document.metadata["cad_metadata_source"], "occt_xde")
+        self.assertEqual(root.name, "xde_fixture")
+        self.assertEqual(part_nodes["top_plate:1"].display_color, (51, 102, 204))
+        self.assertEqual(part_nodes["bushing:1"].display_color, (204, 76, 26))
+        self.assertTrue(
+            any(shape.assembly_path[-1] == "top_plate:1" for shape in body_refs)
+        )
+        self.assertTrue(
+            any(shape.assembly_path[-1] == "bushing:1" for shape in body_refs)
+        )
+        self.assertTrue(all(shape.metadata.get("xde_label") for shape in body_refs))
+        self.assertEqual(len({shape.id for shape in body_refs}), len(body_refs))
 
     def test_caster_whell_step_fixture_imports_when_occ_is_available(self) -> None:
         if not is_occ_available():
             self.skipTest(f"{OCC_DEPENDENCY_MESSAGE} {PYTHONOCC_PIP_BLOCKER}")
         if not CASTER_WHELL_STEP_FIXTURE.exists():
-            self.skipTest(f"Caster STEP fixture is not present: {CASTER_WHELL_STEP_FIXTURE}")
+            self.skipTest(
+                f"Caster STEP fixture is not present: {CASTER_WHELL_STEP_FIXTURE}"
+            )
 
         session = OccCadGeometrySession()
         document = session.import_file(CASTER_WHELL_STEP_FIXTURE)
@@ -296,6 +385,13 @@ class OccCadGeometryAdapterTest(unittest.TestCase):
         self.assertTrue(session.assembly_tree())
         self.assertTrue(session.shape_references())
         self.assertTrue(session.feature_references())
+        if document.metadata.get("cad_metadata_source") == "occt_xde":
+            assembly_names = _assembly_names(session.assembly_tree()[0])
+            self.assertIn("caster_wheel", assembly_names)
+            self.assertIn("Assemblage", assembly_names)
+            self.assertFalse(
+                all(name.startswith("Body ") for name in assembly_names[1:])
+            )
 
     def test_iges_fixture_imports_when_occ_and_fixture_are_available(self) -> None:
         if not is_occ_available():

@@ -7,6 +7,7 @@ This directory is reserved for small, trackable fixtures for the CAD 1D toleranc
 | Fixture ID | File | Purpose | Expected Use |
 | --- | --- | --- | --- |
 | CAD1D-STEP-ASM-001 | `neutral_step_two_part_loop.step` | Minimal STEP AP203/AP214/AP242 assembly with two or more parts, planar faces, and one cylindrical feature. | Geometry adapter import, assembly tree traversal, endpoint/loop selection smoke tests. |
+| CAD1D-XDE-STEP-001 | `xde_named_colored_assembly.step` | STEP AP214 assembly authored with OCCT XDE names (`top_plate:1`, `bushing:1`) and part colors. | XDE/STEPCAF metadata import, assembly browser name preservation, and color propagation tests. |
 | CAD1D-IGES-BREP-001 | `neutral_iges_single_part.igs` | Minimal IGES B-Rep part with planar and cylindrical faces. | IGES import support and shape reference serialization smoke tests. |
 | CAD1D-NON1D-001 | `offset_rotational_warning.step` | Neutral fixture with laterally offset or rotationally sensitive features. | Non-1D warning heuristic tests. |
 | CAD1D-PROJECT-001 | `sample_cad_1d_project.tolproj` | Deterministic project JSON using CAD references and several contributors. | Persistence, report, and UI model tests after P02/P04/P06. |
