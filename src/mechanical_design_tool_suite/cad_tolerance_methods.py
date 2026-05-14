@@ -8,6 +8,7 @@ from .cad_tolerance_models import (
     AnalysisMode,
     AnalysisSettings,
     ContributionResult,
+    ToleranceType,
     NonOneDWarning,
     NonOneDWarningKind,
     ObjectiveEvaluation,
@@ -361,6 +362,8 @@ def _validate_settings(settings: AnalysisSettings) -> None:
 
 
 def _validate_contributor(contributor: StackupContributor) -> None:
+    if not str(contributor.name).strip():
+        raise ValueError("Contributor name must not be empty.")
     values = {
         "nominal": contributor.nominal,
         "sensitivity": contributor.sensitivity,
@@ -374,6 +377,20 @@ def _validate_contributor(contributor: StackupContributor) -> None:
         raise ValueError(f"{contributor.name} tolerance_minus must be non-negative.")
     if float(contributor.tolerance_plus or 0.0) < 0.0:
         raise ValueError(f"{contributor.name} tolerance_plus must be non-negative.")
+    if contributor.tolerance_type == ToleranceType.GEOMETRIC:
+        if contributor.geometric_tolerance is None:
+            raise ValueError(f"{contributor.name} geometric tolerance details are required.")
+        geometric_values = {
+            "geometric tolerance": contributor.geometric_tolerance.tolerance_value,
+            "derived_minus": contributor.geometric_tolerance.derived_minus or 0.0,
+            "derived_plus": contributor.geometric_tolerance.derived_plus or 0.0,
+        }
+        for label, value in geometric_values.items():
+            number = float(value)
+            if not math.isfinite(number):
+                raise ValueError(f"{contributor.name} {label} must be finite.")
+            if number < 0.0:
+                raise ValueError(f"{contributor.name} {label} must be non-negative.")
 
 
 def _validated_positive(value: float, label: str) -> float:

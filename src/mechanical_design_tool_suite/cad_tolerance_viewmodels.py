@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
-from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPen, QPixmap, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import QApplication, QStyle
 
@@ -32,6 +32,7 @@ from .cad_tolerance_models import (
     StackupObjective,
     StackupRequirement,
     ToleranceType,
+    geometric_control_display_label,
 )
 
 
@@ -47,6 +48,8 @@ SUMMARY_COLUMNS = (
 )
 
 DETAIL_COLUMNS = ("Name", "Sens", "Nominal", "Tolerance", "Datum")
+DETAIL_TOLERANCE_TYPE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+DETAIL_CONTRIBUTOR_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 2
 
 GUIDED_STACKUP_STEPS = GUIDED_STACKUP_STEP_LABELS
 
@@ -100,6 +103,18 @@ class StackupDetailRow:
     source_feature_id: str = ""
     generated: bool = False
     source_note: str = ""
+    tolerance_type: str = ""
+    geometric_control: str = ""
+
+
+@dataclass(frozen=True)
+class DetailEditResult:
+    accepted: bool
+    message: str = ""
+    rows: list[StackupDetailRow] | None = None
+
+
+DetailEditHandler = Callable[[StackupDetailRow, int, str], DetailEditResult]
 
 
 @dataclass(frozen=True)
@@ -335,13 +350,29 @@ class CadStackupSummaryTableModel(QAbstractTableModel):
 
 
 class CadStackupDetailTableModel(QAbstractTableModel):
-    def __init__(self, rows: list[StackupDetailRow] | None = None) -> None:
+    editAccepted = pyqtSignal(str)
+    editRejected = pyqtSignal(str)
+
+    def __init__(
+        self,
+        rows: list[StackupDetailRow] | None = None,
+        edit_handler: DetailEditHandler | None = None,
+    ) -> None:
         super().__init__()
         self._rows = list(rows or [])
+        self._edit_handler = edit_handler
+        self._last_error = ""
 
     @property
     def rows(self) -> tuple[StackupDetailRow, ...]:
         return tuple(self._rows)
+
+    @property
+    def last_error(self) -> str:
+        return self._last_error
+
+    def set_edit_handler(self, edit_handler: DetailEditHandler | None) -> None:
+        self._edit_handler = edit_handler
 
     def set_rows(self, rows: list[StackupDetailRow]) -> None:
         self.beginResetModel()
@@ -359,12 +390,21 @@ class CadStackupDetailTableModel(QAbstractTableModel):
             return DETAIL_COLUMNS[section]
         return None
 
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+        flags = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
+        row = self._rows[index.row()]
+        if _detail_cell_is_editable(row, index.column()):
+            flags |= Qt.ItemFlag.ItemIsEditable
+        return flags
+
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid():
             return None
         row = self._rows[index.row()]
         column = index.column()
-        if role == Qt.ItemDataRole.DisplayRole:
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return _detail_display(row, column)
         if role == Qt.ItemDataRole.DecorationRole and column == 1 and row.shared_with:
             return _stacked_page_icon()
@@ -380,9 +420,60 @@ class CadStackupDetailTableModel(QAbstractTableModel):
             return font
         if role == Qt.ItemDataRole.UserRole:
             return row
-        if role == Qt.ItemDataRole.ToolTipRole and row.shared_with:
-            return "Shared with: " + ", ".join(row.shared_with)
+        if role == DETAIL_TOLERANCE_TYPE_ROLE:
+            return row.tolerance_type
+        if role == DETAIL_CONTRIBUTOR_ID_ROLE:
+            return row.contributor_id
+        if role == Qt.ItemDataRole.ToolTipRole:
+            notes = []
+            if row.shared_with:
+                notes.append("Shared with: " + ", ".join(row.shared_with))
+            if _detail_cell_is_editable(row, column):
+                notes.append(_detail_edit_tooltip(row, column))
+            if notes:
+                return "\n".join(notes)
         return None
+
+    def setData(
+        self,
+        index: QModelIndex,
+        value: Any,
+        role: int = Qt.ItemDataRole.EditRole,
+    ) -> bool:
+        if role != Qt.ItemDataRole.EditRole or not index.isValid():
+            return False
+        row = self._rows[index.row()]
+        column = index.column()
+        if not _detail_cell_is_editable(row, column):
+            return self._reject_edit("Only contributor rows can be edited.")
+        if self._edit_handler is None:
+            return self._reject_edit("No editable CAD tolerance project is loaded.")
+
+        result = self._edit_handler(row, column, "" if value is None else str(value))
+        if not result.accepted:
+            return self._reject_edit(result.message or "Detail edit was rejected.")
+
+        self._last_error = ""
+        if result.rows is not None:
+            self.set_rows(result.rows)
+        else:
+            self.dataChanged.emit(
+                index,
+                index,
+                [
+                    int(Qt.ItemDataRole.DisplayRole),
+                    int(Qt.ItemDataRole.EditRole),
+                    int(Qt.ItemDataRole.ToolTipRole),
+                ],
+            )
+        if result.message:
+            self.editAccepted.emit(result.message)
+        return True
+
+    def _reject_edit(self, message: str) -> bool:
+        self._last_error = message
+        self.editRejected.emit(message)
+        return False
 
 
 class CadAssemblyTreeModel(QStandardItemModel):
@@ -467,8 +558,11 @@ def _detail_rows_from_stackup(
                     _datum_text(contributor),
                     "feature",
                     shared_with=tuple(contributor.shared_with_stackup_ids),
+                    contributor_id=contributor.id,
                     source_feature_id=contributor.source_feature.id if contributor.source_feature else "",
                     source_note=contributor.source_note,
+                    tolerance_type=contributor.tolerance_type.value,
+                    geometric_control=_geometric_control_value(contributor),
                 )
             )
         rows.append(
@@ -484,6 +578,8 @@ def _detail_rows_from_stackup(
                 source_feature_id=contributor.source_feature.id if contributor.source_feature else "",
                 generated=contributor.source_note.startswith("Generated from guided stackup"),
                 source_note=contributor.source_note,
+                tolerance_type=contributor.tolerance_type.value,
+                geometric_control=_geometric_control_value(contributor),
             )
         )
     result = calculate_stackup(stackup, project.settings if project else None)
@@ -532,6 +628,30 @@ def _summary_display(row: StackupSummaryRow, column: int) -> Any:
 def _detail_display(row: StackupDetailRow, column: int) -> str:
     values = (row.name, row.sensitivity, row.nominal, row.tolerance, row.datum)
     return values[column]
+
+
+def _detail_cell_is_editable(row: StackupDetailRow, column: int) -> bool:
+    if not row.contributor_id:
+        return False
+    if row.row_type == "dimension":
+        return column in {0, 1, 2, 3, 4}
+    if row.row_type == "feature":
+        return column in {0, 3, 4}
+    return False
+
+
+def _detail_edit_tooltip(row: StackupDetailRow, column: int) -> str:
+    labels = {
+        0: "Edit contributor or controlled-feature name.",
+        1: "Edit stack sensitivity.",
+        2: "Edit nominal contribution.",
+        3: "Edit tolerance as +/-0.05, +0.02/-0.01, runout 0.1 A, position 0.15 A, or profile 0.5 A.",
+        4: "Edit datum/reference labels, separated by commas or spaces.",
+    }
+    text = labels.get(column, "Edit value.")
+    if row.tolerance_type:
+        text += f" Current tolerance mode: {row.tolerance_type}."
+    return text
 
 
 def _summary_background(row: StackupSummaryRow) -> QBrush | None:
@@ -712,7 +832,9 @@ def _format_result_envelope(objective: StackupObjective, minus: float, plus: flo
 
 def _format_tolerance(contributor: StackupContributor) -> str:
     if contributor.tolerance_type == ToleranceType.GEOMETRIC and contributor.geometric_tolerance:
-        return f"dia {contributor.geometric_tolerance.tolerance_value:.3f}".rstrip("0").rstrip(".")
+        value = f"{contributor.geometric_tolerance.tolerance_value:.3f}".rstrip("0").rstrip(".")
+        label = geometric_control_display_label(contributor.geometric_tolerance.control_type)
+        return f"{label} dia {value}"
     minus = float(contributor.tolerance_minus or 0.0)
     plus = float(contributor.tolerance_plus or 0.0)
     if abs(minus - plus) < 1.0e-9:
@@ -774,6 +896,12 @@ def _datum_text(contributor: StackupContributor) -> str:
     if contributor.source_feature and contributor.source_feature.datum_label:
         return contributor.source_feature.datum_label
     return ""
+
+
+def _geometric_control_value(contributor: StackupContributor) -> str:
+    if contributor.geometric_tolerance is None:
+        return ""
+    return contributor.geometric_tolerance.control_type.value
 
 
 def _sigma_rollup_from_rows(rows: list[StackupSummaryRow]) -> str:

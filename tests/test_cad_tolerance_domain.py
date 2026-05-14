@@ -184,6 +184,32 @@ class CadToleranceDomainTest(unittest.TestCase):
         self.assertAlmostEqual(contributor.tolerance_plus, 0.05)
         self.assertEqual(contributor.geometric_tolerance.datum_references, ["A"])
 
+    def test_manual_gdt_defaults_match_demo_half_value_effects(self) -> None:
+        cases = (
+            (GeometricControlType.RUNOUT, 0.10, 0.05),
+            (GeometricControlType.POSITION, 0.15, 0.075),
+            (GeometricControlType.PROFILE, 0.50, 0.25),
+        )
+
+        for control_type, tolerance_value, expected_effect in cases:
+            with self.subTest(control_type=control_type):
+                geometric = GeometricTolerance(
+                    control_type=control_type,
+                    tolerance_value=tolerance_value,
+                    datum_references=["A"],
+                )
+                contributor = StackupContributor(
+                    f"{control_type.value} to A",
+                    nominal=0.0,
+                    tolerance=0.0,
+                    tolerance_type=ToleranceType.GEOMETRIC,
+                    geometric_tolerance=geometric,
+                )
+
+                self.assertAlmostEqual(contributor.tolerance_minus, expected_effect)
+                self.assertAlmostEqual(contributor.tolerance_plus, expected_effect)
+                self.assertIn("1D contributor", geometric.conversion_note)
+
     def test_non_1d_warning_detection_uses_configurable_scalar_inputs(self) -> None:
         warnings = detect_non_1d_warnings(
             offset_distance=2.0,

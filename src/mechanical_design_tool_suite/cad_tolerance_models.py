@@ -69,6 +69,34 @@ class GeometricControlType(_StringEnum):
     MANUAL = "manual"
 
 
+def geometric_control_display_label(control_type: GeometricControlType | str) -> str:
+    control = _coerce_enum(
+        GeometricControlType,
+        control_type,
+        GeometricControlType.MANUAL,
+    )
+    return {
+        GeometricControlType.RUNOUT: "runout",
+        GeometricControlType.POSITION: "position",
+        GeometricControlType.PROFILE: "profile",
+        GeometricControlType.MANUAL: "manual",
+    }[control]
+
+
+def geometric_derived_effect(
+    control_type: GeometricControlType | str,
+    tolerance_value: float,
+) -> tuple[float, float]:
+    _coerce_enum(GeometricControlType, control_type, GeometricControlType.MANUAL)
+    effect = abs(float(tolerance_value)) * 0.5
+    return effect, effect
+
+
+def geometric_conversion_note(control_type: GeometricControlType | str) -> str:
+    label = geometric_control_display_label(control_type)
+    return f"{label} tolerance projected as a symmetric 1D contributor."
+
+
 class AnalysisMode(_StringEnum):
     WORST_CASE = "worst_case"
     RSS = "rss"
@@ -445,12 +473,18 @@ class GeometricTolerance:
         )
         self.tolerance_value = float(self.tolerance_value)
         self.datum_references = _string_list(self.datum_references)
+        default_minus, default_plus = geometric_derived_effect(
+            self.control_type,
+            self.tolerance_value,
+        )
         self.derived_minus = (
-            self.tolerance_value if self.derived_minus is None else float(self.derived_minus)
+            default_minus if self.derived_minus is None else float(self.derived_minus)
         )
         self.derived_plus = (
-            self.tolerance_value if self.derived_plus is None else float(self.derived_plus)
+            default_plus if self.derived_plus is None else float(self.derived_plus)
         )
+        if not self.conversion_note:
+            self.conversion_note = geometric_conversion_note(self.control_type)
 
     def to_dict(self) -> dict[str, Any]:
         return {
