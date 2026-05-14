@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
+import tempfile
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QImage
@@ -34,7 +35,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--snapshot",
         type=Path,
-        help="Optional output image path. When set, the harness exits after capture.",
+        help="Optional output image path. Defaults to a temporary PNG for automated smoke.",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Keep the viewer open for manual inspection instead of auto-capturing.",
     )
     parser.add_argument(
         "--exit-after-ms",
@@ -43,10 +49,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Delay before snapshot capture and exit when --snapshot is set.",
     )
     args = parser.parse_args(argv)
+    if args.snapshot is None and not args.interactive:
+        args.snapshot = Path(tempfile.gettempdir()) / "mdts_cad_viewer_smoke.png"
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = create_cad_tolerance_window(app)
-    window.open_cad_file(args.fixture)
+    _load_fixture_without_dialog(window, args.fixture)
     window.show()
 
     if args.snapshot is None:
@@ -54,7 +62,12 @@ def main(argv: list[str] | None = None) -> int:
 
     def capture_and_exit() -> None:
         try:
-            snapshot = window.viewer.capture_snapshot(SnapshotRequest(args.snapshot))
+            snapshot = window.viewport_host.capture_snapshot(
+                SnapshotRequest(
+                    args.snapshot,
+                    annotations=window.viewport_host.annotations,
+                )
+            )
             image = QImage(snapshot.image_path)
             if image.isNull() or image.width() <= 0 or image.height() <= 0:
                 raise RuntimeError(f"Snapshot is blank or unreadable: {snapshot.image_path}")
@@ -69,6 +82,13 @@ def main(argv: list[str] | None = None) -> int:
 
     QTimer.singleShot(max(args.exit_after_ms, 0), capture_and_exit)
     return int(app.exec())
+
+
+def _load_fixture_without_dialog(window, fixture: Path) -> None:
+    document = window.geometry_session.import_file(fixture)
+    if hasattr(window.viewer, "display_document"):
+        window.viewer.display_document(window.geometry_session)
+    window.set_imported_document(document)
 
 
 if __name__ == "__main__":

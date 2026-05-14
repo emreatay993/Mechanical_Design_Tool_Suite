@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import unittest
+
+if "QT_QPA_PLATFORM" not in os.environ and importlib.util.find_spec("OCC") is None:
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from mechanical_design_tool_suite.cad_geometry_occ import OccCadGeometrySession
 from mechanical_design_tool_suite.cad_tolerance_models import ShapeKind, ShapeReference
@@ -10,6 +15,8 @@ from mechanical_design_tool_suite.cad_viewer_api import (
     CadViewerSelection,
     HighlightRole,
     SnapshotRequest,
+    ViewerAnnotation,
+    ViewerAnnotationRole,
     ViewerSelectionMode,
 )
 from mechanical_design_tool_suite.cad_viewer_occ import (
@@ -63,6 +70,39 @@ class CadViewerApiTest(unittest.TestCase):
         self.assertEqual(request.output_path, Path("viewer.png"))
         self.assertEqual(request.visible_stackup_ids, ())
         self.assertEqual(request.annotation_positions, {})
+        self.assertEqual(request.annotations, ())
+
+    def test_viewer_annotation_is_serializable_snapshot_overlay(self) -> None:
+        annotation = ViewerAnnotation(
+            id="stackup_1:main",
+            label="0.000",
+            role=ViewerAnnotationRole.STACKUP,
+            start=(0.4, 0.25),
+            end=(0.4, 0.75),
+            label_position=(0.48, 0.55),
+            shape_ids=("shape_face_1",),
+            feature_ids=("feature_face_1",),
+        )
+        request = SnapshotRequest(Path("viewer.png"), annotations=(annotation,))
+
+        self.assertEqual(request.annotations, (annotation,))
+        self.assertEqual(
+            annotation.to_dict(),
+            {
+                "id": "stackup_1:main",
+                "label": "0.000",
+                "role": "stackup",
+                "start": [0.4, 0.25],
+                "end": [0.4, 0.75],
+                "label_position": [0.48, 0.55],
+                "leader_points": [],
+                "shape_ids": ["shape_face_1"],
+                "feature_ids": ["feature_face_1"],
+                "draggable": True,
+            },
+        )
+        self.assertEqual(str(HighlightRole.ELIGIBLE), "eligible")
+        self.assertEqual(str(HighlightRole.CROSS_HIGHLIGHT), "cross_highlight")
 
 
 class OccCadViewerRuntimeTest(unittest.TestCase):
@@ -115,9 +155,22 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
             first_body,
         )
 
-        widget.set_selection_modes({ViewerSelectionMode.FACE})
+        widget.set_selection_modes({ViewerSelectionMode.BODY, ViewerSelectionMode.FACE})
+        self.assertEqual(
+            set(widget.active_selection_modes),
+            {ViewerSelectionMode.BODY, ViewerSelectionMode.FACE},
+        )
         widget.highlight(face_refs[0], HighlightRole.SELECTED_START)
         widget.clear_highlights()
+        widget.set_annotations(
+            (
+                ViewerAnnotation(
+                    id="runtime_stackup_annotation",
+                    label="0.000",
+                    role=ViewerAnnotationRole.STACKUP,
+                ),
+            )
+        )
         widget.fit_all()
         widget.zoom(1.05)
         widget.pan(1, -1)
@@ -127,7 +180,9 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "cad_viewer_snapshot.png"
-            snapshot = widget.capture_snapshot(SnapshotRequest(output_path))
+            snapshot = widget.capture_snapshot(
+                SnapshotRequest(output_path, annotations=widget.annotations)
+            )
             app.processEvents()
 
             self.assertEqual(Path(snapshot.image_path), output_path)
@@ -137,6 +192,57 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
             self.assertFalse(image.isNull())
             self.assertGreater(image.width(), 0)
             self.assertGreater(image.height(), 0)
+            self.assertIn("_viewer_annotations", snapshot.annotation_positions)
+
+
+@unittest.skipUnless(importlib.util.find_spec("PyQt6"), "PyQt6 is not installed.")
+class ViewerOverlayHostTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        from PyQt6.QtWidgets import QApplication
+
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_viewport_host_captures_annotation_overlays(self) -> None:
+        from PyQt6.QtGui import QImage
+        from PyQt6.QtWidgets import QFrame, QLabel
+
+        from mechanical_design_tool_suite.cad_tolerance_gui import CadViewportHost
+
+        host = CadViewportHost(QFrame())
+        self.addCleanup(host.close)
+        host.resize(640, 480)
+        annotation = ViewerAnnotation(
+            id="stackup_1:main",
+            label="0.000",
+            role=ViewerAnnotationRole.STACKUP,
+            start=(0.35, 0.25),
+            end=(0.35, 0.76),
+            label_position=(0.44, 0.54),
+        )
+        host.set_annotations((annotation,))
+        host.show()
+        self.app.processEvents()
+
+        labels = host.findChildren(QLabel, "ViewerAnnotationLabel")
+        self.assertEqual(len(labels), 1)
+        self.assertEqual(labels[0].text(), "0.000")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "overlay_snapshot.png"
+            snapshot = host.capture_snapshot(
+                SnapshotRequest(output_path, annotations=host.annotations)
+            )
+            image = QImage(str(output_path))
+
+        self.assertEqual(Path(snapshot.image_path), output_path)
+        self.assertFalse(image.isNull())
+        self.assertGreater(image.width(), 0)
+        self.assertIn("_viewer_annotations", snapshot.annotation_positions)
+        self.assertEqual(
+            snapshot.annotation_positions["_viewer_annotations"][0]["role"],
+            "stackup",
+        )
 
 
 if __name__ == "__main__":

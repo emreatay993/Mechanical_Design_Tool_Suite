@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 from pathlib import Path
 import re
@@ -9,8 +10,18 @@ import sys
 from typing import Any
 
 try:
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QAction, QColor, QFont, QFontDatabase, QPalette
+    from PyQt6.QtCore import QPoint, QPointF, QRect, QSize, Qt, pyqtSignal
+    from PyQt6.QtGui import (
+        QAction,
+        QColor,
+        QFont,
+        QFontDatabase,
+        QImage,
+        QMouseEvent,
+        QPainter,
+        QPen,
+        QPalette,
+    )
     from PyQt6.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -97,7 +108,18 @@ from .cad_tolerance_viewmodels import (
     StackupDetailRow,
     StackupSummaryRow,
 )
-from .cad_viewer_api import CadCameraState, CadViewer, CadViewerSelection, CadViewerUnavailable, HighlightRole, SnapshotRequest, StandardView, ViewerSelectionMode
+from .cad_viewer_api import (
+    CadCameraState,
+    CadViewer,
+    CadViewerSelection,
+    CadViewerUnavailable,
+    HighlightRole,
+    SnapshotRequest,
+    StandardView,
+    ViewerAnnotation,
+    ViewerAnnotationRole,
+    ViewerSelectionMode,
+)
 from .cad_viewer_occ import OccCadViewerWidget
 
 
@@ -121,6 +143,7 @@ class PlaceholderCadViewerWidget(QFrame):
         self._last_session: Any | None = None
         self._selection_modes: set[ViewerSelectionMode] = {ViewerSelectionMode.BODY}
         self._highlight_roles: dict[str, HighlightRole] = {}
+        self._annotations: tuple[ViewerAnnotation, ...] = ()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -171,6 +194,13 @@ class PlaceholderCadViewerWidget(QFrame):
             if role in wanted:
                 del self._highlight_roles[shape_id]
 
+    def set_annotations(self, annotations: Any) -> None:
+        self._annotations = tuple(annotations)
+
+    @property
+    def annotations(self) -> tuple[ViewerAnnotation, ...]:
+        return self._annotations
+
     def camera_state(self) -> CadCameraState:
         return CadCameraState(view_name=str(self.property("standardView") or "placeholder"))
 
@@ -179,11 +209,17 @@ class PlaceholderCadViewerWidget(QFrame):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         image = self.grab()
         image.save(str(output_path))
+        annotation_positions = dict(request.annotation_positions)
+        annotations = request.annotations or self._annotations
+        if annotations:
+            annotation_positions["_viewer_annotations"] = [
+                annotation.to_dict() for annotation in annotations
+            ]
         return Snapshot(
             image_path=str(output_path),
             camera=self.camera_state().to_dict(),
             visible_stackup_ids=list(request.visible_stackup_ids),
-            annotation_positions=dict(request.annotation_positions),
+            annotation_positions=annotation_positions,
         )
 
 
@@ -422,8 +458,92 @@ class ToleranceCellDelegate(QStyledItemDelegate):
         super().setModelData(editor, model, index)
 
 
+class _ViewerAnnotationCanvas(QWidget):
+    """Paints leader lines and arrowheads for viewport annotations."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ViewerAnnotationCanvas")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._annotations: tuple[ViewerAnnotation, ...] = ()
+
+    def set_annotations(self, annotations: tuple[ViewerAnnotation, ...]) -> None:
+        self._annotations = annotations
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().paintEvent(event)
+        if not self._annotations:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        _paint_annotations(painter, self.size(), self._annotations, draw_labels=False)
+
+
+class _DraggableAnnotationLabel(QLabel):
+    moved = pyqtSignal(str, object)
+
+    def __init__(self, annotation: ViewerAnnotation, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ViewerAnnotationLabel")
+        self._annotation_id = annotation.id
+        self._draggable = annotation.draggable
+        self._press_offset = QPoint()
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.set_annotation(annotation)
+
+    def set_annotation(self, annotation: ViewerAnnotation) -> None:
+        self._annotation_id = annotation.id
+        self._draggable = annotation.draggable
+        self.setText(annotation.label)
+        color = _annotation_color(annotation.role)
+        self.setStyleSheet(
+            "QLabel#ViewerAnnotationLabel {"
+            f"color: {color.name()};"
+            "background: rgba(238, 238, 238, 185);"
+            f"border: 1px solid {color.name()};"
+            "padding: 1px 4px;"
+            "font-weight: 700;"
+            "}"
+        )
+        self.adjustSize()
+        self.setCursor(Qt.CursorShape.OpenHandCursor if annotation.draggable else Qt.CursorShape.ArrowCursor)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
+        if not self._draggable or event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self._press_offset = event.position().toPoint()
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
+        if not self._draggable or not event.buttons() & Qt.MouseButton.LeftButton:
+            super().mouseMoveEvent(event)
+            return
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        proposed = self.mapToParent(event.position().toPoint() - self._press_offset)
+        x = max(0, min(proposed.x(), parent.width() - self.width()))
+        y = max(0, min(proposed.y(), parent.height() - self.height()))
+        self.move(x, y)
+        self.moved.emit(self._annotation_id, _normalized_label_position(self))
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
+        if self._draggable and event.button() == Qt.MouseButton.LeftButton:
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self.moved.emit(self._annotation_id, _normalized_label_position(self))
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class CadViewportHost(QFrame):
     """Hosts the CAD viewer widget plus observed orientation and workflow overlays."""
+
+    annotationMoved = pyqtSignal(str, object)
 
     def __init__(self, viewer: QWidget, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -432,38 +552,32 @@ class CadViewportHost(QFrame):
         self.viewer = viewer
         self._step_buttons: dict[str, QPushButton] = {}
         self._control_buttons: dict[str, QPushButton] = {}
+        self._annotations: tuple[ViewerAnnotation, ...] = ()
+        self._annotation_labels: dict[str, _DraggableAnnotationLabel] = {}
 
         stack = QStackedLayout(self)
-        stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        stack.setContentsMargins(0, 0, 0, 0)
         stack.addWidget(viewer)
 
-        overlay = QWidget()
-        overlay.setObjectName("CadViewportOverlay")
-        overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        overlay_layout = QGridLayout(overlay)
-        overlay_layout.setContentsMargins(10, 10, 10, 10)
-        overlay_layout.setColumnStretch(0, 1)
-        overlay_layout.setRowStretch(1, 1)
+        self.annotation_canvas = _ViewerAnnotationCanvas(self)
 
-        self.view_cube = QLabel("FRONT\nRIGHT")
+        self.view_cube = QPushButton("FRONT\nRIGHT", self)
         self.view_cube.setObjectName("ViewCubePlaceholder")
-        self.view_cube.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        overlay_layout.addWidget(self.view_cube, 0, 1, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+        self.view_cube.setToolTip("Set isometric view")
+        self.view_cube.clicked.connect(lambda: self._set_standard_view(StandardView.ISO))
 
-        self.navigation_toolbar = QToolBar("Viewport Navigation")
+        self.navigation_toolbar = QToolBar("Viewport Navigation", self)
         self.navigation_toolbar.setObjectName("ViewportNavigationToolbar")
         self.navigation_toolbar.setOrientation(Qt.Orientation.Vertical)
-        for label in ("Orbit", "Pan", "Zoom", "Fit", "Home"):
-            self.navigation_toolbar.addAction(label)
-        overlay_layout.addWidget(self.navigation_toolbar, 1, 1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._build_navigation_toolbar()
 
-        self.axis_triad = QLabel("Y\n|\nZ--X")
+        self.axis_triad = QLabel("Y\n|\nZ--X", self)
         self.axis_triad.setObjectName("AxisTriadPlaceholder")
-        overlay_layout.addWidget(self.axis_triad, 2, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
+        self.axis_triad.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.guided_toolbar = self._create_guided_toolbar()
-        overlay_layout.addWidget(self.guided_toolbar, 2, 1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom)
-        stack.addWidget(overlay)
+        self.guided_toolbar.setParent(self)
+        self.set_annotations(())
 
     def _create_guided_toolbar(self) -> QFrame:
         frame = QFrame()
@@ -482,18 +596,19 @@ class CadViewportHost(QFrame):
         self.guided_prompt = QLabel("Select a face, edge or vertex")
         self.guided_prompt.setObjectName("GuidedPromptLabel")
         self.guided_prompt.setWordWrap(True)
-        layout.addWidget(self.guided_prompt, 3, 0, 1, 2)
+        self.guided_prompt.setMinimumWidth(260)
+        layout.addWidget(self.guided_prompt, 3, 0, 1, 4)
         self.component_counter = QLabel("0 Components")
         self.component_counter.setObjectName("GuidedComponentCounter")
         self.mating_face_counter = QLabel("0 of 0 Mating Faces")
         self.mating_face_counter.setObjectName("GuidedMatingFaceCounter")
-        layout.addWidget(self.component_counter, 3, 2)
-        layout.addWidget(self.mating_face_counter, 3, 3)
+        layout.addWidget(self.component_counter, 4, 0, 1, 2)
+        layout.addWidget(self.mating_face_counter, 4, 2, 1, 2)
         for index, label in enumerate(("OK", "X", "+", "List")):
             button = QPushButton(label)
             button.setObjectName(f"GuidedControl{label}")
             self._control_buttons[label] = button
-            layout.addWidget(button, 4, index)
+            layout.addWidget(button, 5, index)
         return frame
 
     def set_workflow_toolbar_state(self, state: GuidedToolbarState) -> None:
@@ -511,6 +626,305 @@ class CadViewportHost(QFrame):
         for label, enabled in enabled_by_label.items():
             if label in self._control_buttons:
                 self._control_buttons[label].setEnabled(enabled)
+
+    @property
+    def annotations(self) -> tuple[ViewerAnnotation, ...]:
+        return self._annotations
+
+    def set_annotations(self, annotations: tuple[ViewerAnnotation, ...]) -> None:
+        self._annotations = tuple(annotations)
+        if hasattr(self.viewer, "set_annotations"):
+            self.viewer.set_annotations(self._annotations)  # type: ignore[attr-defined]
+        self.annotation_canvas.set_annotations(self._annotations)
+        self._sync_annotation_labels()
+        self._layout_overlay()
+
+    def capture_snapshot(self, request: SnapshotRequest) -> Snapshot:
+        output_path = Path(request.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        annotations = request.annotations or self._annotations
+        annotation_positions = dict(request.annotation_positions)
+        if annotations:
+            annotation_positions["_viewer_annotations"] = [
+                annotation.to_dict() for annotation in annotations
+            ]
+        if hasattr(self.viewer, "capture_snapshot"):
+            base_snapshot = self.viewer.capture_snapshot(request)  # type: ignore[attr-defined]
+            image = QImage(str(output_path))
+            if not image.isNull():
+                _paint_annotations_on_image(image, annotations)
+                image.save(str(output_path))
+                return Snapshot(
+                    image_path=str(output_path),
+                    camera=dict(base_snapshot.camera),
+                    visible_stackup_ids=list(request.visible_stackup_ids),
+                    annotation_positions=annotation_positions,
+                    captured_at=base_snapshot.captured_at,
+                )
+
+        pixmap = self.grab()
+        if pixmap.isNull() or not pixmap.save(str(output_path)):
+            raise RuntimeError(f"Could not capture CAD viewport snapshot: {output_path}")
+        camera = self.viewer.camera_state().to_dict() if hasattr(self.viewer, "camera_state") else CadCameraState().to_dict()
+        return Snapshot(
+            image_path=str(output_path),
+            camera=camera,
+            visible_stackup_ids=list(request.visible_stackup_ids),
+            annotation_positions=annotation_positions,
+        )
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._layout_overlay()
+
+    def _build_navigation_toolbar(self) -> None:
+        self._add_navigation_action("Iso", lambda: self._set_standard_view(StandardView.ISO))
+        self._add_navigation_action("Front", lambda: self._set_standard_view(StandardView.FRONT))
+        self._add_navigation_action("Top", lambda: self._set_standard_view(StandardView.TOP))
+        self._add_navigation_action("Right", lambda: self._set_standard_view(StandardView.RIGHT))
+        self.navigation_toolbar.addSeparator()
+        self._add_navigation_action("Pan", lambda: self._pan(32, 0))
+        self._add_navigation_action("Zoom", lambda: self._zoom(1.15))
+        self._add_navigation_action("Fit", self._fit_all)
+
+    def _add_navigation_action(self, label: str, callback) -> None:
+        action = self.navigation_toolbar.addAction(label)
+        action.setToolTip(label)
+        action.triggered.connect(callback)
+
+    def _fit_all(self) -> None:
+        if hasattr(self.viewer, "fit_all"):
+            self.viewer.fit_all()  # type: ignore[attr-defined]
+
+    def _pan(self, dx: int, dy: int) -> None:
+        if hasattr(self.viewer, "pan"):
+            self.viewer.pan(dx, dy)  # type: ignore[attr-defined]
+
+    def _zoom(self, factor: float) -> None:
+        if hasattr(self.viewer, "zoom"):
+            self.viewer.zoom(factor)  # type: ignore[attr-defined]
+
+    def _set_standard_view(self, view: StandardView) -> None:
+        if hasattr(self.viewer, "set_standard_view"):
+            self.viewer.set_standard_view(view)  # type: ignore[attr-defined]
+
+    def _sync_annotation_labels(self) -> None:
+        annotation_ids = {annotation.id for annotation in self._annotations}
+        for annotation_id, label in list(self._annotation_labels.items()):
+            if annotation_id not in annotation_ids:
+                label.deleteLater()
+                del self._annotation_labels[annotation_id]
+        for annotation in self._annotations:
+            label = self._annotation_labels.get(annotation.id)
+            if label is None:
+                label = _DraggableAnnotationLabel(annotation, self)
+                label.moved.connect(self._handle_annotation_label_moved)
+                self._annotation_labels[annotation.id] = label
+            else:
+                label.set_annotation(annotation)
+            label.show()
+
+    def _handle_annotation_label_moved(self, annotation_id: str, position: object) -> None:
+        if not isinstance(position, dict):
+            return
+        screen = position.get("screen")
+        if (
+            not isinstance(screen, list)
+            or len(screen) != 2
+            or not all(isinstance(value, (int, float)) for value in screen)
+        ):
+            return
+        normalized = (float(screen[0]), float(screen[1]))
+        updated = []
+        for annotation in self._annotations:
+            if annotation.id == annotation_id:
+                updated.append(replace(annotation, label_position=normalized))
+            else:
+                updated.append(annotation)
+        self._annotations = tuple(updated)
+        if hasattr(self.viewer, "set_annotations"):
+            self.viewer.set_annotations(self._annotations)  # type: ignore[attr-defined]
+        self.annotation_canvas.set_annotations(self._annotations)
+        self.annotationMoved.emit(annotation_id, {"screen": [normalized[0], normalized[1]]})
+
+    def _layout_overlay(self) -> None:
+        rect = self.rect()
+        margin = 12
+        self.annotation_canvas.setGeometry(rect)
+        self.annotation_canvas.raise_()
+
+        cube_size = QSize(70, 58)
+        self.view_cube.setGeometry(
+            max(margin, rect.width() - cube_size.width() - margin),
+            margin,
+            cube_size.width(),
+            cube_size.height(),
+        )
+
+        nav_hint = self.navigation_toolbar.sizeHint()
+        nav_width = max(42, nav_hint.width())
+        nav_height = min(max(190, nav_hint.height()), max(120, rect.height() - 190))
+        self.navigation_toolbar.setGeometry(
+            max(margin, rect.width() - nav_width - margin),
+            max(margin + cube_size.height() + 12, (rect.height() - nav_height) // 2),
+            nav_width,
+            nav_height,
+        )
+
+        self.axis_triad.setGeometry(margin, max(margin, rect.height() - 82), 82, 70)
+
+        guided_hint = self.guided_toolbar.sizeHint()
+        guided_width = min(max(380, guided_hint.width()), max(320, rect.width() - 2 * margin))
+        guided_height = guided_hint.height()
+        self.guided_toolbar.setGeometry(
+            max(margin, rect.width() - guided_width - margin),
+            max(margin, rect.height() - guided_height - margin),
+            guided_width,
+            guided_height,
+        )
+
+        self._layout_annotation_labels()
+        for widget in (
+            self.view_cube,
+            self.navigation_toolbar,
+            self.axis_triad,
+            self.guided_toolbar,
+        ):
+            widget.raise_()
+
+    def _layout_annotation_labels(self) -> None:
+        for annotation in self._annotations:
+            label = self._annotation_labels.get(annotation.id)
+            if label is None:
+                continue
+            label.adjustSize()
+            point = _annotation_label_point(self.size(), annotation)
+            x = max(0, min(int(point.x() - label.width() / 2), self.width() - label.width()))
+            y = max(0, min(int(point.y() - label.height() / 2), self.height() - label.height()))
+            label.move(x, y)
+            label.raise_()
+
+
+def _annotation_color(role: ViewerAnnotationRole) -> QColor:
+    colors = {
+        ViewerAnnotationRole.STACKUP: QColor("#c40000"),
+        ViewerAnnotationRole.CONTRIBUTOR: QColor("#2459d6"),
+        ViewerAnnotationRole.WARNING: QColor("#d6a300"),
+    }
+    return colors[ViewerAnnotationRole(role)]
+
+
+def _point_from_normalized(size: QSize, point: tuple[float, float]) -> QPointF:
+    x = max(0.0, min(1.0, float(point[0])))
+    y = max(0.0, min(1.0, float(point[1])))
+    return QPointF(x * max(size.width(), 1), y * max(size.height(), 1))
+
+
+def _annotation_label_point(size: QSize, annotation: ViewerAnnotation) -> QPointF:
+    if annotation.label_position is not None:
+        return _point_from_normalized(size, annotation.label_position)
+    start = _point_from_normalized(size, annotation.start)
+    end = _point_from_normalized(size, annotation.end)
+    side = 0.055 if annotation.role == ViewerAnnotationRole.STACKUP else 0.04
+    return QPointF(
+        min(max(size.width() * 0.04, end.x() + size.width() * side), size.width() * 0.96),
+        (start.y() + end.y()) / 2.0,
+    )
+
+
+def _paint_annotations_on_image(
+    image: QImage,
+    annotations: tuple[ViewerAnnotation, ...],
+) -> None:
+    if not annotations:
+        return
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    _paint_annotations(painter, image.size(), annotations, draw_labels=True)
+    painter.end()
+
+
+def _paint_annotations(
+    painter: QPainter,
+    size: QSize,
+    annotations: tuple[ViewerAnnotation, ...],
+    *,
+    draw_labels: bool,
+) -> None:
+    for annotation in annotations:
+        color = _annotation_color(annotation.role)
+        pen = QPen(color, 3 if annotation.role == ViewerAnnotationRole.STACKUP else 2)
+        painter.setPen(pen)
+        start = _point_from_normalized(size, annotation.start)
+        end = _point_from_normalized(size, annotation.end)
+        label_pos = _annotation_label_point(size, annotation)
+        painter.drawLine(start, end)
+        _draw_arrow_head(painter, start, end)
+        _draw_arrow_head(painter, end, start)
+        leader_start = QPointF(end.x(), (start.y() + end.y()) / 2.0)
+        painter.drawLine(leader_start, label_pos)
+        for first, second in zip(annotation.leader_points, annotation.leader_points[1:]):
+            painter.drawLine(
+                _point_from_normalized(size, first),
+                _point_from_normalized(size, second),
+            )
+        if draw_labels:
+            _paint_annotation_label(painter, label_pos, annotation, color)
+
+
+def _paint_annotation_label(
+    painter: QPainter,
+    point: QPointF,
+    annotation: ViewerAnnotation,
+    color: QColor,
+) -> None:
+    font = painter.font()
+    font.setBold(True)
+    painter.setFont(font)
+    metrics = painter.fontMetrics()
+    width = max(46, metrics.horizontalAdvance(annotation.label) + 12)
+    height = metrics.height() + 8
+    rect = QRect(
+        int(point.x() - width / 2),
+        int(point.y() - height / 2),
+        width,
+        height,
+    )
+    painter.fillRect(rect, QColor(238, 238, 238, 210))
+    painter.setPen(QPen(color, 1))
+    painter.drawRect(rect)
+    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, annotation.label)
+
+
+def _draw_arrow_head(painter: QPainter, tail: QPointF, tip: QPointF) -> None:
+    dx = tip.x() - tail.x()
+    dy = tip.y() - tail.y()
+    length = math.hypot(dx, dy)
+    if length <= 0.1:
+        return
+    ux = dx / length
+    uy = dy / length
+    px = -uy
+    py = ux
+    head = 10.0
+    spread = 5.0
+    left = QPointF(tip.x() - ux * head + px * spread, tip.y() - uy * head + py * spread)
+    right = QPointF(tip.x() - ux * head - px * spread, tip.y() - uy * head - py * spread)
+    painter.drawLine(tip, left)
+    painter.drawLine(tip, right)
+
+
+def _normalized_label_position(label: QLabel) -> dict[str, list[float]]:
+    parent = label.parentWidget()
+    if parent is None or parent.width() <= 0 or parent.height() <= 0:
+        return {"screen": [0.5, 0.5]}
+    center = label.geometry().center()
+    return {
+        "screen": [
+            round(center.x() / parent.width(), 4),
+            round(center.y() / parent.height(), 4),
+        ]
+    }
 
 
 class DashboardBadgesWidget(QFrame):
@@ -978,6 +1392,13 @@ class CadToleranceMainWindow(QMainWindow):
         self.summary_table.activated.connect(lambda index: self._open_summary_index(index.row()))
         self.detail_model.editAccepted.connect(self.statusBar().showMessage)
         self.detail_model.editRejected.connect(self.statusBar().showMessage)
+        self.detail_table.selectionModel().currentRowChanged.connect(
+            self._handle_detail_row_changed
+        )
+        self.assembly_tree.selectionModel().currentChanged.connect(
+            self._handle_assembly_tree_changed
+        )
+        self.viewport_host.annotationMoved.connect(self._handle_annotation_moved)
         selection_signal = getattr(self.viewer, "selection_changed", None)
         if selection_signal is not None and hasattr(selection_signal, "connect"):
             selection_signal.connect(self.handle_viewer_selections)
@@ -992,6 +1413,7 @@ class CadToleranceMainWindow(QMainWindow):
     def _set_detail_stackup(self, stackup_id: str) -> None:
         if not stackup_id:
             self.detail_model.set_rows([])
+            self.viewport_host.set_annotations(())
             return
         self.workspace.select_stackup(stackup_id)
         selected = _summary_by_id(self.workspace.summary_rows, stackup_id)
@@ -999,6 +1421,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.detail_title.setText(f"{title} details")
         self.detail_model.set_rows(self.workspace.detail_rows(stackup_id))
         self._update_detail_outputs(stackup_id, title)
+        self._sync_viewer_annotations(stackup_id)
 
     def _update_detail_outputs(self, stackup_id: str, title: str | None = None) -> None:
         selected = _summary_by_id(self.workspace.summary_rows, stackup_id)
@@ -1011,6 +1434,132 @@ class CadToleranceMainWindow(QMainWindow):
         self.detail_contributions.set_rows(
             self.workspace.contribution_rows(stackup_id),
             f"{projection.mode_label if projection else 'Statistical'} Contributions for {resolved_title}",
+        )
+
+    def _handle_detail_row_changed(self, current, _previous) -> None:
+        if not current.isValid():
+            return
+        row = current.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(row, StackupDetailRow):
+            return
+        shape_ref = self._shape_reference_for_detail_row(row)
+        if shape_ref is not None:
+            self._cross_highlight_shape(shape_ref)
+
+    def _handle_assembly_tree_changed(self, current, _previous) -> None:
+        if not current.isValid():
+            return
+        shape_ref = self._shape_reference_for_assembly_item(
+            str(current.data(Qt.ItemDataRole.UserRole) or ""),
+            str(current.data(Qt.ItemDataRole.DisplayRole) or ""),
+        )
+        if shape_ref is not None:
+            self._cross_highlight_shape(shape_ref)
+
+    def _handle_annotation_moved(self, _annotation_id: str, position: object) -> None:
+        if not isinstance(position, dict):
+            return
+        screen = position.get("screen")
+        if (
+            not isinstance(screen, list)
+            or len(screen) != 2
+            or not all(isinstance(value, (int, float)) for value in screen)
+        ):
+            return
+        stored_position = {"screen": [float(screen[0]), float(screen[1])]}
+        if self.workflow_controller is not None:
+            try:
+                update = self.workflow_controller.set_annotation_position(stored_position)
+            except ValueError:
+                pass
+            else:
+                self._apply_workflow_update(update)
+                return
+        stackup = _stackup_by_id(self.project, self.workspace.selected_stackup_id)
+        if stackup is None:
+            return
+        stackup.annotation_position = stored_position
+        self.workspace.annotation_positions_by_stackup_id[stackup.id] = dict(stored_position)
+        self._sync_viewer_annotations(stackup.id)
+        self.statusBar().showMessage("Moved stackup annotation label")
+
+    def _select_detail_row_for_selection(self, selection: CadViewerSelection) -> None:
+        for row_index, row in enumerate(self.detail_model.rows):
+            if not _detail_row_matches_selection(row, selection, self._feature_reference_by_id):
+                continue
+            self.detail_table.selectRow(row_index)
+            return
+
+    def _shape_reference_for_detail_row(self, row: StackupDetailRow):
+        if not row.source_feature_id:
+            return None
+        feature = self._feature_reference_by_id(row.source_feature_id)
+        if feature is not None:
+            return feature.shape_reference
+        return None
+
+    def _feature_reference_by_id(self, feature_id: str) -> FeatureReference | None:
+        if not feature_id:
+            return None
+        for feature in _project_feature_references(self.project):
+            shape = feature.shape_reference
+            if feature.id == feature_id or (shape is not None and shape.id == feature_id):
+                return feature
+        return None
+
+    def _shape_reference_for_assembly_item(self, item_id: str, display_name: str):
+        if not hasattr(self.geometry_session, "shape_references"):
+            return None
+        try:
+            body_refs = self.geometry_session.shape_references({ShapeKind.BODY})
+        except Exception:
+            return None
+        for shape_ref in body_refs:
+            if shape_ref.id == item_id:
+                return shape_ref
+            if display_name and (
+                display_name == shape_ref.fallback_display_name
+                or display_name in shape_ref.assembly_path
+            ):
+                return shape_ref
+        return None
+
+    def _cross_highlight_shape(self, shape_ref) -> None:
+        if not hasattr(self.viewer, "highlight"):
+            return
+        try:
+            if hasattr(self.viewer, "clear_highlights"):
+                self.viewer.clear_highlights([HighlightRole.CROSS_HIGHLIGHT])  # type: ignore[attr-defined]
+            self.viewer.highlight(shape_ref, HighlightRole.CROSS_HIGHLIGHT)  # type: ignore[attr-defined]
+        except Exception as exc:
+            self.statusBar().showMessage(f"Viewer highlight unavailable: {exc}")
+
+    def _sync_viewer_annotations(self, stackup_id: str) -> None:
+        stackup = _stackup_by_id(self.project, stackup_id)
+        annotations = _viewer_annotations_for_stackup(stackup) if stackup else ()
+        self.viewport_host.set_annotations(annotations)
+
+    def _workflow_annotations(self) -> tuple[ViewerAnnotation, ...]:
+        if self.workflow_controller is None:
+            return ()
+        state = self.workflow_controller.state
+        if state.start_feature is None and state.end_feature is None:
+            return ()
+        position = _screen_position_tuple(state.annotation_position) or (0.58, 0.62)
+        shape_ids, feature_ids = _feature_reference_ids(
+            [state.start_feature, state.end_feature, state.direction_feature]
+        )
+        return (
+            ViewerAnnotation(
+                id="workflow_stackup_dimension",
+                label="0.000",
+                role=ViewerAnnotationRole.STACKUP,
+                start=(0.55, 0.34),
+                end=(0.55, 0.72),
+                label_position=position,
+                shape_ids=shape_ids,
+                feature_ids=feature_ids,
+            ),
         )
 
     def _handle_detail_edit(
@@ -1058,7 +1607,10 @@ class CadToleranceMainWindow(QMainWindow):
         self._apply_workflow_update(update)
 
     def handle_viewer_selections(self, selections: list[CadViewerSelection] | tuple[CadViewerSelection, ...]) -> None:
-        if self.workflow_controller is None or not selections:
+        if not selections:
+            return
+        self._select_detail_row_for_selection(selections[0])
+        if self.workflow_controller is None:
             return
         try:
             update = self.workflow_controller.apply_selection(selections[0])
@@ -1077,6 +1629,8 @@ class CadToleranceMainWindow(QMainWindow):
             if hasattr(self.viewer, "highlight"):
                 self.viewer.highlight(highlight.shape_reference, highlight.role)  # type: ignore[attr-defined]
         self.statusBar().showMessage(update.selection_filter.prompt)
+        if update.stackup is None:
+            self.viewport_host.set_annotations(self._workflow_annotations())
         if update.stackup is not None:
             self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
             self.summary_model.set_rows(self.workspace.summary_rows)
@@ -1273,10 +1827,11 @@ class CadToleranceMainWindow(QMainWindow):
             stackup = _stackup_by_id(self.project, stackup_id)
             shape_ids, feature_ids = _snapshot_reference_ids(stackup)
             warning_ids = tuple(warning.id for warning in self.workspace.warnings(stackup_id))
-            snapshot = self.viewer.capture_snapshot(
+            snapshot = self.viewport_host.capture_snapshot(
                 SnapshotRequest(
                     output_path,
                     visible_stackup_ids=(stackup_id,) if stackup_id else (),
+                    annotations=self.viewport_host.annotations,
                     annotation_positions=annotation_positions,
                     highlight_shape_ids=shape_ids,
                     highlight_feature_ids=feature_ids,
@@ -1373,6 +1928,115 @@ def _snapshot_reference_ids(stackup: StackupRequirement | None) -> tuple[tuple[s
     for contributor in stackup.contributors:
         collect(contributor.source_feature)
     return tuple(shape_ids), tuple(feature_ids)
+
+
+def _project_feature_references(project: CadToleranceProject) -> list[FeatureReference]:
+    features: list[FeatureReference] = []
+
+    def collect(feature: FeatureReference | None) -> None:
+        if feature is None:
+            return
+        if all(existing.id != feature.id for existing in features):
+            features.append(feature)
+
+    for stackup in project.stackups:
+        collect(stackup.start_feature)
+        collect(stackup.end_feature)
+        for feature in stackup.loop_features:
+            collect(feature)
+        for feature in stackup.constraint_features:
+            collect(feature)
+        for contributor in stackup.contributors:
+            collect(contributor.source_feature)
+    return features
+
+
+def _detail_row_matches_selection(
+    row: StackupDetailRow,
+    selection: CadViewerSelection,
+    feature_lookup,
+) -> bool:
+    if not row.source_feature_id:
+        return False
+    selected_ids = {selection.shape_id, selection.feature_id}
+    feature = feature_lookup(row.source_feature_id)
+    if feature is not None:
+        selected_ids.add(feature.id)
+        if feature.shape_reference is not None:
+            selected_ids.add(feature.shape_reference.id)
+    return row.source_feature_id in selected_ids
+
+
+def _viewer_annotations_for_stackup(
+    stackup: StackupRequirement | None,
+) -> tuple[ViewerAnnotation, ...]:
+    if stackup is None:
+        return ()
+    shape_ids, feature_ids = _snapshot_reference_ids(stackup)
+    position = _screen_position_tuple(stackup.annotation_position) or (0.58, 0.56)
+    annotations = [
+        ViewerAnnotation(
+            id=f"{stackup.id}:stackup",
+            label=f"{stackup.objective.nominal:.3f}",
+            role=ViewerAnnotationRole.STACKUP,
+            start=(0.54, 0.34),
+            end=(0.54, 0.72),
+            label_position=position,
+            shape_ids=shape_ids,
+            feature_ids=feature_ids,
+        )
+    ]
+    for index, contributor in enumerate(stackup.contributors[:4], start=1):
+        x = min(0.86, 0.64 + index * 0.055)
+        annotations.append(
+            ViewerAnnotation(
+                id=f"{stackup.id}:{contributor.id}",
+                label=f"{contributor.nominal:.3f}",
+                role=ViewerAnnotationRole.CONTRIBUTOR,
+                start=(x, 0.30 + index * 0.025),
+                end=(x, 0.70 - index * 0.025),
+                label_position=(min(0.94, x + 0.045), 0.44 + index * 0.065),
+                shape_ids=(
+                    (contributor.source_feature.shape_reference.id,)
+                    if contributor.source_feature
+                    and contributor.source_feature.shape_reference is not None
+                    else ()
+                ),
+                feature_ids=(
+                    (contributor.source_feature.id,)
+                    if contributor.source_feature is not None
+                    else ()
+                ),
+            )
+        )
+    return tuple(annotations)
+
+
+def _feature_reference_ids(
+    features: list[FeatureReference | None],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    shape_ids: list[str] = []
+    feature_ids: list[str] = []
+    for feature in features:
+        if feature is None:
+            continue
+        if feature.id and feature.id not in feature_ids:
+            feature_ids.append(feature.id)
+        shape = feature.shape_reference
+        if shape is not None and shape.id and shape.id not in shape_ids:
+            shape_ids.append(shape.id)
+    return tuple(shape_ids), tuple(feature_ids)
+
+
+def _screen_position_tuple(position: dict[str, Any]) -> tuple[float, float] | None:
+    screen = position.get("screen") if isinstance(position, dict) else None
+    if (
+        isinstance(screen, (list, tuple))
+        and len(screen) == 2
+        and all(isinstance(value, (int, float)) for value in screen)
+    ):
+        return (max(0.0, min(1.0, float(screen[0]))), max(0.0, min(1.0, float(screen[1]))))
+    return None
 
 
 def _summary_by_id(rows: list[StackupSummaryRow], stackup_id: str) -> StackupSummaryRow | None:
@@ -1798,7 +2462,7 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
         QLabel#PlaceholderViewerDetail {
             color: #4a4a4a;
         }
-        QLabel#ViewCubePlaceholder {
+        QPushButton#ViewCubePlaceholder {
             min-width: 58px;
             min-height: 48px;
             background: rgba(240, 240, 240, 180);

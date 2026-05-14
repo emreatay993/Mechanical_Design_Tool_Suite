@@ -22,6 +22,8 @@ class CadViewerUnavailable(CadViewerError):
 
 class HighlightRole(str, Enum):
     HOVER = "hover"
+    ELIGIBLE = "eligible"
+    CROSS_HIGHLIGHT = "cross_highlight"
     SELECTED_START = "selected_start"
     SELECTED_END = "selected_end"
     DIRECTION = "direction"
@@ -68,6 +70,15 @@ class StandardView(str, Enum):
         return self.value
 
 
+class ViewerAnnotationRole(str, Enum):
+    STACKUP = "stackup"
+    CONTRIBUTOR = "contributor"
+    WARNING = "warning"
+
+    def __str__(self) -> str:
+        return self.value
+
+
 @dataclass(frozen=True)
 class CadCameraState:
     """Serializable camera state captured from a viewer adapter."""
@@ -89,6 +100,46 @@ class CadCameraState:
             "scale": self.scale,
             "twist": self.twist,
             "view_name": self.view_name,
+        }
+
+
+@dataclass(frozen=True)
+class ViewerAnnotation:
+    """Snapshot-ready 2D annotation overlay anchored to the viewer widget.
+
+    Coordinates are normalized viewport fractions so the overlay can survive
+    resize, snapshot, and report capture without persisting Qt or OCCT handles.
+    """
+
+    id: str
+    label: str = "0.000"
+    role: ViewerAnnotationRole = ViewerAnnotationRole.STACKUP
+    start: tuple[float, float] = (0.42, 0.34)
+    end: tuple[float, float] = (0.42, 0.70)
+    label_position: tuple[float, float] | None = None
+    leader_points: tuple[tuple[float, float], ...] = ()
+    shape_ids: tuple[str, ...] = ()
+    feature_ids: tuple[str, ...] = ()
+    draggable: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "role": self.role.value,
+            "start": [float(self.start[0]), float(self.start[1])],
+            "end": [float(self.end[0]), float(self.end[1])],
+            "label_position": (
+                [float(self.label_position[0]), float(self.label_position[1])]
+                if self.label_position
+                else None
+            ),
+            "leader_points": [
+                [float(point[0]), float(point[1])] for point in self.leader_points
+            ],
+            "shape_ids": list(self.shape_ids),
+            "feature_ids": list(self.feature_ids),
+            "draggable": self.draggable,
         }
 
 
@@ -134,6 +185,7 @@ class SnapshotRequest:
 
     output_path: Path
     visible_stackup_ids: tuple[str, ...] = ()
+    annotations: tuple[ViewerAnnotation, ...] = ()
     annotation_positions: dict[str, Any] = field(default_factory=dict)
     highlight_shape_ids: tuple[str, ...] = ()
     highlight_feature_ids: tuple[str, ...] = ()
@@ -178,6 +230,9 @@ class CadViewer(Protocol):
 
     def clear_highlights(self, roles: Iterable[HighlightRole] | None = None) -> None:
         """Clear transient highlights."""
+
+    def set_annotations(self, annotations: Iterable[ViewerAnnotation]) -> None:
+        """Set snapshot-ready viewport annotations."""
 
     def camera_state(self) -> CadCameraState:
         """Return current serializable camera state."""

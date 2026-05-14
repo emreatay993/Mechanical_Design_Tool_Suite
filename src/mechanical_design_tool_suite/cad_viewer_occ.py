@@ -25,6 +25,7 @@ from .cad_viewer_api import (
     HighlightRole,
     SnapshotRequest,
     StandardView,
+    ViewerAnnotation,
     ViewerSelectionMode,
 )
 
@@ -53,7 +54,7 @@ try:
     )
     from OCC.Core.Prs3d import Prs3d_LineAspect
     from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-    from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_VERTEX
+    from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID, TopAbs_VERTEX
     from OCC.Display.qtDisplay import qtViewer3d
 except Exception as exc:  # pragma: no cover - exercised without CAD deps.
     _IMPORT_ERROR = exc
@@ -71,6 +72,7 @@ except Exception as exc:  # pragma: no cover - exercised without CAD deps.
     Quantity_TOC_RGB = None  # type: ignore[assignment]
     TopAbs_EDGE = None  # type: ignore[assignment]
     TopAbs_FACE = None  # type: ignore[assignment]
+    TopAbs_SOLID = None  # type: ignore[assignment]
     TopAbs_VERTEX = None  # type: ignore[assignment]
     qtViewer3d = None  # type: ignore[assignment]
 
@@ -120,6 +122,7 @@ if _IMPORT_ERROR is None:
             self._kernel_shapes_by_shape_id: dict[str, Any] = {}
             self._highlight_ais: dict[tuple[str, HighlightRole], Any] = {}
             self._last_selection: list[CadViewerSelection] = []
+            self._annotations: tuple[ViewerAnnotation, ...] = ()
 
         @property
         def raw_qt_viewer(self) -> Any:
@@ -134,6 +137,14 @@ if _IMPORT_ERROR is None:
         @property
         def selected_shapes(self) -> tuple[CadViewerSelection, ...]:
             return tuple(self._last_selection)
+
+        @property
+        def active_selection_modes(self) -> tuple[ViewerSelectionMode, ...]:
+            return tuple(sorted(self._selection_modes, key=lambda mode: mode.value))
+
+        @property
+        def annotations(self) -> tuple[ViewerAnnotation, ...]:
+            return self._annotations
 
         def initialize_viewer(self) -> None:
             """Initialize the OCCT display driver if needed."""
@@ -204,6 +215,7 @@ if _IMPORT_ERROR is None:
             self._kernel_shapes_by_shape_id.clear()
             self._highlight_ais.clear()
             self._last_selection = []
+            self._annotations = ()
             if self._context is not None:
                 self._context.RemoveAll(False)
                 self._context.UpdateCurrentViewer()
@@ -283,6 +295,9 @@ if _IMPORT_ERROR is None:
                 del self._highlight_ais[key]
             self._context.UpdateCurrentViewer()
 
+        def set_annotations(self, annotations: Iterable[ViewerAnnotation]) -> None:
+            self._annotations = tuple(annotations)
+
         def camera_state(self) -> CadCameraState:
             if not self._initialized or self._display is None:
                 return CadCameraState()
@@ -301,11 +316,17 @@ if _IMPORT_ERROR is None:
             output_path = Path(request.output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             self._display.ExportToImage(str(output_path))  # type: ignore[union-attr]
+            annotation_positions = dict(request.annotation_positions)
+            annotations = request.annotations or self._annotations
+            if annotations:
+                annotation_positions["_viewer_annotations"] = [
+                    annotation.to_dict() for annotation in annotations
+                ]
             return Snapshot(
                 image_path=str(output_path),
                 camera=self.camera_state().to_dict(),
                 visible_stackup_ids=list(request.visible_stackup_ids),
-                annotation_positions=dict(request.annotation_positions),
+                annotation_positions=annotation_positions,
                 captured_at=_utc_timestamp(),
             )
 
@@ -336,13 +357,10 @@ if _IMPORT_ERROR is None:
                 return
             modes = self._selection_modes or {ViewerSelectionMode.BODY}
             self._context.Deactivate()
-            if modes == {ViewerSelectionMode.BODY}:
-                self._context.UpdateSelected(True)
-                return
             for mode in modes:
-                topology_mode = _topology_mode(mode)
-                if topology_mode is not None:
-                    self._context.Activate(AIS_Shape.SelectionMode(topology_mode), True)
+                selection_mode = _selection_mode(mode)
+                if selection_mode is not None:
+                    self._context.Activate(selection_mode, True)
             self._context.UpdateSelected(True)
 
         def _apply_view_style(self) -> None:
@@ -420,13 +438,15 @@ else:
             )
 
 
-def _topology_mode(mode: ViewerSelectionMode) -> Any | None:
+def _selection_mode(mode: ViewerSelectionMode) -> Any | None:
+    if mode == ViewerSelectionMode.BODY:
+        return AIS_Shape.SelectionMode(TopAbs_SOLID)
     if mode == ViewerSelectionMode.FACE:
-        return TopAbs_FACE
+        return AIS_Shape.SelectionMode(TopAbs_FACE)
     if mode == ViewerSelectionMode.EDGE:
-        return TopAbs_EDGE
+        return AIS_Shape.SelectionMode(TopAbs_EDGE)
     if mode == ViewerSelectionMode.VERTEX:
-        return TopAbs_VERTEX
+        return AIS_Shape.SelectionMode(TopAbs_VERTEX)
     return None
 
 
@@ -446,13 +466,15 @@ def _screen_position(args: tuple[Any, ...]) -> tuple[int, int] | None:
 
 def _highlight_style(role: HighlightRole) -> tuple[tuple[float, float, float], float]:
     styles = {
-        HighlightRole.HOVER: ((1.0, 0.83, 0.16), 0.65),
-        HighlightRole.SELECTED_START: ((0.1, 0.78, 0.28), 0.45),
-        HighlightRole.SELECTED_END: ((0.9, 0.12, 0.12), 0.45),
-        HighlightRole.DIRECTION: ((0.1, 0.35, 0.95), 0.45),
-        HighlightRole.ANALYSIS_PLANE: ((0.8, 0.12, 0.8), 0.55),
-        HighlightRole.LOOP_MEMBER: ((0.95, 0.84, 0.1), 0.55),
-        HighlightRole.WARNING: ((1.0, 0.62, 0.0), 0.35),
+        HighlightRole.HOVER: ((0.12, 0.86, 0.25), 0.58),
+        HighlightRole.ELIGIBLE: ((0.12, 0.86, 0.25), 0.58),
+        HighlightRole.CROSS_HIGHLIGHT: ((0.9, 0.12, 0.12), 0.42),
+        HighlightRole.SELECTED_START: ((0.9, 0.12, 0.12), 0.42),
+        HighlightRole.SELECTED_END: ((0.9, 0.12, 0.12), 0.42),
+        HighlightRole.DIRECTION: ((0.9, 0.12, 0.12), 0.50),
+        HighlightRole.ANALYSIS_PLANE: ((0.9, 0.12, 0.12), 0.55),
+        HighlightRole.LOOP_MEMBER: ((0.12, 0.86, 0.25), 0.52),
+        HighlightRole.WARNING: ((1.0, 0.86, 0.05), 0.38),
     }
     return styles[role]
 
