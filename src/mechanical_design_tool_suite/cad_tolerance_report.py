@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html import escape
+import json
 from pathlib import Path
+import shutil
 from typing import Any
 
 from .cad_tolerance_methods import calculate_stackup
@@ -161,6 +163,9 @@ class ReportGenerationResult:
     output_path: Path
     html: str
     projection: ReportProjection
+    asset_paths: tuple[Path, ...] = ()
+    manifest_path: Path | None = None
+    manifest: dict[str, Any] = field(default_factory=dict)
 
 
 def build_dashboard_projection(
@@ -292,7 +297,19 @@ def build_report_projection(
     )
 
 
-def render_report_html(projection: ReportProjection) -> str:
+def render_report_html(
+    projection: ReportProjection,
+    *,
+    stylesheet_href: str | None = None,
+    script_href: str | None = None,
+) -> str:
+    head_assets = (
+        [f'<link rel="stylesheet" href="{_e(stylesheet_href)}">']
+        if stylesheet_href
+        else ["<style>", _REPORT_CSS, "</style>"]
+    )
+    if script_href:
+        head_assets.append(f'<script src="{_e(script_href)}" defer></script>')
     parts = [
         "<!doctype html>",
         '<html lang="en">',
@@ -300,9 +317,7 @@ def render_report_html(projection: ReportProjection) -> str:
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         f"<title>{_e(projection.title)} - {_e(projection.project_title)}</title>",
-        "<style>",
-        _REPORT_CSS,
-        "</style>",
+        *head_assets,
         "</head>",
         "<body>",
         _render_nav(projection),
@@ -322,15 +337,47 @@ def generate_html_report(
     *,
     title: str = "Tolerance Stackup Report",
     generated_at: str | None = None,
+    project_path: str | Path | None = None,
 ) -> ReportGenerationResult:
     path = Path(output_path)
     if path.suffix == "":
         path = path / "report.html"
+    report_dir = path.parent
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "css").mkdir(parents=True, exist_ok=True)
+    (report_dir / "images").mkdir(parents=True, exist_ok=True)
+    (report_dir / "js").mkdir(parents=True, exist_ok=True)
+
     projection = build_report_projection(project, title=title, generated_at=generated_at)
-    html = render_report_html(projection)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    projection, image_assets, manifest_images = _prepare_snapshot_assets(
+        projection,
+        report_dir,
+        project_path=project_path,
+    )
+    css_path = report_dir / "css" / "report.css"
+    js_path = report_dir / "js" / "report.js"
+    manifest_path = report_dir / "report_manifest.json"
+
+    css_path.write_text(_REPORT_CSS + "\n", encoding="utf-8", newline="\n")
+    js_path.write_text(_REPORT_JS + "\n", encoding="utf-8", newline="\n")
+    html = render_report_html(
+        projection,
+        stylesheet_href="css/report.css",
+        script_href="js/report.js",
+    )
     path.write_text(html, encoding="utf-8", newline="\n")
-    return ReportGenerationResult(path, html, projection)
+    manifest = _report_manifest(
+        projection,
+        html_path=path.name,
+        images=manifest_images,
+    )
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    asset_paths = (css_path, js_path, manifest_path, *image_assets)
+    return ReportGenerationResult(path, html, projection, asset_paths, manifest_path, manifest)
 
 
 def _dashboard_row_from_stackup(
@@ -460,6 +507,191 @@ def _snapshot_projection(snapshot: Snapshot) -> SnapshotProjectionRow:
         captured_at=snapshot.captured_at,
         artifact_metadata=metadata,
     )
+
+
+def _prepare_snapshot_assets(
+    projection: ReportProjection,
+    report_dir: Path,
+    *,
+    project_path: str | Path | None,
+) -> tuple[ReportProjection, tuple[Path, ...], list[dict[str, Any]]]:
+    images_dir = report_dir / "images"
+    used_names: set[str] = set()
+    image_assets: list[Path] = []
+    manifest_images: list[dict[str, Any]] = []
+    prepared_by_id: dict[str, SnapshotProjectionRow] = {}
+    prepared_snapshots: list[SnapshotProjectionRow] = []
+
+    for snapshot in projection.snapshots:
+        source = _resolve_snapshot_source(snapshot.image_path, project_path)
+        suffix = source.suffix.lower() if source is not None and source.suffix else ".svg"
+        if suffix not in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}:
+            suffix = ".png"
+        if source is None:
+            suffix = ".svg"
+        filename = _unique_asset_name(
+            _safe_filename(snapshot.snapshot_id or "snapshot"),
+            suffix,
+            used_names,
+        )
+        relative_image_path = f"images/{filename}"
+        output_image = images_dir / filename
+        if source is None:
+            _write_snapshot_placeholder(output_image, snapshot)
+            source_reference = _portable_reference(snapshot.image_path)
+            source_state = "placeholder"
+        else:
+            if source.resolve() != output_image.resolve():
+                shutil.copyfile(source, output_image)
+            source_reference = _portable_reference(snapshot.image_path)
+            source_state = "copied"
+        image_assets.append(output_image)
+        updated_metadata = dict(snapshot.artifact_metadata)
+        updated_metadata["report_image_path"] = relative_image_path
+        prepared = replace(
+            snapshot,
+            image_path=relative_image_path,
+            artifact_metadata=updated_metadata,
+        )
+        prepared_snapshots.append(prepared)
+        prepared_by_id[snapshot.snapshot_id] = prepared
+        manifest_images.append(
+            {
+                "snapshot_id": snapshot.snapshot_id,
+                "path": relative_image_path,
+                "source_reference": source_reference,
+                "source_state": source_state,
+                "visible_stackup_ids": list(snapshot.visible_stackup_ids),
+            }
+        )
+
+    prepared_sections = []
+    for section in projection.stackups:
+        prepared_sections.append(
+            replace(
+                section,
+                snapshots=tuple(
+                    prepared_by_id.get(snapshot.snapshot_id, snapshot)
+                    for snapshot in section.snapshots
+                ),
+            )
+        )
+    return (
+        replace(
+            projection,
+            snapshots=tuple(prepared_snapshots),
+            stackups=tuple(prepared_sections),
+        ),
+        tuple(image_assets),
+        manifest_images,
+    )
+
+
+def _resolve_snapshot_source(
+    image_path: str,
+    project_path: str | Path | None,
+) -> Path | None:
+    if not image_path:
+        return None
+    raw_path = Path(image_path)
+    if raw_path.is_absolute():
+        return raw_path.resolve() if raw_path.is_file() else None
+    if project_path is not None:
+        from .cad_tolerance_project_io import resolve_project_asset_path
+
+        resolved = resolve_project_asset_path(image_path, project_path)
+        if resolved is not None and resolved.is_file():
+            return resolved
+    if raw_path.is_file():
+        return raw_path.resolve()
+    return None
+
+
+def _unique_asset_name(base: str, suffix: str, used_names: set[str]) -> str:
+    candidate = f"{base}{suffix}"
+    if candidate not in used_names:
+        used_names.add(candidate)
+        return candidate
+    index = 2
+    while True:
+        candidate = f"{base}-{index}{suffix}"
+        if candidate not in used_names:
+            used_names.add(candidate)
+            return candidate
+        index += 1
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = "".join(
+        char.lower() if char.isalnum() else "-"
+        for char in str(value)
+    ).strip("-")
+    while "--" in cleaned:
+        cleaned = cleaned.replace("--", "-")
+    return cleaned or "item"
+
+
+def _portable_reference(reference: str) -> str:
+    if not reference:
+        return ""
+    path = Path(reference)
+    if path.is_absolute():
+        return path.name
+    return str(reference).replace("\\", "/")
+
+
+def _write_snapshot_placeholder(path: Path, snapshot: SnapshotProjectionRow) -> None:
+    stackups = ", ".join(snapshot.visible_stackup_ids) or "No stackup selection"
+    camera = ", ".join(sorted(snapshot.camera)) or "No camera metadata"
+    path.write_text(
+        "\n".join(
+            [
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img">',
+                "<title>Portable CAD snapshot placeholder</title>",
+                '<rect width="1200" height="720" fill="#ffffff"/>',
+                '<rect x="32" y="32" width="1136" height="656" fill="#fbfbfb" stroke="#c9c9c9" stroke-width="2"/>',
+                '<path d="M270 190 L760 120 L930 255 L435 335 Z" fill="#7186b8" stroke="#53648d" stroke-width="3"/>',
+                '<path d="M435 335 L930 255 L930 430 L435 520 Z" fill="#a77b57" stroke="#805d41" stroke-width="3"/>',
+                '<path d="M270 190 L435 335 L435 520 L270 385 Z" fill="#8b674b" stroke="#70513a" stroke-width="3"/>',
+                '<line x1="190" y1="560" x2="760" y2="560" stroke="#233fa8" stroke-width="5"/>',
+                '<line x1="190" y1="560" x2="190" y2="380" stroke="#233fa8" stroke-width="3"/>',
+                '<line x1="760" y1="560" x2="760" y2="250" stroke="#233fa8" stroke-width="3"/>',
+                '<line x1="655" y1="425" x2="790" y2="425" stroke="#8a1f1f" stroke-width="5"/>',
+                '<text x="475" y="596" fill="#233fa8" font-family="Segoe UI, Arial" font-size="34">snapshot view</text>',
+                '<text x="700" y="405" fill="#8a1f1f" font-family="Segoe UI, Arial" font-size="30">result</text>',
+                f'<text x="80" y="96" fill="#555555" font-family="Segoe UI, Arial" font-size="30">{_e(snapshot.snapshot_id)}</text>',
+                f'<text x="80" y="140" fill="#666666" font-family="Segoe UI, Arial" font-size="22">Visible stackups: {_e(stackups)}</text>',
+                f'<text x="80" y="172" fill="#777777" font-family="Segoe UI, Arial" font-size="20">Camera metadata: {_e(camera)}</text>',
+                "</svg>",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _report_manifest(
+    projection: ReportProjection,
+    *,
+    html_path: str,
+    images: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "report_format": "mdts-cad-1d-tolerance-report",
+        "report_format_version": 1,
+        "title": projection.title,
+        "project_title": projection.project_title,
+        "generated_at": projection.generated_at,
+        "unit_system": projection.unit_system,
+        "html_path": html_path,
+        "css_path": "css/report.css",
+        "js_path": "js/report.js",
+        "summary_row_count": len(projection.summary_rows),
+        "stackup_ids": [section.summary.stackup_id for section in projection.stackups],
+        "snapshot_ids": [snapshot.snapshot_id for snapshot in projection.snapshots],
+        "images": images,
+    }
 
 
 def _result_markers(result: StackupResult) -> tuple[ResultMarker, ...]:
@@ -610,6 +842,7 @@ def _render_result_panel(result: ResultDisplayProjection) -> str:
         f'<li><span>{_e(marker.label)}</span><strong>{marker.value:.3f}</strong></li>'
         for marker in result.markers
     )
+    plot_markers = "\n".join(_render_result_plot_marker(result, marker) for marker in result.markers)
     predicted = (
         f'<div class="metric">{_e(result.predicted_quality_label)}</div>'
         if result.predicted_quality_label
@@ -626,13 +859,44 @@ def _render_result_panel(result: ResultDisplayProjection) -> str:
             f'<div class="metric">{_e(result.objective_label)}</div>',
             predicted,
             "</div>",
-            '<div class="range-bar"><div class="range-fail"></div><div class="range-pass"></div><div class="range-fail"></div></div>',
+            '<div class="range-bar result-plot">',
+            '<div class="range-fail"></div><div class="range-pass"></div><div class="range-fail"></div>',
+            plot_markers,
+            "</div>",
             '<ul class="markers">',
             markers,
             "</ul>",
             "</div>",
         ]
     )
+
+
+def _render_result_plot_marker(
+    result: ResultDisplayProjection,
+    marker: ResultMarker,
+) -> str:
+    left = _result_marker_position(result, marker.value)
+    return (
+        f'<span class="result-marker marker-{_e(marker.role)}" '
+        f'style="left:{left:.2f}%"><span>{marker.value:.3f}</span></span>'
+    )
+
+
+def _result_marker_position(result: ResultDisplayProjection, value: float) -> float:
+    values = [result.result_lower, result.result_upper, value]
+    values.extend(marker.value for marker in result.markers)
+    if result.objective_lower is not None:
+        values.append(result.objective_lower)
+    if result.objective_upper is not None:
+        values.append(result.objective_upper)
+    lower = min(values)
+    upper = max(values)
+    if abs(upper - lower) < 1.0e-9:
+        return 50.0
+    padding = (upper - lower) * 0.12
+    domain_lower = lower - padding
+    domain_upper = upper + padding
+    return max(0.0, min(100.0, ((value - domain_lower) / (domain_upper - domain_lower)) * 100.0))
 
 
 def _render_contribution(row: ContributionProjectionRow) -> str:
@@ -674,6 +938,7 @@ def _render_warnings(warnings: tuple[WarningProjectionRow, ...]) -> str:
 
 
 def _render_snapshot(snapshot: SnapshotProjectionRow) -> str:
+    captured = f"Captured: {snapshot.captured_at}" if snapshot.captured_at else "Captured snapshot"
     metadata = [
         f"Snapshot: {snapshot.snapshot_id}",
         f"Visible stackups: {', '.join(snapshot.visible_stackup_ids) or 'none'}",
@@ -683,8 +948,8 @@ def _render_snapshot(snapshot: SnapshotProjectionRow) -> str:
     return "\n".join(
         [
             '<figure class="snapshot">',
-            f'<img src="{_e(snapshot.image_path)}" alt="{_e(snapshot.snapshot_id)}">',
-            f"<figcaption>{_e(snapshot.image_path)}</figcaption>",
+            f'<img src="{_e(snapshot.image_path)}" alt="CAD snapshot {_e(snapshot.snapshot_id)}">',
+            f"<figcaption>{_e(captured)}</figcaption>",
             f'<ul class="snapshot-meta">{metadata_html}</ul>',
             "</figure>",
         ]
@@ -927,6 +1192,7 @@ body {
   font-size: 32px;
   font-weight: 800;
   margin-bottom: 0;
+  letter-spacing: 0;
 }
 .nav-title {
   color: #9e9e9e;
@@ -947,10 +1213,15 @@ body {
   color: #ffffff;
   background: #1f1f1f;
 }
+.left-nav a.active {
+  color: #ffffff;
+  background: #242424;
+}
 .report-canvas {
   margin-left: 210px;
   padding: 34px 54px 54px;
   background: #ffffff;
+  min-height: 100vh;
 }
 .title-page,
 .report-section {
@@ -1094,8 +1365,8 @@ tr.objective td {
 }
 .snapshots {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 18px;
 }
 .snapshot {
   margin: 0;
@@ -1106,7 +1377,8 @@ tr.objective td {
 .snapshot img {
   display: block;
   width: 100%;
-  min-height: 220px;
+  min-height: 360px;
+  aspect-ratio: 5 / 3;
   object-fit: contain;
   border: 0;
   background: #ffffff;
@@ -1140,13 +1412,42 @@ tr.objective td {
   height: 24px;
   border: 0;
   border-bottom: 3px solid #111111;
-  margin: 18px 18px 10px;
+  margin: 34px 18px 26px;
+  position: relative;
 }
 .range-fail {
   background: #c32b2b;
 }
 .range-pass {
   background: #168a24;
+}
+.result-marker {
+  position: absolute;
+  bottom: -13px;
+  width: 4px;
+  height: 42px;
+  margin-left: -2px;
+  background: #111111;
+}
+.result-marker span {
+  position: absolute;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 52px;
+  color: #111111;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.marker-result {
+  background: #c32b2b;
+}
+.marker-mean {
+  background: #111111;
+}
+.marker-objective {
+  background: #111111;
 }
 .markers {
   columns: 2;
@@ -1221,4 +1522,20 @@ tr.objective td {
   color: #777777;
   font-style: italic;
 }
+""".strip()
+
+
+_REPORT_JS = """
+document.addEventListener("DOMContentLoaded", () => {
+  const links = Array.from(document.querySelectorAll(".left-nav a"));
+  const byId = new Map(links.map((link) => [link.getAttribute("href"), link]));
+  const setActive = () => {
+    const hash = window.location.hash || "#summary";
+    links.forEach((link) => link.classList.remove("active"));
+    const active = byId.get(hash);
+    if (active) active.classList.add("active");
+  };
+  window.addEventListener("hashchange", setActive);
+  setActive();
+});
 """.strip()

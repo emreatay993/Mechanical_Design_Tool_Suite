@@ -135,17 +135,31 @@ def export_project_package(
     archive_paths_by_source: dict[Path, str] = {}
     used_archive_paths: set[str] = set()
 
-    def package_asset(kind: str, reference: str, subdir: str) -> str:
+    def package_asset(
+        kind: str,
+        reference: str,
+        subdir: str,
+        *,
+        preserve_report_layout: bool = False,
+    ) -> str:
         resolved = resolve_project_asset_path(reference, source_project_path)
         if resolved is None or not resolved.is_file():
             raise FileNotFoundError(f"Project asset not found: {reference}")
         archive_path = archive_paths_by_source.get(resolved)
         if archive_path is None:
-            archive_path = _unique_asset_archive_path(
-                resolved,
-                subdir,
-                used_archive_paths,
-            )
+            if preserve_report_layout:
+                archive_path = _report_asset_archive_path(
+                    reference,
+                    resolved,
+                    source_project_path,
+                    used_archive_paths,
+                )
+            else:
+                archive_path = _unique_asset_archive_path(
+                    resolved,
+                    subdir,
+                    used_archive_paths,
+                )
             archive_paths_by_source[resolved] = archive_path
             used_archive_paths.add(archive_path)
             asset_records.append(
@@ -174,10 +188,40 @@ def export_project_package(
                 "snapshots",
             )
     for report in project.reports:
-        for key in ("path", "output_path", "html_path", "image_path"):
+        for key in (
+            "path",
+            "output_path",
+            "html_path",
+            "image_path",
+            "manifest_path",
+            "css_path",
+            "js_path",
+        ):
             value = report.get(key)
             if isinstance(value, str) and value:
-                report[key] = package_asset("report", value, "reports")
+                report[key] = package_asset(
+                    "report",
+                    value,
+                    "reports",
+                    preserve_report_layout=True,
+                )
+        for key in ("asset_paths", "assets"):
+            values = report.get(key)
+            if isinstance(values, list):
+                packaged_values: list[Any] = []
+                for value in values:
+                    if isinstance(value, str) and value:
+                        packaged_values.append(
+                            package_asset(
+                                "report",
+                                value,
+                                "reports",
+                                preserve_report_layout=True,
+                            )
+                        )
+                    else:
+                        packaged_values.append(value)
+                report[key] = packaged_values
 
     project_payload = _json_payload(project.to_dict())
     manifest = {
@@ -328,6 +372,72 @@ def _unique_asset_archive_path(
         subdir,
         f"{stem}-{digest}{suffix}",
     )
+
+
+def _report_asset_archive_path(
+    reference: str,
+    resolved: Path,
+    project_path: Path,
+    used_archive_paths: set[str],
+) -> str:
+    report_relative = _report_asset_relative_path(reference, resolved, project_path)
+    candidate = posixpath.join(PACKAGE_ASSET_ROOT, "reports", report_relative)
+    _validate_archive_member(candidate)
+    if candidate not in used_archive_paths:
+        return candidate
+    return _deduplicated_archive_path(candidate, resolved, used_archive_paths)
+
+
+def _report_asset_relative_path(
+    reference: str,
+    resolved: Path,
+    project_path: Path,
+) -> str:
+    reference_text = str(reference).replace("\\", "/")
+    if not Path(reference).is_absolute():
+        parts = [part for part in reference_text.split("/") if part]
+        for index, part in enumerate(parts):
+            if part == "reports" and index + 1 < len(parts):
+                candidate = posixpath.join(*parts[index + 1 :])
+                if _safe_relative_archive_path(candidate):
+                    return candidate
+
+    try:
+        candidate = resolved.relative_to(project_asset_dir(project_path) / "reports").as_posix()
+        if _safe_relative_archive_path(candidate):
+            return candidate
+    except ValueError:
+        pass
+    return resolved.name
+
+
+def _safe_relative_archive_path(value: str) -> bool:
+    if not value:
+        return False
+    if "\\" in value:
+        return False
+    parts = [part for part in value.split("/") if part]
+    return bool(parts) and all(part not in {"..", "."} for part in parts)
+
+
+def _deduplicated_archive_path(
+    candidate: str,
+    source_path: Path,
+    used_archive_paths: set[str],
+) -> str:
+    directory, filename = posixpath.split(candidate)
+    suffix = Path(filename).suffix
+    stem = filename[: -len(suffix)] if suffix else filename
+    digest = _sha256_file(source_path)[:8]
+    deduped = posixpath.join(directory, f"{stem}-{digest}{suffix}")
+    if deduped not in used_archive_paths:
+        return deduped
+    index = 2
+    while True:
+        deduped = posixpath.join(directory, f"{stem}-{digest}-{index}{suffix}")
+        if deduped not in used_archive_paths:
+            return deduped
+        index += 1
 
 
 def _portable_original_path(

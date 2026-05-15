@@ -80,10 +80,41 @@ class CadToleranceReportTest(unittest.TestCase):
         self.assertIn("Statistical Results for Bushing ID alignment", first.html)
         self.assertIn("Bushing ID alignment Analysis Contributions", first.html)
         self.assertIn('class="contribution-track"', first.html)
-        self.assertIn("snapshots/bushing_alignment.png", first.html)
+        self.assertIn('<link rel="stylesheet" href="css/report.css">', first.html)
+        self.assertIn('<script src="js/report.js" defer></script>', first.html)
+        self.assertIn("images/snapshot-summary-1.svg", first.html)
         self.assertIn(NON_1D_WARNING_TEXT, first.html)
         self.assertIn("Endpoint features are laterally offset from the stack direction.", first.html)
         self.assertNotIn(".pdf", first.html.lower())
+
+    def test_html_report_writes_portable_deterministic_assets_and_manifest(self) -> None:
+        project = load_project(FIXTURE_PATH)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = generate_html_report(project, Path(directory) / "report.html")
+            root = Path(directory)
+            manifest_text = (root / "report_manifest.json").read_text(encoding="utf-8")
+
+            self.assertTrue((root / "css" / "report.css").is_file())
+            self.assertTrue((root / "js" / "report.js").is_file())
+            self.assertTrue((root / "images" / "snapshot-summary-1.svg").is_file())
+            self.assertTrue((root / "report_manifest.json").is_file())
+            self.assertEqual(
+                [path.relative_to(root).as_posix() for path in result.asset_paths],
+                [
+                    "css/report.css",
+                    "js/report.js",
+                    "report_manifest.json",
+                    "images/snapshot-summary-1.svg",
+                ],
+            )
+            self.assertEqual(result.manifest["html_path"], "report.html")
+            self.assertEqual(result.manifest["css_path"], "css/report.css")
+            self.assertEqual(result.manifest["js_path"], "js/report.js")
+            self.assertEqual(result.manifest["images"][0]["path"], "images/snapshot-summary-1.svg")
+            self.assertEqual(result.manifest["images"][0]["source_reference"], "snapshots/bushing_alignment.png")
+            self.assertNotIn(str(root), result.html)
+            self.assertNotIn(str(root), manifest_text)
 
     def test_html_report_escapes_project_and_stackup_text(self) -> None:
         project = load_project(FIXTURE_PATH)

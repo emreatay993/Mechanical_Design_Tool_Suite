@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 import math
 from pathlib import Path
 import re
@@ -94,7 +95,11 @@ from .cad_tolerance_project_io import (
     resolve_project_asset_path,
     save_project,
 )
-from .cad_tolerance_report import ResultDisplayProjection, generate_html_report
+from .cad_tolerance_report import (
+    ReportGenerationResult,
+    ResultDisplayProjection,
+    generate_html_report,
+)
 from .cad_tolerance_viewmodels import (
     DETAIL_COLUMNS,
     DETAIL_TOLERANCE_TYPE_ROLE,
@@ -2137,6 +2142,8 @@ class CadToleranceMainWindow(QMainWindow):
                 self.project_path,
             )
         self.project.snapshots.append(snapshot)
+        if self.project_path is not None:
+            save_project(self.project, self.project_path)
         if self.project.stackups:
             self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
         self.statusBar().showMessage(f"Saved snapshot {Path(snapshot.image_path).name}")
@@ -2159,11 +2166,19 @@ class CadToleranceMainWindow(QMainWindow):
         if output_path.suffix == "":
             output_path = output_path.with_suffix(".html")
         try:
-            result = generate_html_report(self.project, output_path)
+            result = generate_html_report(
+                self.project,
+                output_path,
+                generated_at=_utc_timestamp(),
+                project_path=self.project_path,
+            )
         except Exception as exc:
             QMessageBox.warning(self, "Report generation failed", str(exc))
             self.statusBar().showMessage("Report generation failed")
             return
+        if self.project_path is not None:
+            _upsert_report_manifest_entry(self.project, self.project_path, result)
+            save_project(self.project, self.project_path)
         self.statusBar().showMessage(f"Generated report {result.output_path.name}")
 
 
@@ -2212,6 +2227,51 @@ def _snapshot_reference_ids(stackup: StackupRequirement | None) -> tuple[tuple[s
     for contributor in stackup.contributors:
         collect(contributor.source_feature)
     return tuple(shape_ids), tuple(feature_ids)
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _upsert_report_manifest_entry(
+    project: CadToleranceProject,
+    project_path: Path,
+    result: ReportGenerationResult,
+) -> None:
+    report_dir = result.output_path.parent
+
+    def rel(path: Path) -> str:
+        return project_relative_path(path, project_path).replace("\\", "/")
+
+    html_path = rel(result.output_path)
+    manifest_path = rel(result.manifest_path) if result.manifest_path is not None else ""
+    entry = {
+        "id": _report_entry_id(html_path),
+        "title": result.manifest.get("title", "Tolerance Stackup Report"),
+        "generated_at": result.manifest.get("generated_at", ""),
+        "path": html_path,
+        "html_path": html_path,
+        "manifest_path": manifest_path,
+        "css_path": rel(report_dir / "css" / "report.css"),
+        "js_path": rel(report_dir / "js" / "report.js"),
+        "asset_paths": [rel(path) for path in result.asset_paths],
+        "snapshot_ids": list(result.manifest.get("snapshot_ids", [])),
+        "stackup_ids": list(result.manifest.get("stackup_ids", [])),
+        "report_format": result.manifest.get("report_format", ""),
+        "report_format_version": result.manifest.get("report_format_version", 1),
+    }
+    for index, existing in enumerate(project.reports):
+        if existing.get("html_path") == html_path or existing.get("path") == html_path:
+            project.reports[index] = entry
+            return
+    project.reports.append(entry)
+
+
+def _report_entry_id(html_path: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in html_path)
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    return f"report_{cleaned.strip('_') or 'html'}"
 
 
 def _project_feature_references(project: CadToleranceProject) -> list[FeatureReference]:

@@ -393,6 +393,93 @@ class CadToleranceProjectIoTest(unittest.TestCase):
                 ).is_file()
             )
 
+    def test_tolpack_preserves_portable_report_asset_folder_layout(self) -> None:
+        project = load_project(FIXTURE_PATH)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = root / "caster_study.tolproj"
+            assets_dir = project_asset_dir(project_path)
+            cad_asset = assets_dir / "cad" / "neutral_step_two_part_loop.step"
+            snapshot_asset = assets_dir / "snapshots" / "bushing_alignment.png"
+            report_dir = assets_dir / "reports"
+            report_html = report_dir / "report.html"
+            report_css = report_dir / "css" / "report.css"
+            report_js = report_dir / "js" / "report.js"
+            report_image = report_dir / "images" / "snapshot-summary-1.svg"
+            report_manifest = report_dir / "report_manifest.json"
+
+            cad_asset.parent.mkdir(parents=True)
+            snapshot_asset.parent.mkdir(parents=True)
+            report_css.parent.mkdir(parents=True)
+            report_js.parent.mkdir(parents=True)
+            report_image.parent.mkdir(parents=True)
+            cad_asset.write_bytes((FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").read_bytes())
+            snapshot_asset.write_bytes(b"fake-png")
+            report_html.write_text(
+                '<link rel="stylesheet" href="css/report.css"><img src="images/snapshot-summary-1.svg">',
+                encoding="utf-8",
+            )
+            report_css.write_text("body { color: #111111; }\n", encoding="utf-8")
+            report_js.write_text("/* deterministic */\n", encoding="utf-8")
+            report_image.write_text("<svg></svg>\n", encoding="utf-8")
+            report_manifest.write_text(
+                json.dumps(
+                    {
+                        "html_path": "report.html",
+                        "css_path": "css/report.css",
+                        "images": [{"path": "images/snapshot-summary-1.svg"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            project.cad_documents[0].source_path = (
+                "caster_study_assets/cad/neutral_step_two_part_loop.step"
+            )
+            project.snapshots[0].image_path = (
+                "caster_study_assets/snapshots/bushing_alignment.png"
+            )
+            project.reports = [
+                {
+                    "id": "report_caster",
+                    "title": "Tolerance Stackup Report",
+                    "path": "caster_study_assets/reports/report.html",
+                    "html_path": "caster_study_assets/reports/report.html",
+                    "manifest_path": "caster_study_assets/reports/report_manifest.json",
+                    "asset_paths": [
+                        "caster_study_assets/reports/css/report.css",
+                        "caster_study_assets/reports/js/report.js",
+                        "caster_study_assets/reports/report_manifest.json",
+                        "caster_study_assets/reports/images/snapshot-summary-1.svg",
+                    ],
+                    "snapshot_ids": ["snapshot_summary_1"],
+                }
+            ]
+            save_project(project, project_path)
+
+            package_path = export_project_package(project_path, root / "caster_study")
+
+            with zipfile.ZipFile(package_path, "r") as archive:
+                names = archive.namelist()
+                manifest = json.loads(archive.read(PACKAGE_MANIFEST_NAME))
+                packaged_data = json.loads(archive.read("project.tolproj"))
+
+            self.assertIn("assets/reports/report.html", names)
+            self.assertIn("assets/reports/css/report.css", names)
+            self.assertIn("assets/reports/js/report.js", names)
+            self.assertIn("assets/reports/images/snapshot-summary-1.svg", names)
+            self.assertIn("assets/reports/report_manifest.json", names)
+            packaged_report = packaged_data["reports"][0]
+            self.assertEqual(packaged_report["html_path"], "assets/reports/report.html")
+            self.assertEqual(packaged_report["manifest_path"], "assets/reports/report_manifest.json")
+            self.assertIn("assets/reports/css/report.css", packaged_report["asset_paths"])
+            self.assertIn(
+                "assets/reports/images/snapshot-summary-1.svg",
+                packaged_report["asset_paths"],
+            )
+            self.assertNotIn(str(root), json.dumps(manifest))
+            self.assertNotIn(str(root), json.dumps(packaged_data))
+
     def test_missing_optional_fields_load_with_domain_defaults(self) -> None:
         data = {
             "schema_version": CURRENT_SCHEMA_VERSION,
