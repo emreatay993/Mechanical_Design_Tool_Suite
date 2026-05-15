@@ -1,0 +1,29 @@
+{
+  "cad_document_count": 1,
+  "displayed_shape_count": 2,
+  "full_window_snapshot": {
+    "bytes": 87913,
+    "capture_method": "desktop_region",
+    "height": 1858,
+    "path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-15_p18_live_runtime_packaged_smoke\\source_step_runtime_full_window.png",
+    "sampled_nonblack_ratio": 0.7247,
+    "sampled_unique_colors": 45,
+    "width": 3000
+  },
+  "load_kind": "step",
+  "project_path": "",
+  "project_title": "neutral_step_two_part_loop.step",
+  "stackup_count": 0,
+  "startup_path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\tests\\fixtures\\cad_1d_tolerance\\neutral_step_two_part_loop.step",
+  "status": "Imported neutral_step_two_part_loop.step",
+  "viewer_class": "OccCadViewerWidget",
+  "viewport_snapshot": {
+    "bytes": 25899,
+    "height": 1556,
+    "path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-15_p18_live_runtime_packaged_smoke\\source_step_runtime_viewport.png",
+    "sampled_nonblack_ratio": 1.0,
+    "sampled_unique_colors": 60,
+    "width": 1246
+  },
+  "window_title": "MDTS CAD 1D Tolerance - neutral_step_two_part_loop.step"
+}

@@ -1,0 +1,17 @@
+{
+  "css_path": "css/report.css",
+  "generated_at": "",
+  "html_path": "report.html",
+  "images": [],
+  "js_path": "js/report.js",
+  "project_title": "P18 runtime packaging smoke",
+  "report_format": "mdts-cad-1d-tolerance-report",
+  "report_format_version": 1,
+  "snapshot_ids": [],
+  "stackup_ids": [
+    "stackup_bushing_alignment"
+  ],
+  "summary_row_count": 1,
+  "title": "Tolerance Stackup Report",
+  "unit_system": "mm"
+}

@@ -1,0 +1,29 @@
+{
+  "cad_document_count": 1,
+  "displayed_shape_count": 2,
+  "full_window_snapshot": {
+    "bytes": 114768,
+    "capture_method": "desktop_region",
+    "height": 1858,
+    "path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-15_p18_live_runtime_packaged_smoke\\source_tolproj_runtime_full_window.png",
+    "sampled_nonblack_ratio": 0.7401,
+    "sampled_unique_colors": 49,
+    "width": 3000
+  },
+  "load_kind": "tolproj",
+  "project_path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-15_p18_live_runtime_packaged_smoke\\p18_runtime_project\\p18_runtime_project.tolproj",
+  "project_title": "P18 runtime packaging smoke",
+  "stackup_count": 1,
+  "startup_path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-15_p18_live_runtime_packaged_smoke\\p18_runtime_project\\p18_runtime_project.tolproj",
+  "status": "Reloaded CAD source: neutral_step_two_part_loop.step",
+  "viewer_class": "OccCadViewerWidget",
+  "viewport_snapshot": {
+    "bytes": 31101,
+    "height": 1556,
+    "path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-15_p18_live_runtime_packaged_smoke\\source_tolproj_runtime_viewport.png",
+    "sampled_nonblack_ratio": 1.0,
+    "sampled_unique_colors": 69,
+    "width": 1022
+  },
+  "window_title": "MDTS CAD 1D Tolerance - P18 runtime packaging smoke"
+}

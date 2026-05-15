@@ -1,0 +1,6 @@
+﻿exe=C:\Users\emre_\PycharmProjects\Mechanical_Design_Tool_Suite\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe
+arg=C:\Users\emre_\PycharmProjects\Mechanical_Design_Tool_Suite\docs\cad_1d_tolerance_tool\extracted_specs\2026-05-15_p18_live_runtime_packaged_smoke\p18_runtime_project\p18_runtime_project.tolproj
+started_at=2026-05-15T17:56:55.9830904+03:00
+pid=52320
+result=PASS_RUNNING_AFTER_10S
+stopped_at=2026-05-15T17:57:08.0522096+03:00

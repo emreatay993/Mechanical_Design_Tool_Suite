@@ -1,0 +1,403 @@
+{
+  "cad_documents": [
+    {
+      "assembly_root": {
+        "children": [
+          {
+            "children": [],
+            "display_color": [
+              180,
+              190,
+              205
+            ],
+            "id": "asm_bracket",
+            "metadata": {},
+            "name": "Bracket",
+            "node_type": "part",
+            "parent_id": "asm_root",
+            "source_label": "0:1",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          {
+            "children": [],
+            "display_color": [
+              80,
+              140,
+              180
+            ],
+            "id": "asm_bushing",
+            "metadata": {},
+            "name": "Bushing",
+            "node_type": "part",
+            "parent_id": "asm_root",
+            "source_label": "0:2",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        ],
+        "display_color": null,
+        "id": "asm_root",
+        "metadata": {},
+        "name": "Caster Assembly",
+        "node_type": "root",
+        "parent_id": "",
+        "source_label": "0",
+        "transform": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      },
+      "display_name": "neutral_step_two_part_loop.step",
+      "file_format": "step",
+      "file_hash": "sha256:0123456789abcdef",
+      "id": "cad_doc_1",
+      "import_settings": {
+        "heal_shapes": true,
+        "object_filter": "solids"
+      },
+      "imported_at": "2026-05-12T20:10:00Z",
+      "metadata": {},
+      "source_path": "cad/neutral_step_two_part_loop.step",
+      "units": "mm"
+    }
+  ],
+  "project_type": "cad_1d_tolerance",
+  "reports": [
+    {
+      "asset_paths": [
+        "p18_runtime_project_assets/reports/css/report.css",
+        "p18_runtime_project_assets/reports/js/report.js",
+        "p18_runtime_project_assets/reports/report_manifest.json"
+      ],
+      "css_path": "p18_runtime_project_assets/reports/css/report.css",
+      "generated_at": "",
+      "html_path": "p18_runtime_project_assets/reports/report.html",
+      "id": "report_p18_runtime_project_assets_reports_report_html",
+      "js_path": "p18_runtime_project_assets/reports/js/report.js",
+      "manifest_path": "p18_runtime_project_assets/reports/report_manifest.json",
+      "path": "p18_runtime_project_assets/reports/report.html",
+      "report_format": "mdts-cad-1d-tolerance-report",
+      "report_format_version": 1,
+      "snapshot_ids": [],
+      "stackup_ids": [
+        "stackup_bushing_alignment"
+      ],
+      "title": "Tolerance Stackup Report"
+    }
+  ],
+  "schema_version": 2,
+  "settings": {
+    "default_target_cpk": 1.67,
+    "lateral_offset_warning_threshold": 1.0,
+    "min_direction_alignment": 0.96,
+    "multi_interface_warning_count": 4,
+    "projection_sensitivity_warning_threshold": 0.12,
+    "sigma_coverage": 3.0
+  },
+  "snapshots": [],
+  "stackups": [
+    {
+      "analysis_mode": "statistical",
+      "annotation_plane": {
+        "display_name": "Front annotation plane",
+        "normal": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "origin": [
+          12.0,
+          20.0,
+          0.0
+        ],
+        "source_feature_id": "feature_start"
+      },
+      "annotation_position": {},
+      "constraint_features": [],
+      "contributors": [
+        {
+          "datum_references": [],
+          "geometric_tolerance": null,
+          "id": "contrib_generated_1",
+          "include_in_stackup": true,
+          "name": "Bracket to bushing face",
+          "nominal": 24.0,
+          "sensitivity": 1.0,
+          "shared_with_stackup_ids": [
+            "stackup_overall_height"
+          ],
+          "source_feature": {
+            "axis": null,
+            "datum_label": "A",
+            "feature_type": "face",
+            "id": "feature_start",
+            "name": "Bracket datum face",
+            "normal": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "owner_part_id": "asm_bracket",
+            "point": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "shape_reference": {
+              "assembly_path": [
+                "Caster Assembly",
+                "Bracket"
+              ],
+              "document_id": "cad_doc_1",
+              "fallback_display_name": "Bracket inside face",
+              "geometric_signature": {
+                "area": 420.0,
+                "normal": [
+                  1.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "id": "shape_start_face",
+              "kernel_label": "0:1:face:12",
+              "metadata": {},
+              "shape_type": "face"
+            }
+          },
+          "source_note": "Generated from STEP loop selection.",
+          "tolerance": 0.15,
+          "tolerance_minus": 0.1,
+          "tolerance_plus": 0.15,
+          "tolerance_type": "limits"
+        },
+        {
+          "datum_references": [
+            "A"
+          ],
+          "geometric_tolerance": {
+            "control_type": "runout",
+            "conversion_note": "Runout projected onto the selected stack direction.",
+            "datum_references": [
+              "A"
+            ],
+            "derived_minus": 0.05,
+            "derived_plus": 0.05,
+            "id": "gdt_runout_1",
+            "material_modifier": "",
+            "tolerance_value": 0.1
+          },
+          "id": "contrib_gdt_1",
+          "include_in_stackup": true,
+          "name": "Manual runout to datum A",
+          "nominal": 0.0,
+          "sensitivity": 1.0,
+          "shared_with_stackup_ids": [],
+          "source_feature": {
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "datum_label": "B",
+            "feature_type": "cylinder",
+            "id": "feature_end",
+            "name": "Bushing ID axis",
+            "normal": null,
+            "owner_part_id": "asm_bushing",
+            "point": [
+              24.0,
+              0.0,
+              0.0
+            ],
+            "shape_reference": {
+              "assembly_path": [
+                "Caster Assembly",
+                "Bushing"
+              ],
+              "document_id": "cad_doc_1",
+              "fallback_display_name": "Bushing ID",
+              "geometric_signature": {
+                "axis": [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                "radius": 12.5
+              },
+              "id": "shape_end_cylinder",
+              "kernel_label": "0:2:face:7",
+              "metadata": {},
+              "shape_type": "face"
+            }
+          },
+          "source_note": "Manual GD&T row.",
+          "tolerance": 0.05,
+          "tolerance_minus": 0.05,
+          "tolerance_plus": 0.05,
+          "tolerance_type": "geometric"
+        }
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "end_feature": {
+        "axis": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "datum_label": "B",
+        "feature_type": "cylinder",
+        "id": "feature_end",
+        "name": "Bushing ID axis",
+        "normal": null,
+        "owner_part_id": "asm_bushing",
+        "point": [
+          24.0,
+          0.0,
+          0.0
+        ],
+        "shape_reference": {
+          "assembly_path": [
+            "Caster Assembly",
+            "Bushing"
+          ],
+          "document_id": "cad_doc_1",
+          "fallback_display_name": "Bushing ID",
+          "geometric_signature": {
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "radius": 12.5
+          },
+          "id": "shape_end_cylinder",
+          "kernel_label": "0:2:face:7",
+          "metadata": {},
+          "shape_type": "face"
+        }
+      },
+      "id": "stackup_bushing_alignment",
+      "loop_features": [],
+      "name": "Bushing ID alignment",
+      "objective": {
+        "description": "+0.75/-0.50 bushing objective",
+        "lower_limit": null,
+        "nominal": 24.0,
+        "objective_type": "bilateral",
+        "tolerance_minus": 0.5,
+        "tolerance_plus": 0.75,
+        "upper_limit": null
+      },
+      "start_feature": {
+        "axis": null,
+        "datum_label": "A",
+        "feature_type": "face",
+        "id": "feature_start",
+        "name": "Bracket datum face",
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "owner_part_id": "asm_bracket",
+        "point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "shape_reference": {
+          "assembly_path": [
+            "Caster Assembly",
+            "Bracket"
+          ],
+          "document_id": "cad_doc_1",
+          "fallback_display_name": "Bracket inside face",
+          "geometric_signature": {
+            "area": 420.0,
+            "normal": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          },
+          "id": "shape_start_face",
+          "kernel_label": "0:1:face:12",
+          "metadata": {},
+          "shape_type": "face"
+        }
+      },
+      "target_quality": {
+        "metric": "cpk",
+        "sigma_coverage": 3.0,
+        "value": 1.67
+      },
+      "warnings": [
+        {
+          "feature_ids": [
+            "feature_start",
+            "feature_end"
+          ],
+          "id": "warn_offset_1",
+          "message": "Endpoint features are laterally offset from the stack direction.",
+          "observed_value": 1.8,
+          "severity": "warn",
+          "threshold": 1.0,
+          "warning_kind": "offset_features"
+        }
+      ]
+    }
+  ],
+  "title": "P18 runtime packaging smoke",
+  "unit_system": "mm"
+}

@@ -6,9 +6,9 @@ Date: 2026-05-15
 
 P16 audits the current CAD 1D tolerance tool after P08-P15 against the full video-derived EZtol-style requirement set. The product is now a credible standalone neutral-CAD 1D tolerance clone: the core model, STEP/IGES import path, project persistence, editable tolerance table, manual GDT entry, guided workflow, viewer overlay/snapshot contract, dashboard, HTML report, launcher entry point, and CAD runtime packaging rules are implemented and covered by tests.
 
-The remaining gaps are not hidden: the unresolved items are mostly final visual/manual proof, exact small unreadable labels, real launched GUI import smoke coverage, packaged executable smoke coverage, source reattach UX polish, and the native Qt/OCCT test-order caveat called out below. No remaining gap requires native commercial CAD import or full 3D tolerance solving.
+The remaining gaps are not hidden: the unresolved items are mostly final visual/manual proof, exact small unreadable labels, source reattach UX polish, and the native Qt/OCCT caveats called out below. P18 added live source STEP/IGES/`.tolproj`/`.tolpack` smoke evidence plus packaged `Cad1DTolerance.exe` build/run smoke, but also reproduced the black native full-window viewport capture blocker. No remaining gap requires native commercial CAD import or full 3D tolerance solving.
 
-Recommendation: keep PyQt6 + OCCT/pythonocc as the primary implementation for now. A small C++ Qt6 + OCCT viewport component is not warranted unless P17/P18 proves that `qtViewer3d` cannot support stable packaged launch, interactive selection, annotation capture, or deterministic test isolation.
+Recommendation: keep PyQt6 + OCCT/pythonocc as the primary implementation for now. P18 proved stable packaged startup for `.tolproj`/`.tolpack` smoke and nonblank OCCT snapshot export, so a small C++ Qt6 + OCCT viewport component is not warranted for launch packaging alone. Revisit the viewport component only if the remaining native full-window composition/capture blocker prevents accepted visual evidence or live user interaction.
 
 ## Evidence Reviewed
 
@@ -45,17 +45,17 @@ Recommendation: keep PyQt6 + OCCT/pythonocc as the primary implementation for no
 | FCE-001 | partial | Domain and UI/report traceability exists, but final live CAD-to-table-to-report visual proof is still needed. |
 | FCE-002 | partial | Linear and manual GDT contributors are represented and editable; exact GDT glyph/material-condition fidelity remains unreadable. |
 | FCE-003 | met | Reference nominal zero and worst-case `+/-0.75` behavior is covered by deterministic calculations. |
-| FCE-010 | partial | Source launch path and compact workspace exist; packaged live launch smoke is not yet executed. |
-| FCE-011 | partial | Neutral open routing exists; exact Windows dialog parity and manual live open/import screenshot evidence remain. |
-| FCE-012 | partial | STEP/IGES import behavior and metadata exist; modal import option parity and source-status UX need polish. |
+| FCE-010 | partial | Source launch path, compact workspace, PyInstaller build, and packaged `.tolproj`/`.tolpack` run smoke are evidenced by P18; final launcher-card/manual visual proof remains. |
+| FCE-011 | partial | Neutral open routing and source STEP/IGES runtime smoke are evidenced by P18; exact Windows dialog parity remains. |
+| FCE-012 | partial | STEP/IGES import behavior, metadata, and source GUI runtime import/export smoke are evidenced by P18; modal import option parity and source-status UX need polish. |
 | FCE-013 | met | STEP and IGES B-Rep import is implemented through the OCCT adapter and CAD-runtime tests. |
 | FCE-014 | out_of_scope | Native Inventor, CATIA, NX, Creo, SOLIDWORKS, and JT import remain excluded. |
 | FCE-015 | partial | Source path/hash/project-local behavior is covered; user-facing refresh/reattach UX is not demo-complete. |
-| FCE-016 | met | `.tolproj` and `.tolpack` project/package behavior is implemented with relative assets. |
+| FCE-016 | met | `.tolproj` and `.tolpack` project/package behavior is implemented with relative assets; P18 confirmed live source loads, package asset portability, and packaged executable startup. |
 | FCE-020 | partial | Three-pane shell exists; final pixel-level density, icon, splitter, and screenshot evidence remain. |
 | FCE-021 | partial | Ribbon/action set exists; exact icon order, tooltip parity, and enabled-state manual proof remain. |
 | FCE-022 | partial | XDE names/colors and deterministic tree data exist; hide/show and full browser row behavior remain partial. |
-| FCE-023 | met | OCCT AIS/V3d primary viewer path displays live STEP shapes and snapshots in `mdts-cad312`. |
+| FCE-023 | partial | OCCT AIS/V3d primary viewer path imports live STEP/IGES shapes and exports nonblank snapshots in `mdts-cad312`, but P17/P18 full-window captures still show a black native model area in the embedded viewport. |
 | FCE-024 | partial | Axis/ViewCube/navigation affordances exist as lightweight/placeholder controls; final interactive parity remains. |
 | FCE-025 | partial | Selection modes and highlight roles exist; full live hover/cross-role manual coverage remains. |
 | FCE-026 | partial | Cross-highlighting pathways exist, but full browser/viewer/table/result visual proof remains. |
@@ -85,8 +85,8 @@ Recommendation: keep PyQt6 + OCCT/pythonocc as the primary implementation for no
 | FCE-066 | met | Summary-to-detail drilldown and return behavior are implemented. |
 | FCE-067 | met | Contribution ranking and blue bar presentation are implemented. |
 | FCE-070 | met | Snapshot request/output path and overlay-inclusive snapshot contract are implemented. |
-| FCE-071 | partial | Portable report output exists; exact Windows Save Report dialog proof remains partial. |
-| FCE-072 | partial | Browser-style HTML report exists; final browser screenshot comparison is not committed. |
+| FCE-071 | partial | Portable report output and package inclusion are evidenced by P18; exact Windows Save Report dialog proof remains partial. |
+| FCE-072 | partial | Browser-style HTML report exists and P18 packaged its HTML/CSS/JS/manifest assets; final browser screenshot comparison is not committed. |
 | FCE-080 | out_of_scope | CAD add-in ribbons, context menus, sensitivity plots, and animation tools remain reference-only. |
 | FCE-081 | out_of_scope | Full 3D CETOL-style solving remains excluded. |
 | FCE-082 | out_of_scope | Angular deviation result calculation remains excluded. |
@@ -100,14 +100,14 @@ Recommendation: keep PyQt6 + OCCT/pythonocc as the primary implementation for no
 
 | P16 Scenario | Final Status | Evidence / Caveat |
 | --- | --- | --- |
-| Launch/open/import STEP and IGES | partial | STEP/IGES kernel import and live STEP viewer snapshot are covered in `mdts-cad312`; real interactive GUI open/import remains a manual smoke gap. |
-| Load `.tolproj` with existing source, missing source, project-local assets, and `.tolpack` | met | GUI and project IO tests cover source states and portable package behavior. |
+| Launch/open/import STEP and IGES | partial | P18 source-runtime GUI harness loaded STEP and IGES in `mdts-cad312` with nonblank OCCT viewport exports; exact Windows dialog parity and full-window native viewport composition remain partial. |
+| Load `.tolproj` with existing source, missing source, project-local assets, and `.tolpack` | met | GUI and project IO tests cover source states and portable package behavior; P18 live source smoke loaded the committed `.tolproj`, a generated project-local `.tolproj`, and a generated `.tolpack`. |
 | Guided stackup creation through the UI | met | Workflow controller and PyQt UI tests cover toolbar, filters, finish, counters, and Add Feature. |
 | Inline tolerance edit and GDT dialog | met | Table edits validate, recalculate, warn on shared dimensions, and survive round-trip; manual GDT row is tested. |
 | Dashboard pass/fail/warning and multi-stackup drilldown | met | GUI/model tests cover badges, warning banner, result panel, and drilldown. |
 | Contributions view and shared-dimension markers | met | Shared markers/tooltips and contribution bars are covered by GUI/workflow tests. |
-| Snapshot and report generation | met | HTML report, portable assets, manifest, and viewer/overlay snapshot contracts are covered. |
-| Suite launcher and direct CAD GUI launch | partial | Source launcher, entry point routing, env pins, spec/build config are tested; packaged executable run was not executed. |
+| Snapshot and report generation | met | HTML report, portable assets, manifest, and viewer/overlay snapshot contracts are covered; P18 generated report assets and packaged them into `.tolpack`. |
+| Suite launcher and direct CAD GUI launch | partial | Source launcher, entry point routing, env pins, spec/build config are tested; P18 proved packaged `Cad1DTolerance.exe` starts with `.tolproj` and `.tolpack`, while launcher-card visual proof remains open. |
 
 ## Screenshot And Report Comparison Notes
 
@@ -163,17 +163,19 @@ Packetization notes: P17 should be documentation/evidence-first and only change 
 
 Goal: Close the live runtime proof gaps for real GUI STEP/IGES import and packaged `Cad1DTolerance.exe` launch.
 
+P18 status on 2026-05-15: source-runtime STEP, IGES, committed `.tolproj`, generated `.tolproj`, and generated `.tolpack` smoke passed with nonblank OCCT viewport exports. The existing PyInstaller CAD build completed and packaged `Cad1DTolerance.exe` stayed alive past startup with generated `.tolproj` and `.tolpack` arguments. The remaining P18 blocker is the native `qtViewer3d` full-window composition/capture issue: the embedded model pane captures black even when live shape counts and OCCT `ExportToImage` snapshots pass. Evidence is recorded in `docs/cad_1d_tolerance_tool/extracted_specs/2026-05-15_p18_live_runtime_packaged_smoke.md`.
+
 Preconditions: P15 packaging config and `mdts-cad312`.
 
 Conservative write scope: `scripts/`, launcher/build docs, focused runtime smoke tests, and minimal GUI startup fixes.
 
 Deliverables: Live source GUI smoke for STEP, IGES, `.tolproj`, and `.tolpack`; packaged build/run result or a documented blocker; investigation of the focused CAD command's module-order/native Qt/OCCT exit.
 
-Verification: P16 full discovery commands plus split viewer/focused CAD commands when needed; packaged build smoke when feasible.
+Verification: P16 full discovery commands plus split viewer/focused CAD commands when needed; packaged build smoke when feasible. P18 executed the packaged build/run smoke and retained the native full-window capture blocker as an explicit follow-up.
 
 Non-goals: MSI installer polish, dependency changes that make PyVista/VTK authoritative.
 
-Packetization notes: P18 is the point where a C++ viewport spike should be considered if pythonocc `qtViewer3d` blocks packaged launch or test isolation.
+Packetization notes: P18 did not prove a packaged-launch blocker for pythonocc `qtViewer3d`; a C++ viewport spike should now be considered only if the remaining native full-window composition/capture issue blocks accepted visual evidence or live user interaction.
 
 ### P19 Crop Resolution And Exact Label Pass
 
@@ -209,11 +211,11 @@ Packetization notes: P20 should stay neutral-CAD only and preserve the adapter b
 
 ## Viewport Stack Recommendation
 
-PyQt6 + OCCT/pythonocc remains sufficient for the next phase. P11 and P15 produced enough evidence that the current path can display live OCCT shapes, preserve B-Rep-backed references, apply highlights, carry serializable annotations, and capture snapshots. The known caveat is native Qt/OCCT sensitivity in focused test ordering, not a proved product blocker.
+PyQt6 + OCCT/pythonocc remains sufficient for the next phase. P11, P15, and P18 produced enough evidence that the current path can import live OCCT shapes, preserve B-Rep-backed references, apply highlights, carry serializable annotations, export snapshots, and launch from the packaged executable. The known caveat is native Qt/OCCT sensitivity in focused test ordering and full-window embedded viewport capture/composition, not a proved packaged product-launch blocker.
 
 Do not start a C++ Qt6 + OCCT viewport component now. Keep `cad_viewer_api.py` stable and revisit the fallback only if P18 shows one of these concrete blockers:
 
-- `qtViewer3d` cannot launch reliably from the packaged executable.
+- `qtViewer3d` cannot launch reliably from the packaged executable. P18 did not reproduce this blocker for `.tolproj`/`.tolpack` startup smoke.
 - Live selection/highlight callbacks cannot be made stable enough for guided stackups.
 - Overlay-inclusive snapshots cannot be made deterministic enough for reports.
 - CAD-runtime tests cannot be isolated without native crashes after practical cleanup.
