@@ -473,6 +473,9 @@ class _ViewerAnnotationCanvas(QWidget):
         super().__init__(parent)
         self.setObjectName("ViewerAnnotationCanvas")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAutoFillBackground(False)
         self._annotations: tuple[ViewerAnnotation, ...] = ()
 
     def set_annotations(self, annotations: tuple[ViewerAnnotation, ...]) -> None:
@@ -480,7 +483,6 @@ class _ViewerAnnotationCanvas(QWidget):
         self.update()
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
-        super().paintEvent(event)
         if not self._annotations:
             return
         painter = QPainter(self)
@@ -663,8 +665,14 @@ class CadViewportHost(QFrame):
         self._annotations = tuple(annotations)
         if hasattr(self.viewer, "set_annotations"):
             self.viewer.set_annotations(self._annotations)  # type: ignore[attr-defined]
-        self.annotation_canvas.set_annotations(self._annotations)
-        self._sync_annotation_labels()
+        if self._viewer_uses_native_annotations():
+            self.annotation_canvas.set_annotations(())
+            self.annotation_canvas.hide()
+            self._clear_annotation_labels()
+        else:
+            self.annotation_canvas.set_annotations(self._annotations)
+            self.annotation_canvas.show()
+            self._sync_annotation_labels()
         self._layout_overlay()
 
     def capture_snapshot(self, request: SnapshotRequest) -> Snapshot:
@@ -774,6 +782,14 @@ class CadViewportHost(QFrame):
             self.viewer.set_annotations(self._annotations)  # type: ignore[attr-defined]
         self.annotation_canvas.set_annotations(self._annotations)
         self.annotationMoved.emit(annotation_id, {"screen": [normalized[0], normalized[1]]})
+
+    def _viewer_uses_native_annotations(self) -> bool:
+        return bool(getattr(self.viewer, "uses_native_annotations", False))
+
+    def _clear_annotation_labels(self) -> None:
+        for label in self._annotation_labels.values():
+            label.deleteLater()
+        self._annotation_labels.clear()
 
     def _layout_overlay(self) -> None:
         rect = self.rect()

@@ -26,6 +26,7 @@ from .cad_viewer_api import (
     SnapshotRequest,
     StandardView,
     ViewerAnnotation,
+    ViewerAnnotationRole,
     ViewerSelectionMode,
 )
 
@@ -46,13 +47,15 @@ try:
     from OCC.Display.backend import load_backend
 
     load_backend("pyqt6")
-    from OCC.Core.AIS import AIS_Shape
+    from OCC.Core.AIS import AIS_Shape, AIS_TextLabel
+    from OCC.Core.gp import gp_Dir, gp_Pln, gp_Pnt
     from OCC.Core.Graphic3d import (
         Graphic3d_MaterialAspect,
         Graphic3d_NOM_SATIN,
         Graphic3d_TypeOfShadingModel_Phong,
     )
     from OCC.Core.Prs3d import Prs3d_LineAspect
+    from OCC.Core.PrsDim import PrsDim_LengthDimension
     from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
     from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID, TopAbs_VERTEX
     from OCC.Display.qtDisplay import qtViewer3d
@@ -62,12 +65,17 @@ except Exception as exc:  # pragma: no cover - exercised without CAD deps.
     QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
     AIS_Shape = None  # type: ignore[assignment]
+    AIS_TextLabel = None  # type: ignore[assignment]
+    gp_Dir = None  # type: ignore[assignment]
+    gp_Pln = None  # type: ignore[assignment]
+    gp_Pnt = None  # type: ignore[assignment]
     Aspect_GFM_VER = None  # type: ignore[assignment]
     Aspect_TOL_SOLID = None  # type: ignore[assignment]
     Graphic3d_MaterialAspect = None  # type: ignore[assignment]
     Graphic3d_NOM_SATIN = None  # type: ignore[assignment]
     Graphic3d_TypeOfShadingModel_Phong = None  # type: ignore[assignment]
     Prs3d_LineAspect = None  # type: ignore[assignment]
+    PrsDim_LengthDimension = None  # type: ignore[assignment]
     Quantity_Color = None  # type: ignore[assignment]
     Quantity_TOC_RGB = None  # type: ignore[assignment]
     TopAbs_EDGE = None  # type: ignore[assignment]
@@ -105,6 +113,7 @@ if _IMPORT_ERROR is None:
         def __init__(self, parent: QWidget | None = None) -> None:
             super().__init__(parent)
             self._viewer = qtViewer3d(self)
+            self.uses_native_annotations = True
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(0)
@@ -121,6 +130,7 @@ if _IMPORT_ERROR is None:
             self._feature_refs_by_shape_id: dict[str, FeatureReference] = {}
             self._kernel_shapes_by_shape_id: dict[str, Any] = {}
             self._highlight_ais: dict[tuple[str, HighlightRole], Any] = {}
+            self._annotation_ais: list[Any] = []
             self._last_selection: list[CadViewerSelection] = []
             self._annotations: tuple[ViewerAnnotation, ...] = ()
 
@@ -145,6 +155,10 @@ if _IMPORT_ERROR is None:
         @property
         def annotations(self) -> tuple[ViewerAnnotation, ...]:
             return self._annotations
+
+        @property
+        def native_annotation_count(self) -> int:
+            return len(self._annotation_ais)
 
         def initialize_viewer(self) -> None:
             """Initialize the OCCT display driver if needed."""
@@ -174,19 +188,27 @@ if _IMPORT_ERROR is None:
             """Display live OCCT shapes exposed by a P03 geometry session."""
 
             self.initialize_viewer()
+            current_annotations = self._annotations
             self.clear()
+            self._annotations = current_annotations
             self._session = session
             display_kinds = display_kinds or {ShapeKind.BODY}
             self._index_session_shapes(session)
             shape_refs = session.shape_references(display_kinds)
             if not shape_refs and ShapeKind.BODY in display_kinds:
                 shape_refs = session.shape_references()
+            use_palette_colors = _should_use_palette_colors(session, shape_refs)
 
             for display_index, shape_ref in enumerate(shape_refs, start=1):
                 occ_shape = self._kernel_shapes_by_shape_id.get(shape_ref.id)
                 if occ_shape is None:
                     continue
-                color_rgb = _shape_display_rgb(session, shape_ref, display_index)
+                color_rgb = _shape_display_rgb(
+                    session,
+                    shape_ref,
+                    display_index,
+                    use_palette_colors=use_palette_colors,
+                )
                 ais_shapes = self._display.DisplayShape(  # type: ignore[union-attr]
                     occ_shape,
                     material=Graphic3d_MaterialAspect(Graphic3d_NOM_SATIN),
@@ -214,6 +236,7 @@ if _IMPORT_ERROR is None:
             self._feature_refs_by_shape_id.clear()
             self._kernel_shapes_by_shape_id.clear()
             self._highlight_ais.clear()
+            self._annotation_ais.clear()
             self._last_selection = []
             self._annotations = ()
             if self._context is not None:
@@ -224,16 +247,19 @@ if _IMPORT_ERROR is None:
             self.initialize_viewer()
             self._display.FitAll()  # type: ignore[union-attr]
             self._display.Repaint()  # type: ignore[union-attr]
+            self._sync_native_annotations()
 
         def pan(self, dx: int, dy: int) -> None:
             self.initialize_viewer()
             self._display.Pan(int(dx), int(dy))  # type: ignore[union-attr]
+            self._sync_native_annotations()
 
         def zoom(self, factor: float) -> None:
             if factor <= 0.0:
                 raise ValueError("Zoom factor must be positive.")
             self.initialize_viewer()
             self._display.ZoomFactor(float(factor))  # type: ignore[union-attr]
+            self._sync_native_annotations()
 
         def set_standard_view(self, view: StandardView) -> None:
             self.initialize_viewer()
@@ -297,6 +323,111 @@ if _IMPORT_ERROR is None:
 
         def set_annotations(self, annotations: Iterable[ViewerAnnotation]) -> None:
             self._annotations = tuple(annotations)
+            if self._initialized:
+                self._sync_native_annotations()
+
+        def _sync_native_annotations(self) -> None:
+            if self._context is None or self._display is None:
+                return
+            self._clear_native_annotations(update=False)
+            for annotation in self._annotations:
+                for ais in self._annotation_presentations(annotation):
+                    self._context.Display(ais, False)
+                    self._annotation_ais.append(ais)
+            self._context.UpdateCurrentViewer()
+
+        def _clear_native_annotations(self, *, update: bool = True) -> None:
+            if self._context is None:
+                self._annotation_ais.clear()
+                return
+            for ais in self._annotation_ais:
+                self._context.Remove(ais, False)
+            self._annotation_ais.clear()
+            if update:
+                self._context.UpdateCurrentViewer()
+
+        def _annotation_presentations(
+            self,
+            annotation: ViewerAnnotation,
+        ) -> tuple[Any, ...]:
+            try:
+                start = self._point_from_normalized(annotation.start)
+                end = self._point_from_normalized(annotation.end)
+                label = self._point_from_normalized(
+                    annotation.label_position or _annotation_midpoint(annotation)
+                )
+                color = _quantity_color(_annotation_rgb(annotation.role))
+                if start.Distance(end) <= 1.0e-7:
+                    return (self._text_label(annotation.label, label, color),)
+
+                plane = gp_Pln(start, self._view_plane_normal())  # type: ignore[misc]
+                dimension = PrsDim_LengthDimension(start, end, plane)
+                dimension.SetCustomValue(str(annotation.label))
+                dimension.SetTextPosition(label)
+                dimension.SetColor(color)
+                aspect = dimension.DimensionAspect()
+                _try_call(aspect.SetCommonColor, color)
+                _try_call(aspect.MakeArrows3d, False)
+                _try_call(aspect.MakeText3d, False)
+                _try_call(aspect.MakeTextShaded, False)
+                text_aspect = aspect.TextAspect()
+                _try_call(text_aspect.SetHeight, self._annotation_text_height())
+                _try_call(aspect.SetTextAspect, text_aspect)
+                _try_call(dimension.SetDimensionAspect, aspect)
+                return (dimension,)
+            except Exception:
+                try:
+                    label = self._point_from_normalized(
+                        annotation.label_position or _annotation_midpoint(annotation)
+                    )
+                    return (
+                        self._text_label(
+                            annotation.label,
+                            label,
+                            _quantity_color(_annotation_rgb(annotation.role)),
+                        ),
+                    )
+                except Exception:
+                    return ()
+
+        def _point_from_normalized(self, point: tuple[float, float]) -> Any:
+            view = self._display.View  # type: ignore[union-attr]
+            x = int(round(_clamp01(point[0]) * max(1, self._viewer.width() - 1)))
+            y = int(round(_clamp01(point[1]) * max(1, self._viewer.height() - 1)))
+            converted = view.ConvertWithProj(x, y)
+            return gp_Pnt(  # type: ignore[misc]
+                float(converted[0]),
+                float(converted[1]),
+                float(converted[2]),
+            )
+
+        def _view_plane_normal(self) -> Any:
+            view = self._display.View  # type: ignore[union-attr]
+            try:
+                projection = view.Proj()
+                return gp_Dir(  # type: ignore[misc]
+                    float(projection[0]),
+                    float(projection[1]),
+                    float(projection[2]),
+                )
+            except Exception:
+                return gp_Dir(0.0, 0.0, 1.0)  # type: ignore[misc]
+
+        def _annotation_text_height(self) -> float:
+            try:
+                _width, height = self._display.View.Size()  # type: ignore[union-attr]
+                return max(1.0, float(height) * 0.028)
+            except Exception:
+                return 4.0
+
+        def _text_label(self, text: str, position: Any, color: Any) -> Any:
+            label = AIS_TextLabel()
+            label.SetText(str(text))
+            label.SetPosition(position)
+            label.SetColor(color)
+            label.SetHeight(self._annotation_text_height())
+            _try_call(label.SetZoomable, False)
+            return label
 
         def camera_state(self) -> CadCameraState:
             if not self._initialized or self._display is None:
@@ -458,6 +589,28 @@ def _selection_event_mode(
     return None
 
 
+def _annotation_midpoint(annotation: ViewerAnnotation) -> tuple[float, float]:
+    return (
+        (float(annotation.start[0]) + float(annotation.end[0])) / 2.0,
+        (float(annotation.start[1]) + float(annotation.end[1])) / 2.0,
+    )
+
+
+def _annotation_rgb(role: ViewerAnnotationRole) -> tuple[float, float, float]:
+    role = ViewerAnnotationRole(role)
+    if role == ViewerAnnotationRole.STACKUP:
+        return (0.92, 0.04, 0.03)
+    if role == ViewerAnnotationRole.CONTRIBUTOR:
+        return (0.04, 0.32, 0.88)
+    if role == ViewerAnnotationRole.WARNING:
+        return (0.94, 0.64, 0.05)
+    return (0.06, 0.06, 0.06)
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
 def _screen_position(args: tuple[Any, ...]) -> tuple[int, int] | None:
     if len(args) >= 2 and all(isinstance(value, int) for value in args[:2]):
         return int(args[0]), int(args[1])
@@ -483,16 +636,43 @@ def _shape_display_rgb(
     session: CadGeometrySession,
     shape_ref: ShapeReference,
     display_index: int,
+    *,
+    use_palette_colors: bool = False,
 ) -> tuple[float, float, float]:
-    display_color = _assembly_display_color(session, shape_ref.assembly_path)
+    part_name = (
+        shape_ref.assembly_path[-1]
+        if shape_ref.assembly_path
+        else shape_ref.fallback_display_name
+    )
+    display_color = None
+    if not use_palette_colors:
+        display_color = _assembly_display_color(session, shape_ref.assembly_path)
     if display_color is None:
-        part_name = (
-            shape_ref.assembly_path[-1]
-            if shape_ref.assembly_path
-            else shape_ref.fallback_display_name
-        )
         display_color = display_color_for_part(part_name, display_index)
     return rgb_bytes_to_unit(display_color)
+
+
+def _should_use_palette_colors(
+    session: CadGeometrySession,
+    shape_refs: Iterable[ShapeReference],
+) -> bool:
+    body_colors: list[tuple[int, int, int]] = []
+    for index, shape_ref in enumerate(shape_refs, start=1):
+        if shape_ref.shape_type != ShapeKind.BODY:
+            continue
+        color = _assembly_display_color(session, shape_ref.assembly_path)
+        if color is None:
+            return False
+        body_colors.append(tuple(int(channel) for channel in color[:3]))
+    if len(body_colors) < 2:
+        return False
+    return len(set(body_colors)) == 1 and _is_neutral_display_color(body_colors[0])
+
+
+def _is_neutral_display_color(color: tuple[int, int, int]) -> bool:
+    red, green, blue = color
+    spread = max(color) - min(color)
+    return spread <= 40 or (abs(red - green) <= 10 and abs(green - blue) <= 50)
 
 
 def _assembly_display_color(

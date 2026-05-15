@@ -385,6 +385,23 @@ class OccCadGeometryAdapterTest(unittest.TestCase):
         self.assertTrue(session.assembly_tree())
         self.assertTrue(session.shape_references())
         self.assertTrue(session.feature_references())
+        from mechanical_design_tool_suite.cad_viewer_occ import (
+            _shape_display_rgb,
+            _should_use_palette_colors,
+        )
+
+        body_refs = session.shape_references({ShapeKind.BODY})
+        self.assertTrue(_should_use_palette_colors(session, body_refs))
+        viewer_colors = [
+            _shape_display_rgb(
+                session,
+                body_ref,
+                display_index,
+                use_palette_colors=True,
+            )
+            for display_index, body_ref in enumerate(body_refs, start=1)
+        ]
+        self.assertGreater(len(set(viewer_colors)), 1)
         if document.metadata.get("cad_metadata_source") == "occt_xde":
             assembly_names = _assembly_names(session.assembly_tree()[0])
             self.assertIn("caster_wheel", assembly_names)

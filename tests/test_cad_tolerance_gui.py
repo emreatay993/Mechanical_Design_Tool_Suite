@@ -33,7 +33,12 @@ from mechanical_design_tool_suite.cad_tolerance_viewmodels import (
     CadStackupSummaryTableModel,
     CadToleranceWorkspaceViewModel,
 )
-from mechanical_design_tool_suite.cad_viewer_api import CadCameraState, SnapshotRequest
+from mechanical_design_tool_suite.cad_viewer_api import (
+    CadCameraState,
+    SnapshotRequest,
+    ViewerAnnotation,
+    ViewerAnnotationRole,
+)
 from mechanical_design_tool_suite.cad_tolerance_models import (
     CadDocument,
     CadFileFormat,
@@ -91,6 +96,10 @@ class FakeViewer(QWidget):
         self.snapshot_requests.append(request)
         Path(request.output_path).write_bytes(b"fake")
         return Snapshot(image_path=str(request.output_path), camera=self.camera_state().to_dict())
+
+
+class NativeAnnotationFakeViewer(FakeViewer):
+    uses_native_annotations = True
 
 
 class FakeGeometrySession:
@@ -209,6 +218,38 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         self.app.processEvents()
 
         self.assertFalse(guided_toolbar.isHidden())
+
+    def test_viewport_annotation_canvas_stays_transparent_over_native_viewer(self) -> None:
+        canvas = self.window.viewport_host.annotation_canvas
+
+        self.assertTrue(canvas.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+        self.assertTrue(canvas.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground))
+        self.assertTrue(canvas.testAttribute(Qt.WidgetAttribute.WA_NoSystemBackground))
+        self.assertFalse(canvas.autoFillBackground())
+
+    def test_native_annotation_viewer_does_not_use_qt_annotation_labels(self) -> None:
+        window = create_cad_tolerance_window(
+            self.app,
+            viewer=NativeAnnotationFakeViewer(),
+        )
+        self.addCleanup(window.close)
+
+        window.viewport_host.set_annotations(
+            (
+                ViewerAnnotation(
+                    id="native_annotation",
+                    label="0.000",
+                    role=ViewerAnnotationRole.STACKUP,
+                ),
+            )
+        )
+        self.app.processEvents()
+
+        self.assertTrue(window.viewport_host.annotation_canvas.isHidden())
+        self.assertEqual(
+            window.viewport_host.findChildren(QLabel, "ViewerAnnotationLabel"),
+            [],
+        )
 
     def test_drilldown_updates_detail_title_and_contributions(self) -> None:
         self.window._open_summary_index(2)

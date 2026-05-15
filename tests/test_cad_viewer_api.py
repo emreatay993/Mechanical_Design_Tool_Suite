@@ -171,6 +171,7 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
                 ),
             )
         )
+        self.assertGreater(widget.native_annotation_count, 0)
         widget.fit_all()
         widget.zoom(1.05)
         widget.pan(1, -1)
