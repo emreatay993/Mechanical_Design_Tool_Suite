@@ -544,6 +544,10 @@ class CadViewportHost(QFrame):
     """Hosts the CAD viewer widget plus observed orientation and workflow overlays."""
 
     annotationMoved = pyqtSignal(str, object)
+    workflowConfirmRequested = pyqtSignal()
+    workflowCancelRequested = pyqtSignal()
+    workflowAddFeatureRequested = pyqtSignal()
+    workflowListRequested = pyqtSignal()
 
     def __init__(self, viewer: QWidget, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -604,9 +608,19 @@ class CadViewportHost(QFrame):
         self.mating_face_counter.setObjectName("GuidedMatingFaceCounter")
         layout.addWidget(self.component_counter, 4, 0, 1, 2)
         layout.addWidget(self.mating_face_counter, 4, 2, 1, 2)
+        control_signals = {
+            "OK": (self.workflowConfirmRequested, "Accept the current guided step"),
+            "X": (self.workflowCancelRequested, "Cancel the guided workflow"),
+            "+": (self.workflowAddFeatureRequested, "Add an intermediate feature"),
+            "List": (self.workflowListRequested, "Show selected workflow items"),
+        }
+        control_roles = {"OK": "ok", "X": "cancel", "+": "add", "List": "list"}
         for index, label in enumerate(("OK", "X", "+", "List")):
             button = QPushButton(label)
             button.setObjectName(f"GuidedControl{label}")
+            button.setToolTip(control_signals[label][1])
+            button.setProperty("controlRole", control_roles[label])
+            button.clicked.connect(control_signals[label][0].emit)
             self._control_buttons[label] = button
             layout.addWidget(button, 5, index)
         return frame
@@ -1118,6 +1132,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.dashboard_badges.set_values(0, 0, "")
         self.summary_contributions.set_rows([], "Contributions Rollup")
         self.result_panel.set_stackup_name("Stackup")
+        self._sync_stackup_action_state()
         self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
         self.statusBar().showMessage(f"Imported {document.display_name or Path(document.source_path).name}")
 
@@ -1131,6 +1146,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.summary_model.set_rows(self.workspace.summary_rows)
         self._set_detail_stackup(self.workspace.selected_stackup_id)
         self._refresh_dashboard()
+        self._sync_stackup_action_state()
         self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
         self._rehydrate_project_cad_sources(project_path)
         if self.cad_source_status_messages:
@@ -1208,13 +1224,15 @@ class CadToleranceMainWindow(QMainWindow):
         self.new_stackup_action = QAction("New Stackup", self)
         self.new_stackup_action.triggered.connect(self._start_new_stackup_workflow)
         self.add_feature_action = QAction("Add Feature", self)
-        self.add_feature_action.triggered.connect(lambda: self.statusBar().showMessage("Select a face, edge or vertex from the mating component"))
+        self.add_feature_action.setEnabled(False)
+        self.add_feature_action.triggered.connect(self._start_add_feature_flow)
         self.add_geometric_tolerance_action = QAction("Add Geometric Tolerance", self)
         self.add_geometric_tolerance_action.triggered.connect(self._open_add_geometric_tolerance_dialog)
         self.snapshot_action = QAction("Snapshot", self)
         self.snapshot_action.setToolTip("Sets the current view orientation and size for the report image.")
         self.snapshot_action.triggered.connect(self._save_snapshot)
         self.generate_report_action = QAction("Generate Report", self)
+        self.generate_report_action.setEnabled(False)
         self.generate_report_action.triggered.connect(self._generate_report)
         self.settings_action = QAction("Settings", self)
         self.back_action = QAction("Back", self)
@@ -1399,6 +1417,10 @@ class CadToleranceMainWindow(QMainWindow):
             self._handle_assembly_tree_changed
         )
         self.viewport_host.annotationMoved.connect(self._handle_annotation_moved)
+        self.viewport_host.workflowConfirmRequested.connect(self._confirm_workflow_step)
+        self.viewport_host.workflowCancelRequested.connect(self._cancel_workflow)
+        self.viewport_host.workflowAddFeatureRequested.connect(self._start_add_feature_flow)
+        self.viewport_host.workflowListRequested.connect(self._show_workflow_selection_list)
         selection_signal = getattr(self.viewer, "selection_changed", None)
         if selection_signal is not None and hasattr(selection_signal, "connect"):
             selection_signal.connect(self.handle_viewer_selections)
@@ -1606,6 +1628,49 @@ class CadToleranceMainWindow(QMainWindow):
         update = self.workflow_controller.start_new_stackup()
         self._apply_workflow_update(update)
 
+    def _confirm_workflow_step(self) -> None:
+        if self.workflow_controller is None:
+            self.statusBar().showMessage("Start a new stackup before confirming a workflow step.")
+            return
+        try:
+            update = self.workflow_controller.confirm_current_step()
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc))
+            return
+        self._apply_workflow_update(update)
+
+    def _cancel_workflow(self) -> None:
+        if self.workflow_controller is None:
+            return
+        update = self.workflow_controller.cancel()
+        self._apply_workflow_update(update)
+        self.workflow_controller = None
+        self.viewport_host.set_annotations(())
+        self.statusBar().showMessage("Canceled guided stackup workflow")
+
+    def _start_add_feature_flow(self) -> None:
+        stackup = _stackup_by_id(self.project, self.workspace.selected_stackup_id)
+        if self.workflow_controller is None:
+            if stackup is None:
+                self.statusBar().showMessage("Create or select a stackup before adding a feature.")
+                return
+            self.workflow_controller = GuidedStackupWorkflowController(
+                self.geometry_session,
+                self.project,
+            )
+        try:
+            update = self.workflow_controller.begin_add_feature(stackup)
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc))
+            return
+        self._apply_workflow_update(update)
+
+    def _show_workflow_selection_list(self) -> None:
+        if self.workflow_controller is None:
+            self.statusBar().showMessage("No guided workflow is active.")
+            return
+        self.statusBar().showMessage(self.workflow_controller.selection_summary())
+
     def handle_viewer_selections(self, selections: list[CadViewerSelection] | tuple[CadViewerSelection, ...]) -> None:
         if not selections:
             return
@@ -1636,8 +1701,12 @@ class CadToleranceMainWindow(QMainWindow):
             self.summary_model.set_rows(self.workspace.summary_rows)
             self._set_detail_stackup(update.stackup.id)
             self._refresh_dashboard()
-            self.add_feature_action.setEnabled(True)
-            self.generate_report_action.setEnabled(True)
+            self._sync_stackup_action_state()
+
+    def _sync_stackup_action_state(self) -> None:
+        has_stackups = bool(self.project.stackups)
+        self.add_feature_action.setEnabled(has_stackups)
+        self.generate_report_action.setEnabled(has_stackups)
 
     def show_summary(self) -> None:
         self.analysis_stack.setCurrentWidget(self.summary_page)
@@ -2493,6 +2562,22 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
         QFrame#GuidedStackupToolbar QPushButton:checked {
             background: #aecdff;
             border-color: #5f93d5;
+        }
+        QFrame#GuidedStackupToolbar QPushButton[controlRole="ok"] {
+            background: #dff2e3;
+            border-color: #5aa36b;
+        }
+        QFrame#GuidedStackupToolbar QPushButton[controlRole="cancel"] {
+            background: #f9dedc;
+            border-color: #c65f58;
+        }
+        QFrame#GuidedStackupToolbar QPushButton[controlRole="add"] {
+            background: #fff0cf;
+            border-color: #c99125;
+        }
+        QFrame#GuidedStackupToolbar QPushButton[controlRole="list"] {
+            background: #e8edf4;
+            border-color: #7e91ad;
         }
         QLabel#AnalysisPaneTitle {
             font-size: 15px;

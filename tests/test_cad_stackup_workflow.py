@@ -222,6 +222,48 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
             {"screen": [420, 580], "model": [1.0, 2.0, 3.0]},
         )
 
+    def test_reused_part_dimension_scheme_is_preserved_for_added_feature(self) -> None:
+        existing = StackupRequirement(
+            id="stackup_vertical_coax",
+            name="vertical coax",
+            contributors=[
+                StackupContributor(
+                    id="contrib_bushing_scheme",
+                    name="Dimension2",
+                    nominal=58.0,
+                    tolerance=0.075,
+                    datum_references=["A"],
+                    source_feature=self.features["start"],
+                    source_note="Generated from guided stackup selection.",
+                )
+            ],
+        )
+        self.project.stackups.append(existing)
+        controller = GuidedStackupWorkflowController(self.session, self.project)
+        _advance_to_loop(controller, self.features)
+
+        controller.begin_add_feature()
+        update = controller.apply_selection(_selection(self.features["end"]))
+
+        self.assertEqual(update.toolbar.active_label, "Dimension Location")
+        stackup = controller.finish().stackup
+        reused = stackup.contributors[-1]
+        self.assertAlmostEqual(reused.tolerance, 0.075)
+        self.assertEqual(reused.datum_references, ["A"])
+        self.assertEqual(reused.source_note, "Manually inserted intermediate feature.")
+        self.assertTrue(
+            stackup.warnings[0].message.startswith("Automatic native CAD mate inference")
+        )
+
+    def test_direction_filter_rejects_perpendicular_mating_face(self) -> None:
+        controller = GuidedStackupWorkflowController(self.session, self.project)
+        _advance_to_loop(controller, self.features)
+        controller.apply_selection(_selection(self.features["loop_component"]))
+        controller.confirm_current_step()
+
+        with self.assertRaisesRegex(ValueError, "aligned with the stackup direction"):
+            controller.apply_selection(_selection(self.features["perpendicular_mating"]))
+
     def test_gui_starts_workflow_updates_toolbar_and_uses_viewer_filters(self) -> None:
         viewer = FakeViewer()
         workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
@@ -271,6 +313,58 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
 
         self.assertEqual(snapshot.visible_stackup_ids, [stackup_id])
         self.assertEqual(snapshot.annotation_positions[stackup_id], {"screen": [0.25, 0.75]})
+
+    def test_gui_toolbar_controls_drive_full_workflow_and_add_feature(self) -> None:
+        viewer = FakeViewer()
+        workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
+        window = create_cad_tolerance_window(
+            self.app,
+            geometry_session=self.session,
+            viewer=viewer,
+            workspace=workspace,
+        )
+        self.addCleanup(window.close)
+        window.project = self.project
+
+        window.new_stackup_action.trigger()
+        self.app.processEvents()
+        ok_button = window.findChild(QPushButton, "GuidedControlOK")
+        list_button = window.findChild(QPushButton, "GuidedControlList")
+
+        window.handle_viewer_selections([_selection(self.features["start"])])
+        ok_button.click()
+        window.handle_viewer_selections([_selection(self.features["end"])])
+        ok_button.click()
+        window.handle_viewer_selections([_selection(self.features["direction"])])
+        window.handle_viewer_selections([_selection(self.features["analysis_plane"])])
+        window.viewport_host.annotationMoved.emit(
+            "workflow_stackup_dimension",
+            {"screen": [0.36, 0.64]},
+        )
+        window.handle_viewer_selections([_selection(self.features["loop_component"])])
+        ok_button.click()
+        window.handle_viewer_selections([_selection(self.features["mating_1"])])
+        window.handle_viewer_selections([_selection(self.features["mating_2"])])
+        ok_button.click()
+        self.app.processEvents()
+
+        stackup = self.project.stackups[-1]
+        self.assertEqual(stackup.annotation_position, {"screen": [0.36, 0.64]})
+        self.assertEqual([row.name for row in stackup.contributors], ["Dimension1", "Dimension2", "Dimension3"])
+        self.assertTrue(window.add_feature_action.isEnabled())
+        self.assertTrue(window.generate_report_action.isEnabled())
+
+        list_button.click()
+        self.assertIn("1 Components", window.statusBar().currentMessage())
+        self.assertIn("2 of 2 Mating Faces", window.statusBar().currentMessage())
+
+        window.add_feature_action.trigger()
+        self.assertIn("Select a face, edge or vertex to add", window.statusBar().currentMessage())
+        window.handle_viewer_selections([_selection(self.features["shared_top_face"])])
+        self.app.processEvents()
+
+        self.assertEqual(stackup.contributors[-1].source_feature.id, "feature_shared_top_face")
+        self.assertEqual(window.detail_model.rowCount(), len(window.workspace.detail_rows(stackup.id)))
 
 
 def _advance_to_loop(
@@ -405,6 +499,21 @@ def _workflow_fixture() -> dict[str, object]:
             "axle_support:2",
             point=(0.0, 0.0, 8.0),
             normal=(0.0, 0.0, 1.0),
+        ),
+        "perpendicular_mating": _feature(
+            "feature_perpendicular_mating",
+            "axle support side face",
+            FeatureKind.FACE,
+            _shape(
+                "shape_perpendicular_mating",
+                ShapeKind.FACE,
+                "axle support side face",
+                ["Caster Assembly", "axle_support:2"],
+                {"surface_type": "plane", "point": [0.0, 0.0, 6.0], "normal": [1.0, 0.0, 0.0]},
+            ),
+            "axle_support:2",
+            point=(0.0, 0.0, 6.0),
+            normal=(1.0, 0.0, 0.0),
         ),
         "shared_top_face": _feature(
             "feature_shared_top_face",

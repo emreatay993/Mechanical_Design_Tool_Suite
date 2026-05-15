@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 from .cad_geometry_api import (
     CadGeometrySession,
     Measurement,
+    dot_vectors,
     feature_from_shape_reference,
     feature_point,
     normalize_vector,
@@ -20,6 +22,9 @@ from .cad_tolerance_models import (
     CadToleranceProject,
     FeatureKind,
     FeatureReference,
+    NonOneDWarning,
+    NonOneDWarningKind,
+    ResultStatus,
     ShapeKind,
     ShapeReference,
     StackupContributor,
@@ -57,6 +62,7 @@ class GuidedStackupStep(str, Enum):
     DIMENSION_LOCATION = "dimension_location"
     LOOP_COMPONENTS = "loop_components"
     MATING_FACES = "mating_faces"
+    ADD_FEATURE = "add_feature"
     COMPLETE = "complete"
     CANCELED = "canceled"
 
@@ -72,6 +78,7 @@ class GuidedStackupStep(str, Enum):
             self.DIMENSION_LOCATION: "Dimension Location",
             self.LOOP_COMPONENTS: "Dimension Location",
             self.MATING_FACES: "Dimension Location",
+            self.ADD_FEATURE: "Dimension Location",
             self.COMPLETE: "Dimension Location",
             self.CANCELED: "Selection 1",
         }
@@ -148,6 +155,12 @@ class StackupWorkflowState:
     mating_face_goal: int = 0
 
 
+MATE_INFERENCE_WARNING = (
+    "Automatic native CAD mate inference is not implemented; contributors were "
+    "generated deterministically from the selected loop components and mating faces."
+)
+
+
 class GuidedStackupWorkflowController:
     """State machine for EZtol-style guided stackup creation.
 
@@ -164,9 +177,24 @@ class GuidedStackupWorkflowController:
         self.geometry_session = geometry_session
         self.project = project
         self.state = StackupWorkflowState()
+        self._active_stackup: StackupRequirement | None = None
 
     def start_new_stackup(self, name: str | None = None) -> StackupWorkflowUpdate:
         self.state = StackupWorkflowState(name=name or self._next_stackup_name())
+        self._active_stackup = None
+        return self.current_update()
+
+    def begin_add_feature(
+        self,
+        stackup: StackupRequirement | None = None,
+    ) -> StackupWorkflowUpdate:
+        if stackup is not None:
+            self._hydrate_from_stackup(stackup)
+        elif self._active_stackup is None and (
+            self.state.start_feature is None or self.state.end_feature is None
+        ):
+            raise ValueError("Create or select a stackup before adding a feature.")
+        self.state.active_step = GuidedStackupStep.ADD_FEATURE
         return self.current_update()
 
     def current_update(
@@ -227,6 +255,9 @@ class GuidedStackupWorkflowController:
             self.state.constraint_features.append(feature)
             return self.current_update((_highlight(feature, HighlightRole.LOOP_MEMBER),))
 
+        if step == GuidedStackupStep.ADD_FEATURE:
+            return self.insert_intermediate_feature(selection)
+
         raise ValueError(f"Workflow step {step.value!r} does not accept geometry selections.")
 
     def confirm_current_step(self) -> StackupWorkflowUpdate:
@@ -247,6 +278,8 @@ class GuidedStackupWorkflowController:
             self.state.active_step = GuidedStackupStep.MATING_FACES
         elif step == GuidedStackupStep.MATING_FACES:
             return self.finish()
+        elif step == GuidedStackupStep.ADD_FEATURE:
+            self.state.active_step = GuidedStackupStep.COMPLETE
         return self.current_update()
 
     def cancel(self) -> StackupWorkflowUpdate:
@@ -270,11 +303,18 @@ class GuidedStackupWorkflowController:
         name: str | None = None,
     ) -> StackupWorkflowUpdate:
         feature = self._feature_from_selection(selection)
+        if self.state.active_step == GuidedStackupStep.ADD_FEATURE:
+            self._validate_selection(feature)
         if name:
             feature.name = name
         self.state.inserted_features.append(feature)
         self.state.generated_contributors = self._build_contributors()
-        return self.current_update((_highlight(feature, HighlightRole.LOOP_MEMBER),))
+        if self._active_stackup is not None:
+            self._sync_active_stackup()
+        return self.current_update(
+            (_highlight(feature, HighlightRole.LOOP_MEMBER),),
+            stackup=self._active_stackup,
+        )
 
     def finish(self) -> StackupWorkflowUpdate:
         self._require_ready_to_finish()
@@ -295,8 +335,10 @@ class GuidedStackupWorkflowController:
             loop_features=list(self.state.loop_features),
             constraint_features=list(self.state.constraint_features),
             annotation_position=dict(self.state.annotation_position),
+            warnings=[_mate_inference_warning()],
         )
         self.state.active_step = GuidedStackupStep.COMPLETE
+        self._active_stackup = stackup
         if self.project is not None:
             self.project.stackups.append(stackup)
         return self.current_update(stackup=stackup)
@@ -378,21 +420,37 @@ class GuidedStackupWorkflowController:
                 expected_owner_part_id=expected_owner,
                 requires_direction_alignment=True,
             )
+        if step == GuidedStackupStep.ADD_FEATURE:
+            return StackupSelectionFilter(
+                "Select a face, edge or vertex to add to the stackup",
+                endpoint_shapes,
+                endpoint_features,
+                endpoint_modes,
+                HighlightRole.LOOP_MEMBER,
+                requires_direction_alignment=True,
+            )
         return StackupSelectionFilter("Workflow complete")
 
     def _toolbar_state(self) -> GuidedToolbarState:
         components = len(self.state.loop_features)
         mating_faces = len(self.state.constraint_features)
-        mating_goal = self.state.mating_face_goal
+        mating_goal = self._mating_face_goal()
+        terminal = self.state.active_step in {
+            GuidedStackupStep.COMPLETE,
+            GuidedStackupStep.CANCELED,
+        }
         return GuidedToolbarState(
             active_label=self.state.active_step.label,
             prompt=self._selection_filter().prompt,
             component_count_text=f"{components} Component" + ("" if components == 1 else "s"),
             mating_face_count_text=f"{mating_faces} of {mating_goal} Mating Faces",
+            check_enabled=not terminal,
+            cancel_enabled=not terminal,
             add_enabled=self.state.active_step
             in {
                 GuidedStackupStep.LOOP_COMPONENTS,
                 GuidedStackupStep.MATING_FACES,
+                GuidedStackupStep.ADD_FEATURE,
                 GuidedStackupStep.COMPLETE,
             },
         )
@@ -415,6 +473,19 @@ class GuidedStackupWorkflowController:
         expected_owner = selection_filter.expected_owner_part_id
         if expected_owner and feature.owner_part_id and feature.owner_part_id != expected_owner:
             raise ValueError(f"Expected a selection from {expected_owner}.")
+        if selection_filter.requires_direction_alignment and not self._is_direction_aligned(feature):
+            raise ValueError("Expected a feature aligned with the stackup direction.")
+
+    def _is_direction_aligned(self, feature: FeatureReference) -> bool:
+        orientation = feature.normal or feature.axis
+        if orientation is None:
+            return True
+        try:
+            oriented = normalize_vector(orientation)
+            direction = self._workflow_direction()
+        except ValueError:
+            return True
+        return abs(dot_vectors(oriented, direction)) >= 0.5
 
     def _requires_direction_pick(self) -> bool:
         start = self.state.start_feature
@@ -473,13 +544,17 @@ class GuidedStackupWorkflowController:
         contributors: list[StackupContributor] = []
         previous = self.state.start_feature
         inserted_feature_ids = {feature.id for feature in self.state.inserted_features}
+        scheme_sources = self._dimension_scheme_sources()
         for index, feature in enumerate(selected, start=1):
             measurement = self._measure(previous, feature)
             nominal = measurement.value if measurement is not None else 0.0
             sensitivity = 1.0 if nominal >= 0.0 else -1.0
+            template = _matching_dimension_scheme(feature, scheme_sources + contributors)
             source_note = (
                 "Manually inserted intermediate feature."
                 if feature.id in inserted_feature_ids
+                else "Generated from guided stackup selection using reused dimension scheme."
+                if template is not None
                 else "Generated from guided stackup selection."
             )
             contributors.append(
@@ -487,16 +562,27 @@ class GuidedStackupWorkflowController:
                     id=new_id("contrib"),
                     name=f"Dimension{index}",
                     nominal=abs(nominal),
-                    tolerance=DEFAULT_GENERATED_TOLERANCE,
+                    tolerance=template.tolerance if template else DEFAULT_GENERATED_TOLERANCE,
+                    tolerance_minus=template.tolerance_minus if template else None,
+                    tolerance_plus=template.tolerance_plus if template else None,
                     sensitivity=sensitivity,
-                    tolerance_type=ToleranceType.SYMMETRIC,
+                    tolerance_type=template.tolerance_type if template else ToleranceType.SYMMETRIC,
+                    datum_references=list(template.datum_references) if template else [],
                     source_feature=feature,
+                    geometric_tolerance=deepcopy(template.geometric_tolerance) if template else None,
                     shared_with_stackup_ids=self._shared_stackup_ids_for(feature),
                     source_note=source_note,
                 )
             )
             previous = feature
         return contributors
+
+    def _dimension_scheme_sources(self) -> list[StackupContributor]:
+        sources = list(self.state.generated_contributors)
+        if self.project is not None:
+            for stackup in self.project.stackups:
+                sources.extend(stackup.contributors)
+        return sources
 
     def _measure(
         self,
@@ -536,6 +622,68 @@ class GuidedStackupWorkflowController:
         if self.state.end_feature is None:
             raise ValueError("End feature has not been selected.")
 
+    def _hydrate_from_stackup(self, stackup: StackupRequirement) -> None:
+        self._active_stackup = stackup
+        known_feature_ids = {
+            feature.id
+            for feature in (*stackup.loop_features, *stackup.constraint_features)
+        }
+        inserted_features = [
+            contributor.source_feature
+            for contributor in stackup.contributors
+            if contributor.source_feature is not None
+            and contributor.source_feature.id not in known_feature_ids
+        ]
+        self.state = StackupWorkflowState(
+            name=stackup.name,
+            active_step=GuidedStackupStep.ADD_FEATURE,
+            start_feature=stackup.start_feature,
+            end_feature=stackup.end_feature,
+            direction=stackup.direction,
+            annotation_plane=stackup.annotation_plane,
+            loop_features=list(stackup.loop_features),
+            constraint_features=list(stackup.constraint_features),
+            inserted_features=inserted_features,
+            annotation_position=dict(stackup.annotation_position),
+            generated_contributors=list(stackup.contributors),
+            mating_face_goal=len(stackup.constraint_features),
+        )
+
+    def _sync_active_stackup(self) -> None:
+        if self._active_stackup is None:
+            return
+        self._active_stackup.contributors = list(self.state.generated_contributors)
+        self._active_stackup.direction = self._workflow_direction()
+        self._active_stackup.annotation_plane = self.state.annotation_plane or AnnotationPlane()
+        self._active_stackup.loop_features = list(self.state.loop_features)
+        self._active_stackup.constraint_features = list(self.state.constraint_features)
+        self._active_stackup.annotation_position = dict(self.state.annotation_position)
+        if not any(warning.message == MATE_INFERENCE_WARNING for warning in self._active_stackup.warnings):
+            self._active_stackup.warnings.append(_mate_inference_warning())
+
+    def selection_summary(self) -> str:
+        parts = [
+            f"{len(self.state.loop_features)} Components",
+            f"{len(self.state.constraint_features)} of {self._mating_face_goal()} Mating Faces",
+        ]
+        names = [
+            feature.name or _shape_name(feature.shape_reference)
+            for feature in (
+                self.state.start_feature,
+                self.state.end_feature,
+                self.state.direction_feature,
+                self.state.analysis_plane_feature,
+            )
+            if feature is not None
+        ]
+        if names:
+            parts.append(", ".join(names))
+        return "; ".join(parts)
+
+    def _mating_face_goal(self) -> int:
+        inferred = max(len(self.state.constraint_features), (len(self.state.loop_features) - 1) * 2)
+        return self.state.mating_face_goal or inferred
+
 
 def _viewer_modes_for(shape_kinds: tuple[ShapeKind, ...]) -> tuple[ViewerSelectionMode, ...]:
     modes = []
@@ -554,3 +702,58 @@ def _highlight(feature: FeatureReference, role: HighlightRole) -> WorkflowHighli
 
 def _shape_name(shape: ShapeReference | None) -> str:
     return shape.fallback_display_name if shape is not None else ""
+
+
+def _mate_inference_warning() -> NonOneDWarning:
+    return NonOneDWarning(
+        warning_kind=NonOneDWarningKind.MANUAL_REVIEW,
+        message=MATE_INFERENCE_WARNING,
+        severity=ResultStatus.WARN,
+    )
+
+
+def _matching_dimension_scheme(
+    feature: FeatureReference,
+    contributors: list[StackupContributor],
+) -> StackupContributor | None:
+    feature_keys = _feature_scheme_keys(feature)
+    for contributor in contributors:
+        source = contributor.source_feature
+        if source is None:
+            continue
+        if feature_keys & _feature_scheme_keys(source):
+            return contributor
+    return None
+
+
+def _feature_scheme_keys(feature: FeatureReference) -> set[str]:
+    keys: set[str] = set()
+    if feature.id:
+        keys.add(f"id:{feature.id}")
+    shape = feature.shape_reference
+    if shape is not None and shape.id:
+        keys.add(f"shape:{shape.id}")
+    if feature.name:
+        keys.add(f"name:{_normalized_reuse_text(feature.name)}")
+    owner_family = _owner_family(feature.owner_part_id)
+    feature_label = _normalized_reuse_text(feature.name or _shape_name(shape))
+    if owner_family and feature_label:
+        keys.add(f"family:{owner_family}:{feature.feature_type.value}:{feature_label}")
+    return keys
+
+
+def _owner_family(owner_part_id: str) -> str:
+    owner = _normalized_reuse_text(owner_part_id)
+    if ":" in owner:
+        return owner.split(":", 1)[0]
+    return owner
+
+
+def _normalized_reuse_text(text: str) -> str:
+    tokens: list[str] = []
+    for token in str(text).strip().casefold().split():
+        if ":" in token:
+            left, right = token.rsplit(":", 1)
+            token = left if right.isdigit() else token
+        tokens.append(token)
+    return " ".join(tokens)
