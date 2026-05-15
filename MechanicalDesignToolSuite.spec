@@ -27,6 +27,19 @@ entry_scripts = [
     ("ToleranceAnalysisVNext", project_root / "scripts" / "run_tolerance_vnext_analysis.py"),
     ("Cad1DTolerance", project_root / "scripts" / "run_cad_1d_tolerance.py"),
 ]
+required_entry_names = {
+    "MechanicalDesignToolSuite",
+    "BoltCalculationGui",
+    "ToleranceAnalysis",
+    "ToleranceAnalysisVNext",
+    "Cad1DTolerance",
+}
+missing_entry_names = required_entry_names - {name for name, _ in entry_scripts}
+if missing_entry_names:
+    raise RuntimeError(
+        "PyInstaller entry script(s) are missing: "
+        + ", ".join(sorted(missing_entry_names))
+    )
 
 
 datas = []
@@ -92,6 +105,8 @@ for package_name in (
     "mechanical_design_tool_suite",
     "OCC",
     "PyQt6",
+    # PyVista/VTK are packaged for existing mesh diagnostics and bolt/vNext
+    # views only; CAD 1D tolerance remains OCCT B-Rep authoritative.
     "pyvista",
     "vtk",
     "vtkmodules",
@@ -105,6 +120,9 @@ for package_name in (
 
 hiddenimports += collect_submodules("mechanical_design_tool_suite")
 hiddenimports += collect_submodules("openpyxl")
+# pythonocc keeps many OCCT DLL dependencies in Conda's Library/bin. Collect
+# the DLL closure from OCC extension modules so Cad1DTolerance.exe can start
+# without requiring the build environment on PATH.
 binaries += collect_conda_dll_dependencies("OCC")
 hiddenimports += [
     "PyQt6.QtQml",

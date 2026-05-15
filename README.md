@@ -102,6 +102,11 @@ If CAD imports fail, first confirm that `conda activate mdts-cad312` is active,
 `PYTHONNOUSERSITE=1` is set, and `python -c "import OCC"` succeeds in that same
 terminal.
 
+Before building the CAD-capable package, the build script also checks that this
+environment still uses Python 3.12, NumPy 1.26, `pythonocc-core` 7.9.3 with the
+`novtk` OCCT build, PyQt6/Qt6, and `ffmpeg`. It fails if PyQt5, Conda `pyqt`,
+Conda Qt5, or a non-`novtk` pythonocc/OCCT build is visible.
+
 ## Run The Suite Launcher
 
 From the repository root:
@@ -167,6 +172,17 @@ cad-1d-tolerance-gui
 Use the `mdts-cad312` environment described above when you need live STEP/IGES
 import and the OCCT AIS/V3d viewer.
 
+The source launcher, module entry point, and editable-install command all accept
+a startup file. Supported CAD/project inputs are STEP/STP, IGES/IGS, `.tolproj`,
+and `.tolpack`:
+
+```powershell
+python scripts\run_cad_1d_tolerance.py tests\fixtures\cad_1d_tolerance\caster_whell_v0\caster_wheel.stp
+python -m mechanical_design_tool_suite.cad_tolerance_gui tests\fixtures\cad_1d_tolerance\neutral_iges_single_part.igs
+cad-1d-tolerance-gui tests\fixtures\cad_1d_tolerance\sample_cad_1d_project.tolproj
+cad-1d-tolerance-gui path\to\project_package.tolpack
+```
+
 The vNext app defaults to Fusion light styling. More modern UI styles can be
 selected when available:
 
@@ -231,7 +247,7 @@ above.
 Build the PyInstaller onedir GUI suite from the repository root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean -Python "C:\ProgramData\miniforge3\envs\mdts-cad312\python.exe"
 ```
 
 The program selector is written to:
@@ -244,6 +260,14 @@ The same folder also contains direct launchers for the bolt calculation GUI,
 the legacy tolerance GUI, the vNext tolerance GUI, and the CAD 1D tolerance GUI. See
 [`docs/pyinstaller_install_guide.md`](docs/pyinstaller_install_guide.md) for the
 full build and troubleshooting guide.
+
+To run the CAD executable after a successful build:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -RunOnly -Program Cad1D
+.\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe tests\fixtures\cad_1d_tolerance\caster_whell_v0\caster_wheel.stp
+.\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe path\to\project_package.tolpack
+```
 
 To build and launch it in one step:
 

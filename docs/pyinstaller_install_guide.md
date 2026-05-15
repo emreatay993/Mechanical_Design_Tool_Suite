@@ -105,6 +105,11 @@ python -s -c "import importlib.util, numpy, pyvista, vtk, PyQt6.QtCore as QtCore
 python -s -m unittest discover -s tests
 ```
 
+The build wrapper runs the same guardrail class before PyInstaller. It fails if
+the selected Python is not 3.12, NumPy is not 1.26.x, PyQt6/Qt6 is unavailable,
+PyQt5 is importable, Conda `pyqt` or Conda Qt5 is installed, `pythonocc-core` or
+OCCT is not `7.9.3` with a `novtk` build string, or `ffmpeg` is missing.
+
 Expected environment check highlights:
 
 ```text
@@ -135,6 +140,16 @@ The model should remain open while orbiting or dragging in the viewport. This
 validates the PyQt6/pythonocc mouse-event path that failed under
 `pythonocc-core 7.7.2`.
 
+The same entry point accepts STEP/STP, IGES/IGS, `.tolproj`, and `.tolpack`
+startup files:
+
+```powershell
+python -s scripts\run_cad_1d_tolerance.py tests\fixtures\cad_1d_tolerance\caster_whell_v0\caster_wheel.stp
+python -s -m mechanical_design_tool_suite.cad_tolerance_gui tests\fixtures\cad_1d_tolerance\neutral_iges_single_part.igs
+python -s -m mechanical_design_tool_suite.cad_tolerance_gui tests\fixtures\cad_1d_tolerance\sample_cad_1d_project.tolproj
+python -s -m mechanical_design_tool_suite.cad_tolerance_gui path\to\project_package.tolpack
+```
+
 ## 6. Build The Windows Package
 
 Build from the repository root:
@@ -148,9 +163,19 @@ The build script:
 1. Installs this repo in editable mode with the pinned `build` extra.
 2. Applies `requirements-windows-py312.lock.txt` as pip constraints.
 3. Sets `PYTHONNOUSERSITE=1` so user-level Python packages cannot contaminate the build.
-4. Cleans `build\` and `dist\` when `-Clean` is passed.
-5. Runs PyInstaller with `MechanicalDesignToolSuite.spec`.
-6. Verifies that all expected executables were produced.
+4. Verifies the CAD runtime guardrails for Python, NumPy, PyQt6/Qt6,
+   `pythonocc-core`/OCCT `novtk`, forbidden Qt5/PyQt5 packages, and `ffmpeg`.
+5. Cleans `build\` and `dist\` when `-Clean` is passed.
+6. Runs PyInstaller with `MechanicalDesignToolSuite.spec`.
+7. Verifies that all expected executables were produced, including
+   `Cad1DTolerance.exe`.
+
+To build the package and make the CAD executable the selected run target for a
+later `-Launch` or `-RunOnly` step:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean -Program Cad1D -Python "C:\ProgramData\miniforge3\envs\mdts-cad312\python.exe"
+```
 
 To build and immediately launch the selector:
 
@@ -178,6 +203,20 @@ Expected launch files:
 
 Keep the full `dist\MechanicalDesignToolSuite` folder together. The executables
 share the `_internal` runtime folder, Qt plugins, QML files, and bundled data.
+`MechanicalDesignToolSuite.spec` collects the Python packages, `OCC` extension
+modules, PyQt6 modules, and Conda `Library\bin` DLL dependencies reachable from
+pythonocc. Do not move OCCT DLLs, Qt plugin folders, QML/assets, report output
+assets, or the bundled `_internal` folder away from the executables.
+
+Report CSS, JavaScript, manifests, and snapshot images are generated next to the
+selected `.tolproj` or inside exported `.tolpack` packages at runtime. They are
+not installer resources; keep those project-local folders together when sharing
+engineering reports.
+
+Video review tooling for clone/fidelity work uses `ffmpeg`/`ffprobe` from
+`mdts-cad312`. Those tools are required for the build/runtime verification
+environment, but they are not treated as a native CAD SDK or as a viewer
+dependency.
 
 ## 8. Run Packaged Programs
 
@@ -191,6 +230,15 @@ Direct CAD launch:
 
 ```powershell
 .\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe
+```
+
+Direct CAD launch with startup files:
+
+```powershell
+.\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe tests\fixtures\cad_1d_tolerance\caster_whell_v0\caster_wheel.stp
+.\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe tests\fixtures\cad_1d_tolerance\neutral_iges_single_part.igs
+.\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe tests\fixtures\cad_1d_tolerance\sample_cad_1d_project.tolproj
+.\dist\MechanicalDesignToolSuite\Cad1DTolerance.exe path\to\project_package.tolpack
 ```
 
 Build script launch helpers:
