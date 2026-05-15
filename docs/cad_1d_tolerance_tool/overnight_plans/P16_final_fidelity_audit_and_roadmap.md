@@ -58,3 +58,7 @@ $env:PYTHONNOUSERSITE="1"; $env:PYTHONPATH="src"; & "C:\ProgramData\miniforge3\e
 ## Stop Condition
 
 Stop when a future agent or human can see exactly how close the product is to the demo and what remains to reach the 95% fidelity objective.
+
+## Packet Output
+
+P16 output is recorded in `docs/cad_1d_tolerance_tool/extracted_specs/2026-05-15_final_fidelity_audit_and_roadmap.md`.
