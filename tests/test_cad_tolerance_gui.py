@@ -15,8 +15,10 @@ from PyQt6.QtWidgets import QApplication, QCheckBox, QDialogButtonBox, QLabel, Q
 
 from mechanical_design_tool_suite.cad_tolerance_gui import (
     AddGeometricToleranceDialog,
+    ContributionBarMeter,
     NeutralCadImportOptionsDialog,
     PlaceholderCadViewerWidget,
+    ResultPlotWidget,
     create_cad_tolerance_window,
 )
 from mechanical_design_tool_suite.cad_tolerance_project_io import load_project, save_project
@@ -130,8 +132,8 @@ class CadToleranceViewModelTest(unittest.TestCase):
         self.assertEqual(tuple(columns), SUMMARY_COLUMNS)
         self.assertEqual(model.rowCount(), 9)
         self.assertEqual(model.data(model.index(0, 1)), "flush left")
-        self.assertEqual(model.data(model.index(0, 0)), "X")
-        self.assertEqual(model.data(model.index(8, 0)), "!")
+        self.assertEqual(model.data(model.index(0, 0)), "")
+        self.assertEqual(model.data(model.index(8, 0)), "")
         self.assertIsNotNone(model.data(model.index(0, 0), Qt.ItemDataRole.DecorationRole))
         self.assertIsNotNone(model.data(model.index(0, 0), Qt.ItemDataRole.BackgroundRole))
         self.assertIn(NON_1D_WARNING_TEXT, model.data(model.index(8, 0), Qt.ItemDataRole.ToolTipRole))
@@ -165,7 +167,7 @@ class CadToleranceViewModelTest(unittest.TestCase):
             ToleranceType.LIMITS.value,
         )
         self.assertIn(
-            "Shared with",
+            "Shared dimension affects",
             model.data(model.index(dimension_row, 1), Qt.ItemDataRole.ToolTipRole),
         )
 
@@ -202,6 +204,22 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         self.assertEqual(self.window.detail_title.text(), "overall height details")
         self.assertGreater(self.window.detail_model.rowCount(), 0)
         self.assertIn("overall height", self.window.detail_contributions.title.text())
+        self.assertGreaterEqual(len(self.window.detail_contributions.findChildren(ContributionBarMeter)), 8)
+
+    def test_loaded_project_result_panel_shows_plot_and_warning_banner(self) -> None:
+        self.window.load_project_file(FIXTURE_PATH)
+        self.window._open_summary_index(0)
+        self.app.processEvents()
+
+        plot = self.window.result_panel.findChild(ResultPlotWidget, "ResultPlotWidget")
+        warning = self.window.result_panel.findChild(QLabel, "NonOneDWarningLabel")
+
+        self.assertIsNotNone(plot)
+        self.assertIsNotNone(plot._projection)
+        self.assertEqual(plot._projection.mode_label, "Statistical")
+        self.assertIn("Actual: Cpk = 3.16", self.window.result_panel.metrics.text())
+        self.assertFalse(self.window.result_panel.warning_row.isHidden())
+        self.assertIn(NON_1D_WARNING_TEXT, warning.text())
 
     def test_project_load_rehydrates_existing_fixture_cad_source(self) -> None:
         geometry = FakeGeometrySession()

@@ -10,7 +10,7 @@ import sys
 from typing import Any
 
 try:
-    from PyQt6.QtCore import QPoint, QPointF, QRect, QSize, Qt, pyqtSignal
+    from PyQt6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
     from PyQt6.QtGui import (
         QAction,
         QColor,
@@ -19,8 +19,10 @@ try:
         QImage,
         QMouseEvent,
         QPainter,
+        QPainterPath,
         QPen,
         QPalette,
+        QPixmap,
     )
     from PyQt6.QtWidgets import (
         QApplication,
@@ -78,6 +80,7 @@ from .cad_tolerance_models import (
     Snapshot,
     StackupContributor,
     StackupRequirement,
+    ResultStatus,
     ToleranceType,
     geometric_control_display_label,
 )
@@ -971,6 +974,8 @@ class ResultPanelWidget(QFrame):
         super().__init__(parent)
         self.setObjectName("ResultPanelWidget")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 12)
+        layout.setSpacing(8)
         self.title = QLabel("Worst Case Results")
         self.title.setObjectName("ResultPanelTitle")
         layout.addWidget(self.title)
@@ -978,47 +983,155 @@ class ResultPanelWidget(QFrame):
         self.metrics.setObjectName("ResultPanelMetrics")
         self.metrics.setWordWrap(True)
         layout.addWidget(self.metrics)
-        bar_row = QHBoxLayout()
-        self.left_bar = QFrame()
-        self.left_bar.setObjectName("ResultBarFail")
-        self.center_marker = QFrame()
-        self.center_marker.setObjectName("ResultCenterMarker")
-        self.right_bar = QFrame()
-        self.right_bar.setObjectName("ResultBarPass")
-        bar_row.addWidget(self.left_bar, 1)
-        bar_row.addWidget(self.center_marker)
-        bar_row.addWidget(self.right_bar, 1)
-        layout.addLayout(bar_row)
+        self.plot = ResultPlotWidget()
+        layout.addWidget(self.plot, 1)
+        self.warning_row = QWidget()
+        warning_layout = QHBoxLayout(self.warning_row)
+        warning_layout.setContentsMargins(0, 0, 0, 0)
+        warning_layout.setSpacing(8)
+        self.warning_icon = QLabel()
+        self.warning_icon.setPixmap(_warning_pixmap(24))
+        warning_layout.addWidget(self.warning_icon, alignment=Qt.AlignmentFlag.AlignTop)
         self.warning = QLabel(NON_1D_WARNING_TEXT)
         self.warning.setObjectName("NonOneDWarningLabel")
         self.warning.setWordWrap(True)
-        self.warning.setVisible(False)
-        layout.addWidget(self.warning)
+        warning_layout.addWidget(self.warning, 1)
+        self.warning_row.setVisible(False)
+        layout.addWidget(self.warning_row)
 
     def set_stackup_name(self, name: str) -> None:
         self.title.setText(f"Worst Case Results for {name}")
         self.metrics.setText("")
-        self.warning.setVisible(False)
+        self.plot.clear()
+        self.warning_row.setVisible(False)
 
     def set_projection(self, projection: ResultDisplayProjection) -> None:
         self.title.setText(projection.title)
-        metrics = [
-            projection.mean_label,
-            projection.standard_deviation_label,
-            projection.result_label,
-            projection.objective_label,
-        ]
-        if projection.predicted_quality_label:
+        metrics = []
+        if projection.mode_label == "Statistical":
+            if projection.predicted_quality_label:
+                metrics.append("Actual: " + projection.predicted_quality_label)
+            metrics.extend([projection.mean_label, projection.standard_deviation_label])
+        else:
+            metrics.extend([projection.result_label, projection.objective_label])
+        if projection.mode_label != "Statistical" and projection.predicted_quality_label:
             metrics.append(projection.predicted_quality_label)
-        self.metrics.setText("    ".join(metrics))
+        self.metrics.setText("\n".join(item for item in metrics if item))
+        self.plot.set_projection(projection)
         if projection.warnings:
             warning_lines = [NON_1D_WARNING_TEXT]
             warning_lines.extend(warning.message for warning in projection.warnings)
-            self.warning.setText("! " + "\n".join(warning_lines))
-            self.warning.setVisible(True)
+            self.warning.setText("\n".join(warning_lines))
+            self.warning_row.setVisible(True)
         else:
             self.warning.setText("")
-            self.warning.setVisible(False)
+            self.warning_row.setVisible(False)
+
+
+class ResultPlotWidget(QWidget):
+    """Compact result plot matching the demo range-bar and bell-curve density."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ResultPlotWidget")
+        self._projection: ResultDisplayProjection | None = None
+        self.setMinimumHeight(154)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def clear(self) -> None:
+        self._projection = None
+        self.update()
+
+    def set_projection(self, projection: ResultDisplayProjection) -> None:
+        self._projection = projection
+        self.update()
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.fillRect(self.rect(), QColor("#ffffff"))
+        painter.setPen(QPen(QColor("#111111"), 1))
+        plot_rect = self.rect().adjusted(18, 26, -18, -28)
+        if plot_rect.width() <= 20 or plot_rect.height() <= 20:
+            painter.end()
+            return
+        projection = self._projection
+        if projection is None:
+            painter.drawRect(plot_rect)
+            painter.end()
+            return
+        if projection.mode_label == "Statistical":
+            self._draw_statistical(painter, plot_rect, projection)
+        else:
+            self._draw_range_bar(painter, plot_rect, projection)
+        painter.end()
+
+    def _draw_range_bar(self, painter: QPainter, rect: QRect, projection: ResultDisplayProjection) -> None:
+        value_range = _plot_value_range(projection)
+        x_for = lambda value: _plot_x(rect, value_range, value)
+        center_y = rect.center().y()
+        painter.setPen(QPen(QColor("#111111"), 1))
+        painter.drawLine(rect.left(), center_y, rect.right(), center_y)
+        _draw_axis_arrow(painter, QPointF(rect.left(), center_y), left=True)
+        _draw_axis_arrow(painter, QPointF(rect.right(), center_y), left=False)
+
+        objective_lower = projection.objective_lower if projection.objective_lower is not None else value_range[0]
+        objective_upper = projection.objective_upper if projection.objective_upper is not None else value_range[1]
+        result_lower = projection.result_lower
+        result_upper = projection.result_upper
+        band_top = center_y - 12
+        band_height = 24
+        left_red = QRectF(x_for(min(result_lower, objective_lower)), band_top, max(0.0, x_for(objective_lower) - x_for(min(result_lower, objective_lower))), band_height)
+        green = QRectF(x_for(objective_lower), band_top, max(2.0, x_for(objective_upper) - x_for(objective_lower)), band_height)
+        right_red = QRectF(x_for(objective_upper), band_top, max(0.0, x_for(max(result_upper, objective_upper)) - x_for(objective_upper)), band_height)
+        painter.fillRect(left_red, QColor("#c93434"))
+        painter.fillRect(green, QColor("#148c27"))
+        painter.fillRect(right_red, QColor("#c93434"))
+
+        for marker in projection.markers:
+            color = QColor("#111111")
+            if marker.role == "result":
+                color = QColor("#b51f1f") if projection.status == ResultStatus.FAIL else QColor("#137c24")
+            elif marker.role == "mean":
+                color = QColor("#111111")
+            x = x_for(marker.value)
+            painter.setPen(QPen(color, 2 if marker.role != "mean" else 1))
+            painter.drawLine(QPointF(x, band_top - 6), QPointF(x, band_top + band_height + 12))
+            _draw_plot_label(painter, rect, x, marker.value, marker.role)
+
+    def _draw_statistical(self, painter: QPainter, rect: QRect, projection: ResultDisplayProjection) -> None:
+        value_range = _plot_value_range(projection)
+        x_for = lambda value: _plot_x(rect, value_range, value)
+        painter.setPen(QPen(QColor("#111111"), 1))
+        painter.drawRect(rect)
+        mean = next((marker.value for marker in projection.markers if marker.role == "mean"), (value_range[0] + value_range[1]) / 2.0)
+        sigma = max((value_range[1] - value_range[0]) / 9.0, 0.001)
+        base_y = rect.bottom() - 1
+        peak_height = rect.height() * 0.78
+        path = QPainterPath()
+        path.moveTo(rect.left(), base_y)
+        steps = 90
+        for index in range(steps + 1):
+            x = rect.left() + rect.width() * index / steps
+            value = value_range[0] + (value_range[1] - value_range[0]) * index / steps
+            bell = math.exp(-0.5 * ((value - mean) / sigma) ** 2)
+            y = base_y - peak_height * bell
+            path.lineTo(x, y)
+        path.lineTo(rect.right(), base_y)
+        path.closeSubpath()
+        painter.fillPath(path, QColor("#139027"))
+
+        for marker in projection.markers:
+            color = QColor("#111111")
+            width = 2
+            if marker.role == "result":
+                color = QColor("#157f2a") if projection.status != ResultStatus.FAIL else QColor("#b51f1f")
+            if marker.role == "objective":
+                color = QColor("#111111")
+            x = x_for(marker.value)
+            painter.setPen(QPen(color, width))
+            painter.drawLine(QPointF(x, rect.top() - 8), QPointF(x, rect.bottom() + 1))
+            _draw_plot_label(painter, rect, x, marker.value, marker.role)
 
 
 class ContributionBarsWidget(QFrame):
@@ -1047,24 +1160,126 @@ class ContributionBarsWidget(QFrame):
 
     def _bar_row(self, row: ContributionBarRow) -> QWidget:
         widget = QWidget()
+        widget.setObjectName("ContributionRow")
         layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(8)
         label = QLabel(row.label)
         label.setMinimumWidth(250)
+        label.setMaximumWidth(330)
+        label.setWordWrap(False)
         layout.addWidget(label)
         if row.tolerance_box:
             box = QLabel("  ".join(part for part in (row.tolerance_box, row.datum) if part))
             box.setObjectName("GdtBoxPlaceholder")
             layout.addWidget(box)
-        bar = QFrame()
-        bar.setObjectName("ContributionBlueBar")
-        bar.setMinimumWidth(max(2, int(row.percent * 4)))
-        bar.setMaximumWidth(max(2, int(row.percent * 4)))
+        bar = ContributionBarMeter(row.percent)
         layout.addWidget(bar)
         percent = QLabel(f"{row.percent:.1f}%")
+        percent.setMinimumWidth(52)
         layout.addWidget(percent)
         layout.addStretch(1)
         return widget
+
+
+class ContributionBarMeter(QWidget):
+    def __init__(self, percent: float, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ContributionBarMeter")
+        self._percent = max(0.0, min(100.0, float(percent)))
+        self.setMinimumSize(280, 24)
+        self.setMaximumHeight(24)
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        rect = self.rect().adjusted(0, 4, -1, -4)
+        painter.fillRect(rect, QColor("#ffffff"))
+        painter.setPen(QPen(QColor("#d0d0d0"), 1))
+        painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+        width = max(2, int(rect.width() * self._percent / 100.0))
+        painter.fillRect(QRect(rect.left(), rect.top(), width, rect.height()), QColor("#0d83c9"))
+        painter.end()
+
+
+def _warning_pixmap(size: int) -> QPixmap:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    center = pixmap.rect().center()
+    points = [
+        center + QPoint(0, int(-0.38 * size)),
+        center + QPoint(int(-0.40 * size), int(0.34 * size)),
+        center + QPoint(int(0.40 * size), int(0.34 * size)),
+    ]
+    painter.setBrush(QColor("#f2c200"))
+    painter.setPen(QPen(QColor("#a77900"), 1))
+    painter.drawPolygon(*points)
+    painter.setPen(QPen(QColor("#222222"), 2))
+    painter.drawLine(center.x(), center.y() - int(0.15 * size), center.x(), center.y() + int(0.13 * size))
+    painter.drawPoint(center.x(), center.y() + int(0.27 * size))
+    painter.end()
+    return pixmap
+
+
+def _plot_value_range(projection: ResultDisplayProjection) -> tuple[float, float]:
+    values = [marker.value for marker in projection.markers]
+    values.extend([projection.result_lower, projection.result_upper])
+    if projection.objective_lower is not None:
+        values.append(projection.objective_lower)
+    if projection.objective_upper is not None:
+        values.append(projection.objective_upper)
+    lower = min(values) if values else -1.0
+    upper = max(values) if values else 1.0
+    if math.isclose(lower, upper):
+        lower -= 1.0
+        upper += 1.0
+    padding = (upper - lower) * 0.14
+    return lower - padding, upper + padding
+
+
+def _plot_x(rect: QRect, value_range: tuple[float, float], value: float) -> float:
+    lower, upper = value_range
+    ratio = (value - lower) / (upper - lower)
+    ratio = max(0.0, min(1.0, ratio))
+    return rect.left() + ratio * rect.width()
+
+
+def _draw_axis_arrow(painter: QPainter, point: QPointF, *, left: bool) -> None:
+    direction = -1 if left else 1
+    painter.drawLine(point, QPointF(point.x() - direction * 12, point.y() - 5))
+    painter.drawLine(point, QPointF(point.x() - direction * 12, point.y() + 5))
+
+
+def _draw_plot_label(
+    painter: QPainter,
+    rect: QRect,
+    x: float,
+    value: float,
+    role: str,
+) -> None:
+    label = _format_plot_number(value)
+    metrics = painter.fontMetrics()
+    label_width = metrics.horizontalAdvance(label)
+    x_left = int(max(rect.left(), min(rect.right() - label_width, x - label_width / 2)))
+    if role == "result":
+        y = rect.top() - 18
+    elif role == "mean":
+        y = rect.bottom() + metrics.height() + 2
+    else:
+        y = rect.bottom() + metrics.height() + 2
+    painter.setPen(QPen(QColor("#111111"), 1))
+    painter.drawText(x_left, y, label)
+
+
+def _format_plot_number(value: float) -> str:
+    number = float(value)
+    if abs(number) >= 100:
+        return f"{number:.2f}"
+    if abs(number) >= 10:
+        return f"{number:.2f}"
+    return f"{number:.3f}".rstrip("0").rstrip(".")
 
 
 class CadToleranceMainWindow(QMainWindow):
@@ -2609,6 +2824,10 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
             color: #333333;
             font-size: 10px;
         }
+        QWidget#ResultPlotWidget {
+            background: #ffffff;
+            min-height: 150px;
+        }
         QLabel#BadgeGreen {
             min-width: 70px;
             min-height: 56px;
@@ -2655,11 +2874,13 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
         QLabel#NonOneDWarningLabel {
             color: #111111;
             font-weight: 700;
-            padding: 10px;
+            padding: 2px 0;
         }
-        QFrame#ContributionBlueBar {
-            min-height: 22px;
-            background: #0d83c9;
+        QWidget#ContributionRow {
+            min-height: 26px;
+        }
+        QWidget#ContributionBarMeter {
+            background: #ffffff;
         }
         QLabel#GdtBoxPlaceholder {
             border: 1px solid #111111;

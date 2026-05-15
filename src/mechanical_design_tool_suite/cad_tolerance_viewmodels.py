@@ -427,7 +427,10 @@ class CadStackupDetailTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.ToolTipRole:
             notes = []
             if row.shared_with:
-                notes.append("Shared with: " + ", ".join(row.shared_with))
+                notes.append(
+                    "Shared dimension affects: "
+                    + ", ".join(_shared_stackup_label(value) for value in row.shared_with)
+                )
             if _detail_cell_is_editable(row, column):
                 notes.append(_detail_edit_tooltip(row, column))
             if notes:
@@ -604,6 +607,11 @@ def _detail_rows_from_stackup(
     return rows
 
 
+def _shared_stackup_label(value: str) -> str:
+    label = value.removeprefix("stackup_").strip()
+    return label.replace("_", " ") if label else value
+
+
 def _contribution_rows_from_stackup(stackup: StackupRequirement, project: CadToleranceProject) -> list[ContributionBarRow]:
     return [
         ContributionBarRow(item.label, item.percent, item.tolerance_box, item.datum)
@@ -613,7 +621,7 @@ def _contribution_rows_from_stackup(stackup: StackupRequirement, project: CadTol
 
 def _summary_display(row: StackupSummaryRow, column: int) -> Any:
     values = (
-        "X" if row.status == ResultStatus.FAIL else "!" if row.has_warning or row.status == ResultStatus.WARN else "OK",
+        "",
         row.name,
         row.nominal,
         row.objective,
@@ -657,9 +665,7 @@ def _detail_edit_tooltip(row: StackupDetailRow, column: int) -> str:
 def _summary_background(row: StackupSummaryRow) -> QBrush | None:
     if row.status == ResultStatus.FAIL:
         return QBrush(QColor("#f9e2e2"))
-    if row.status == ResultStatus.WARN or row.has_warning:
-        return QBrush(QColor("#fff7d6"))
-    if row.status == ResultStatus.PASS:
+    if row.status in {ResultStatus.PASS, ResultStatus.WARN}:
         return QBrush(QColor("#eef8ee"))
     return None
 
@@ -682,10 +688,38 @@ def _status_icon(status: ResultStatus, warning: bool = False) -> QIcon:
     if status == ResultStatus.FAIL:
         return _circle_icon(QColor("#c91f1f"), "X")
     if warning or status == ResultStatus.WARN:
-        return _triangle_icon(QColor("#f2c200"))
+        return _pass_warning_icon()
     if status == ResultStatus.PASS:
         return _circle_icon(QColor("#168a29"), "")
     return _circle_icon(QColor("#888888"), "")
+
+
+def _pass_warning_icon() -> QIcon:
+    pixmap = QPixmap(22, 18)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    green = QColor("#168a29")
+    painter.setBrush(QBrush(green))
+    painter.setPen(QPen(green.darker(125), 1))
+    painter.drawEllipse(1, 2, 14, 14)
+    painter.setPen(QPen(QColor("#ffffff"), 2))
+    painter.drawLine(4, 9, 7, 12)
+    painter.drawLine(7, 12, 12, 6)
+    yellow = QColor("#f2c200")
+    painter.setBrush(QBrush(yellow))
+    painter.setPen(QPen(yellow.darker(140), 1))
+    points = [
+        pixmap.rect().center() + _point_delta(5, -5),
+        pixmap.rect().center() + _point_delta(-2, 7),
+        pixmap.rect().center() + _point_delta(12, 7),
+    ]
+    painter.drawPolygon(*points)
+    painter.setPen(QPen(QColor("#333333"), 1))
+    painter.drawLine(16, 9, 16, 12)
+    painter.drawPoint(16, 14)
+    painter.end()
+    return QIcon(pixmap)
 
 
 def _stacked_page_icon() -> QIcon:
