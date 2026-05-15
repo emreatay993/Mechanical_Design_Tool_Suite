@@ -17,6 +17,7 @@ from mechanical_design_tool_suite.cad_viewer_api import (
     HighlightRole,
     SnapshotRequest,
     ViewerAnnotation,
+    ViewerAnnotationAnchor,
     ViewerAnnotationRole,
     ViewerSelectionMode,
 )
@@ -105,6 +106,7 @@ class CadViewerApiTest(unittest.TestCase):
                 "mode": "body",
                 "role": "selected_start",
                 "screen_position": [12, 34],
+                "model_position": None,
             },
         )
         self.assertEqual(ViewerSelectionMode.from_shape_kind(ShapeKind.FACE), ViewerSelectionMode.FACE)
@@ -128,6 +130,13 @@ class CadViewerApiTest(unittest.TestCase):
             label_position=(0.48, 0.55),
             shape_ids=("shape_face_1",),
             feature_ids=("feature_face_1",),
+            anchor=ViewerAnnotationAnchor(
+                start_model=(0.0, 0.0, 0.0),
+                end_model=(0.0, 0.0, 10.0),
+                label_model=(1.0, 0.0, 5.0),
+                screen=(0.48, 0.55),
+                source_feature_id="feature_face_1",
+            ),
         )
         request = SnapshotRequest(Path("viewer.png"), annotations=(annotation,))
 
@@ -144,6 +153,17 @@ class CadViewerApiTest(unittest.TestCase):
                 "leader_points": [],
                 "shape_ids": ["shape_face_1"],
                 "feature_ids": ["feature_face_1"],
+                "anchor": {
+                    "kind": "model_space",
+                    "version": 1,
+                    "start_model": [0.0, 0.0, 0.0],
+                    "end_model": [0.0, 0.0, 10.0],
+                    "label_model": [1.0, 0.0, 5.0],
+                    "leader_model_points": [],
+                    "screen": [0.48, 0.55],
+                    "source_feature_id": "feature_face_1",
+                    "metadata": {},
+                },
                 "draggable": True,
             },
         )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
 from typing import Any
 
 from .cad_geometry_api import (
@@ -133,6 +134,7 @@ class StackupWorkflowUpdate:
     highlights: tuple[WorkflowHighlightRequest, ...] = ()
     generated_contributors: tuple[StackupContributor, ...] = ()
     stackup: StackupRequirement | None = None
+    recovery_message: str = ""
 
 
 @dataclass
@@ -153,6 +155,7 @@ class StackupWorkflowState:
     inserted_features: list[FeatureReference] = field(default_factory=list)
     generated_contributors: list[StackupContributor] = field(default_factory=list)
     mating_face_goal: int = 0
+    last_error: str = ""
 
 
 MATE_INFERENCE_WARNING = (
@@ -201,6 +204,7 @@ class GuidedStackupWorkflowController:
         self,
         highlights: tuple[WorkflowHighlightRequest, ...] = (),
         stackup: StackupRequirement | None = None,
+        recovery_message: str = "",
     ) -> StackupWorkflowUpdate:
         return StackupWorkflowUpdate(
             toolbar=self._toolbar_state(),
@@ -208,6 +212,13 @@ class GuidedStackupWorkflowController:
             highlights=highlights,
             generated_contributors=tuple(self.state.generated_contributors),
             stackup=stackup,
+            recovery_message=recovery_message,
+        )
+
+    def recover_from_invalid_selection(self, message: str) -> StackupWorkflowUpdate:
+        self.state.last_error = str(message)
+        return self.current_update(
+            recovery_message=f"{message} {self._selection_filter().prompt}"
         )
 
     def apply_selection(self, selection: CadViewerSelection) -> StackupWorkflowUpdate:
@@ -273,6 +284,8 @@ class GuidedStackupWorkflowController:
             if self.state.active_step == GuidedStackupStep.ANALYSIS_PLANE:
                 self.state.direction = self._direction_from_endpoints()
         elif step == GuidedStackupStep.DIMENSION_LOCATION:
+            if not self.state.annotation_position:
+                self.state.annotation_position = self._annotation_anchor_payload({})
             self.state.active_step = GuidedStackupStep.LOOP_COMPONENTS
         elif step == GuidedStackupStep.LOOP_COMPONENTS:
             self.state.active_step = GuidedStackupStep.MATING_FACES
@@ -289,7 +302,7 @@ class GuidedStackupWorkflowController:
     def set_annotation_position(self, position: dict[str, Any]) -> StackupWorkflowUpdate:
         if self.state.active_step != GuidedStackupStep.DIMENSION_LOCATION:
             raise ValueError("Annotation position can only be set during Dimension Location.")
-        self.state.annotation_position = dict(position)
+        self.state.annotation_position = self._annotation_anchor_payload(position)
         self.state.active_step = GuidedStackupStep.LOOP_COMPONENTS
         return self.current_update()
 
@@ -444,7 +457,7 @@ class GuidedStackupWorkflowController:
             prompt=self._selection_filter().prompt,
             component_count_text=f"{components} Component" + ("" if components == 1 else "s"),
             mating_face_count_text=f"{mating_faces} of {mating_goal} Mating Faces",
-            check_enabled=not terminal,
+            check_enabled=self._can_confirm_current_step() and not terminal,
             cancel_enabled=not terminal,
             add_enabled=self.state.active_step
             in {
@@ -453,6 +466,37 @@ class GuidedStackupWorkflowController:
                 GuidedStackupStep.ADD_FEATURE,
                 GuidedStackupStep.COMPLETE,
             },
+            list_enabled=self._has_workflow_selections()
+            and self.state.active_step != GuidedStackupStep.CANCELED,
+        )
+
+    def _can_confirm_current_step(self) -> bool:
+        step = self.state.active_step
+        if step == GuidedStackupStep.WIDTH_1:
+            return self.state.first_width_feature is not None
+        if step == GuidedStackupStep.WIDTH_2:
+            return self.state.second_width_feature is not None
+        if step == GuidedStackupStep.DIMENSION_LOCATION:
+            return self.state.annotation_plane is not None
+        if step == GuidedStackupStep.LOOP_COMPONENTS:
+            return bool(self.state.loop_features)
+        if step == GuidedStackupStep.MATING_FACES:
+            return len(self.state.constraint_features) >= self._mating_face_goal()
+        if step == GuidedStackupStep.ADD_FEATURE:
+            return bool(self.state.inserted_features)
+        return False
+
+    def _has_workflow_selections(self) -> bool:
+        return any(
+            (
+                self.state.start_feature,
+                self.state.end_feature,
+                self.state.direction_feature,
+                self.state.analysis_plane_feature,
+                self.state.loop_features,
+                self.state.constraint_features,
+                self.state.inserted_features,
+            )
         )
 
     def _feature_from_selection(self, selection: CadViewerSelection) -> FeatureReference:
@@ -471,7 +515,7 @@ class GuidedStackupWorkflowController:
         if selection_filter.feature_kinds and feature.feature_type not in selection_filter.feature_kinds:
             raise ValueError(f"Current step does not accept {feature.feature_type.value} features.")
         expected_owner = selection_filter.expected_owner_part_id
-        if expected_owner and feature.owner_part_id and feature.owner_part_id != expected_owner:
+        if expected_owner and not _feature_owner_matches(feature, expected_owner):
             raise ValueError(f"Expected a selection from {expected_owner}.")
         if selection_filter.requires_direction_alignment and not self._is_direction_aligned(feature):
             raise ValueError("Expected a feature aligned with the stackup direction.")
@@ -532,6 +576,55 @@ class GuidedStackupWorkflowController:
             display_name=feature.name or _shape_name(feature.shape_reference) or "Analysis Plane",
         )
 
+    def _annotation_anchor_payload(self, position: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(position or {})
+        start_model = _feature_model_tuple(self.state.start_feature)
+        end_model = _feature_model_tuple(self.state.end_feature)
+        label_model = (
+            _tuple3(payload.get("label_model"))
+            or _tuple3(payload.get("model"))
+            or _midpoint3(start_model, end_model)
+            or _feature_model_tuple(self.state.analysis_plane_feature)
+            or _vector_tuple(
+                self.state.annotation_plane.origin
+                if self.state.annotation_plane is not None
+                else None
+            )
+        )
+        leader_points = _leader_points(payload.get("leader_model_points"))
+        if not leader_points:
+            leader_points = tuple(
+                point for point in (start_model, end_model) if point is not None
+            )
+        shape_ids, feature_ids = _feature_reference_ids(
+            [
+                self.state.start_feature,
+                self.state.end_feature,
+                self.state.direction_feature,
+                self.state.analysis_plane_feature,
+            ]
+        )
+        screen = _screen_tuple(payload.get("screen"))
+        metadata = dict(payload.get("metadata") or {})
+        metadata.setdefault("source", "guided_stackup_workflow")
+        return {
+            "kind": "model_space",
+            "version": 1,
+            "start_model": list(start_model) if start_model else None,
+            "end_model": list(end_model) if end_model else None,
+            "label_model": list(label_model) if label_model else None,
+            "leader_model_points": [list(point) for point in leader_points],
+            "screen": list(screen) if screen else None,
+            "source_feature_id": (
+                self.state.annotation_plane.source_feature_id
+                if self.state.annotation_plane is not None
+                else ""
+            ),
+            "shape_ids": list(shape_ids),
+            "feature_ids": list(feature_ids),
+            "metadata": metadata,
+        }
+
     def _build_contributors(self) -> list[StackupContributor]:
         selected = [
             *self.state.loop_features,
@@ -559,7 +652,7 @@ class GuidedStackupWorkflowController:
             )
             contributors.append(
                 StackupContributor(
-                    id=new_id("contrib"),
+                    id=_deterministic_contributor_id(self.state.name, index, feature),
                     name=f"Dimension{index}",
                     nominal=abs(nominal),
                     tolerance=template.tolerance if template else DEFAULT_GENERATED_TOLERANCE,
@@ -692,6 +785,103 @@ def _viewer_modes_for(shape_kinds: tuple[ShapeKind, ...]) -> tuple[ViewerSelecti
         if mode is not None and mode not in modes:
             modes.append(mode)
     return tuple(modes)
+
+
+def _deterministic_contributor_id(
+    stackup_name: str,
+    index: int,
+    feature: FeatureReference,
+) -> str:
+    shape_id = feature.shape_reference.id if feature.shape_reference is not None else ""
+    key = "|".join((stackup_name, str(index), feature.id, shape_id))
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
+    return f"contrib_{digest}"
+
+
+def _feature_owner_matches(feature: FeatureReference, expected_owner: str) -> bool:
+    if feature.owner_part_id == expected_owner:
+        return True
+    shape = feature.shape_reference
+    return shape is not None and expected_owner in shape.assembly_path
+
+
+def _feature_reference_ids(
+    features: list[FeatureReference | None],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    shape_ids: list[str] = []
+    feature_ids: list[str] = []
+    for feature in features:
+        if feature is None:
+            continue
+        if feature.id and feature.id not in feature_ids:
+            feature_ids.append(feature.id)
+        shape = feature.shape_reference
+        if shape is not None and shape.id and shape.id not in shape_ids:
+            shape_ids.append(shape.id)
+    return tuple(shape_ids), tuple(feature_ids)
+
+
+def _feature_model_tuple(
+    feature: FeatureReference | None,
+) -> tuple[float, float, float] | None:
+    if feature is None:
+        return None
+    if feature.point is not None:
+        return _vector_tuple(feature.point)
+    shape = feature.shape_reference
+    if shape is None:
+        return None
+    signature = shape.geometric_signature
+    return (
+        _tuple3(signature.get("point"))
+        or _tuple3(signature.get("center"))
+        or _tuple3(signature.get("origin"))
+    )
+
+
+def _vector_tuple(vector: Vector3D | None) -> tuple[float, float, float] | None:
+    if vector is None:
+        return None
+    return (float(vector.x), float(vector.y), float(vector.z))
+
+
+def _tuple3(value: Any) -> tuple[float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    if not all(isinstance(item, (int, float)) for item in value):
+        return None
+    return float(value[0]), float(value[1]), float(value[2])
+
+
+def _screen_tuple(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    if not all(isinstance(item, (int, float)) for item in value):
+        return None
+    x = float(value[0])
+    y = float(value[1])
+    if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+        return None
+    return x, y
+
+
+def _leader_points(value: Any) -> tuple[tuple[float, float, float], ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(point for point in (_tuple3(item) for item in value) if point is not None)
+
+
+def _midpoint3(
+    a: tuple[float, float, float] | None,
+    b: tuple[float, float, float] | None,
+) -> tuple[float, float, float] | None:
+    if a is None or b is None:
+        return a or b
+    return (
+        (a[0] + b[0]) / 2.0,
+        (a[1] + b[1]) / 2.0,
+        (a[2] + b[2]) / 2.0,
+    )
 
 
 def _highlight(feature: FeatureReference, role: HighlightRole) -> WorkflowHighlightRequest:

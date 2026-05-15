@@ -619,6 +619,39 @@ class CadToleranceProjectIoTest(unittest.TestCase):
         self.assertEqual(loaded.cad_documents[0].id, "cad_doc_1")
         self.assertEqual(loaded.stackups[0].contributors[0].id, "contrib_generated_1")
 
+    def test_model_space_annotation_anchor_round_trips_without_runtime_handles(self) -> None:
+        project = _sample_project()
+        anchor = {
+            "kind": "model_space",
+            "version": 1,
+            "start_model": [0.0, 0.0, 0.0],
+            "end_model": [24.0, 0.0, 0.0],
+            "label_model": [12.0, 5.0, 0.0],
+            "leader_model_points": [[0.0, 0.0, 0.0], [24.0, 0.0, 0.0]],
+            "screen": [0.42, 0.58],
+            "source_feature_id": "feature_start",
+            "shape_ids": ["shape_start_face", "shape_end_cylinder"],
+            "feature_ids": ["feature_start", "feature_end"],
+            "metadata": {"source": "test"},
+        }
+        project.stackups[0].annotation_position = dict(anchor)
+        project.snapshots[0].annotation_positions = {
+            "stackup_bushing_alignment": dict(anchor)
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = save_project(project, Path(directory) / "anchors.tolproj")
+            loaded = load_project(path)
+
+        loaded_anchor = loaded.stackups[0].annotation_position
+        self.assertEqual(loaded_anchor["kind"], "model_space")
+        self.assertEqual(loaded_anchor["label_model"], [12.0, 5.0, 0.0])
+        self.assertEqual(
+            loaded.snapshots[0].annotation_positions["stackup_bushing_alignment"],
+            anchor,
+        )
+        _assert_no_runtime_handles(self, loaded.to_dict())
+
     def test_schema_v1_migration_hook_normalizes_to_current_schema(self) -> None:
         legacy = {
             "schema_version": 1,

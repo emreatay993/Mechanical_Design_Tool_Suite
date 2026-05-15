@@ -351,11 +351,9 @@ if _IMPORT_ERROR is None:
             annotation: ViewerAnnotation,
         ) -> tuple[Any, ...]:
             try:
-                start = self._point_from_normalized(annotation.start)
-                end = self._point_from_normalized(annotation.end)
-                label = self._point_from_normalized(
-                    annotation.label_position or _annotation_midpoint(annotation)
-                )
+                start = self._annotation_start_point(annotation)
+                end = self._annotation_end_point(annotation)
+                label = self._annotation_label_point(annotation)
                 color = _quantity_color(_annotation_rgb(annotation.role))
                 if start.Distance(end) <= 1.0e-7:
                     return (self._text_label(annotation.label, label, color),)
@@ -389,6 +387,32 @@ if _IMPORT_ERROR is None:
                     )
                 except Exception:
                     return ()
+
+        def _annotation_start_point(self, annotation: ViewerAnnotation) -> Any:
+            anchor = annotation.anchor
+            if anchor is not None and anchor.start_model is not None:
+                return _gp_point(anchor.start_model)
+            if anchor is not None and anchor.leader_model_points:
+                return _gp_point(anchor.leader_model_points[0])
+            return self._point_from_normalized(annotation.start)
+
+        def _annotation_end_point(self, annotation: ViewerAnnotation) -> Any:
+            anchor = annotation.anchor
+            if anchor is not None and anchor.end_model is not None:
+                return _gp_point(anchor.end_model)
+            if anchor is not None and len(anchor.leader_model_points) >= 2:
+                return _gp_point(anchor.leader_model_points[-1])
+            return self._point_from_normalized(annotation.end)
+
+        def _annotation_label_point(self, annotation: ViewerAnnotation) -> Any:
+            anchor = annotation.anchor
+            if anchor is not None and anchor.label_model is not None:
+                return _gp_point(anchor.label_model)
+            if anchor is not None and anchor.end_model is not None:
+                return _gp_point(anchor.end_model)
+            return self._point_from_normalized(
+                annotation.label_position or _annotation_midpoint(annotation)
+            )
 
         def _point_from_normalized(self, point: tuple[float, float]) -> Any:
             view = self._display.View  # type: ignore[union-attr]
@@ -553,6 +577,7 @@ if _IMPORT_ERROR is None:
                         feature_reference=feature_ref,
                         mode=mode,
                         screen_position=screen_position,
+                        model_position=_selection_model_position(feature_ref),
                     )
                 )
             self._last_selection = selections
@@ -596,6 +621,10 @@ def _annotation_midpoint(annotation: ViewerAnnotation) -> tuple[float, float]:
     )
 
 
+def _gp_point(point: tuple[float, float, float]) -> Any:
+    return gp_Pnt(float(point[0]), float(point[1]), float(point[2]))  # type: ignore[misc]
+
+
 def _annotation_rgb(role: ViewerAnnotationRole) -> tuple[float, float, float]:
     role = ViewerAnnotationRole(role)
     if role == ViewerAnnotationRole.STACKUP:
@@ -615,6 +644,18 @@ def _screen_position(args: tuple[Any, ...]) -> tuple[int, int] | None:
     if len(args) >= 2 and all(isinstance(value, int) for value in args[:2]):
         return int(args[0]), int(args[1])
     return None
+
+
+def _selection_model_position(
+    feature_ref: FeatureReference | None,
+) -> tuple[float, float, float] | None:
+    if feature_ref is None or feature_ref.point is None:
+        return None
+    return (
+        float(feature_ref.point.x),
+        float(feature_ref.point.y),
+        float(feature_ref.point.z),
+    )
 
 
 def _highlight_style(role: HighlightRole) -> tuple[tuple[float, float, float], float]:

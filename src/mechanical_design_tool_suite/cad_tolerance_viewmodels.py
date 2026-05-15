@@ -124,6 +124,7 @@ class ContributionBarRow:
     percent: float
     tolerance_box: str = ""
     datum: str = ""
+    contributor_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -615,7 +616,13 @@ def _shared_stackup_label(value: str) -> str:
 
 def _contribution_rows_from_stackup(stackup: StackupRequirement, project: CadToleranceProject) -> list[ContributionBarRow]:
     return [
-        ContributionBarRow(item.label, item.percent, item.tolerance_box, item.datum)
+        ContributionBarRow(
+            item.label,
+            item.percent,
+            item.tolerance_box,
+            item.datum,
+            item.contributor_id,
+        )
         for item in build_contribution_projection(stackup, project=project)
     ]
 

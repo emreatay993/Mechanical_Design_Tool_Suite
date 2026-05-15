@@ -109,6 +109,7 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
 
         self.assertEqual(update.toolbar.step_labels, GUIDED_STACKUP_STEP_LABELS)
         self.assertEqual(update.toolbar.active_label, "Selection 1")
+        self.assertFalse(update.toolbar.check_enabled)
         self.assertEqual(update.selection_filter.prompt, "Select a face, edge or vertex")
         self.assertEqual(
             update.selection_filter.viewer_mode_set,
@@ -117,6 +118,7 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
 
         update = controller.apply_selection(_selection(self.features["start"]))
         self.assertEqual(update.toolbar.active_label, "Width 1")
+        self.assertTrue(update.toolbar.check_enabled)
         self.assertEqual(update.highlights[0].role, HighlightRole.SELECTED_START)
 
         update = controller.confirm_current_step()
@@ -140,10 +142,11 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
         self.assertEqual(update.highlights[0].role, HighlightRole.ANALYSIS_PLANE)
 
         update = controller.set_annotation_position(
-            {"screen": [420, 580], "model": [1.0, 2.0, 3.0]}
+            {"screen": [0.42, 0.58], "model": [1.0, 2.0, 3.0]}
         )
         self.assertEqual(controller.state.active_step, GuidedStackupStep.LOOP_COMPONENTS)
         self.assertIn("Select the component", update.selection_filter.prompt)
+        self.assertTrue(update.toolbar.list_enabled)
 
         controller.set_mating_face_goal(2)
         update = controller.apply_selection(_selection(self.features["loop_component"]))
@@ -170,10 +173,22 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
             [feature.id for feature in stackup.constraint_features],
             ["feature_mating_1", "feature_mating_2"],
         )
-        self.assertEqual(stackup.annotation_position["screen"], [420, 580])
+        self.assertEqual(stackup.annotation_position["kind"], "model_space")
+        self.assertEqual(stackup.annotation_position["screen"], [0.42, 0.58])
+        self.assertEqual(stackup.annotation_position["label_model"], [1.0, 2.0, 3.0])
+        self.assertEqual(stackup.annotation_position["start_model"], [0.0, 0.0, 0.0])
+        self.assertEqual(stackup.annotation_position["end_model"], [0.0, 0.0, 10.0])
         self.assertEqual(stackup.annotation_plane.source_feature_id, "feature_analysis_plane")
         self.assertEqual(stackup.direction.to_list(), [0.0, 0.0, 1.0])
         self.assertEqual([row.name for row in stackup.contributors], ["Dimension1", "Dimension2", "Dimension3"])
+        self.assertEqual(
+            [row.id for row in stackup.contributors],
+            [
+                "contrib_6aada3f05d",
+                "contrib_cae923754e",
+                "contrib_b31c887335",
+            ],
+        )
         self.assertTrue(
             all(row.tolerance == DEFAULT_GENERATED_TOLERANCE for row in stackup.contributors)
         )
@@ -219,7 +234,29 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
         self.assertEqual(inserted_rows[0].shared_with, ("stackup_overall_height",))
         self.assertEqual(
             workspace.annotation_position(stackup.id),
-            {"screen": [420, 580], "model": [1.0, 2.0, 3.0]},
+            {
+                "kind": "model_space",
+                "version": 1,
+                "start_model": [0.0, 0.0, 0.0],
+                "end_model": [0.0, 0.0, 10.0],
+                "label_model": [1.0, 2.0, 3.0],
+                "leader_model_points": [[0.0, 0.0, 0.0], [0.0, 0.0, 10.0]],
+                "screen": [0.42, 0.58],
+                "source_feature_id": "feature_analysis_plane",
+                "shape_ids": [
+                    "shape_start",
+                    "shape_end",
+                    "shape_direction",
+                    "shape_analysis_plane",
+                ],
+                "feature_ids": [
+                    "feature_start",
+                    "feature_end",
+                    "feature_direction",
+                    "feature_analysis_plane",
+                ],
+                "metadata": {"source": "guided_stackup_workflow"},
+            },
         )
 
     def test_reused_part_dimension_scheme_is_preserved_for_added_feature(self) -> None:
@@ -263,6 +300,10 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "aligned with the stackup direction"):
             controller.apply_selection(_selection(self.features["perpendicular_mating"]))
+        self.assertEqual(controller.state.active_step, GuidedStackupStep.MATING_FACES)
+        self.assertEqual(controller.state.constraint_features, [])
+        recovery = controller.recover_from_invalid_selection("Expected a feature aligned with the stackup direction.")
+        self.assertIn("Select a face, edge or vertex from axle_support:2", recovery.recovery_message)
 
     def test_gui_starts_workflow_updates_toolbar_and_uses_viewer_filters(self) -> None:
         viewer = FakeViewer()
@@ -285,6 +326,7 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
 
         self.assertEqual(prompt.text(), "Select a face, edge or vertex")
         self.assertTrue(first_step.isChecked())
+        self.assertFalse(window.findChild(QPushButton, "GuidedControlOK").isEnabled())
         self.assertEqual(
             viewer.selection_modes_history[-1],
             {ViewerSelectionMode.FACE, ViewerSelectionMode.EDGE, ViewerSelectionMode.VERTEX},
@@ -294,11 +336,16 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
         self.app.processEvents()
 
         self.assertTrue(second_step.isChecked())
+        self.assertTrue(window.findChild(QPushButton, "GuidedControlOK").isEnabled())
         self.assertEqual(viewer.highlights[-1], ("shape_start", HighlightRole.SELECTED_START))
 
         stackup_id = "stackup_annotation"
         window.workspace.selected_stackup_id = stackup_id
-        window.workspace.annotation_positions_by_stackup_id[stackup_id] = {"screen": [0.25, 0.75]}
+        window.workspace.annotation_positions_by_stackup_id[stackup_id] = {
+            "kind": "viewport",
+            "version": 1,
+            "screen": [0.25, 0.75],
+        }
         with tempfile.TemporaryDirectory() as directory:
             snapshot_path = Path(directory) / "snapshot.png"
             snapshot = viewer.capture_snapshot(
@@ -312,7 +359,10 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
             )
 
         self.assertEqual(snapshot.visible_stackup_ids, [stackup_id])
-        self.assertEqual(snapshot.annotation_positions[stackup_id], {"screen": [0.25, 0.75]})
+        self.assertEqual(
+            snapshot.annotation_positions[stackup_id],
+            {"kind": "viewport", "version": 1, "screen": [0.25, 0.75]},
+        )
 
     def test_gui_toolbar_controls_drive_full_workflow_and_add_feature(self) -> None:
         viewer = FakeViewer()
@@ -339,20 +389,38 @@ class GuidedStackupWorkflowTest(unittest.TestCase):
         window.handle_viewer_selections([_selection(self.features["analysis_plane"])])
         window.viewport_host.annotationMoved.emit(
             "workflow_stackup_dimension",
-            {"screen": [0.36, 0.64]},
+            {"kind": "viewport", "version": 1, "screen": [0.36, 0.64]},
         )
         window.handle_viewer_selections([_selection(self.features["loop_component"])])
         ok_button.click()
+        window.handle_viewer_selections([_selection(self.features["perpendicular_mating"])])
+        self.assertIn("Expected a feature aligned", window.statusBar().currentMessage())
+        self.assertEqual(window.workflow_controller.state.constraint_features, [])
         window.handle_viewer_selections([_selection(self.features["mating_1"])])
         window.handle_viewer_selections([_selection(self.features["mating_2"])])
         ok_button.click()
         self.app.processEvents()
 
         stackup = self.project.stackups[-1]
-        self.assertEqual(stackup.annotation_position, {"screen": [0.36, 0.64]})
+        self.assertEqual(stackup.annotation_position["kind"], "model_space")
+        self.assertEqual(stackup.annotation_position["screen"], [0.36, 0.64])
+        self.assertEqual(stackup.annotation_position["start_model"], [0.0, 0.0, 0.0])
+        self.assertEqual(stackup.annotation_position["end_model"], [0.0, 0.0, 10.0])
         self.assertEqual([row.name for row in stackup.contributors], ["Dimension1", "Dimension2", "Dimension3"])
         self.assertTrue(window.add_feature_action.isEnabled())
         self.assertTrue(window.generate_report_action.isEnabled())
+
+        first_dimension = next(
+            index
+            for index, row in enumerate(window.detail_model.rows)
+            if row.source_feature_id == "feature_loop_component"
+        )
+        window.detail_table.selectRow(first_dimension)
+        self.app.processEvents()
+        self.assertEqual(
+            viewer.highlights[-1],
+            ("shape_loop_component", HighlightRole.CROSS_HIGHLIGHT),
+        )
 
         list_button.click()
         self.assertIn("1 Components", window.statusBar().currentMessage())
@@ -378,7 +446,7 @@ def _advance_to_loop(
     controller.confirm_current_step()
     controller.apply_selection(_selection(features["direction"]))
     controller.apply_selection(_selection(features["analysis_plane"]))
-    controller.set_annotation_position({"screen": [420, 580], "model": [1.0, 2.0, 3.0]})
+    controller.set_annotation_position({"screen": [0.42, 0.58], "model": [1.0, 2.0, 3.0]})
 
 
 def _workflow_fixture() -> dict[str, object]:

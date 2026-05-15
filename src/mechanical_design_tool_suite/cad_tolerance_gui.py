@@ -129,6 +129,7 @@ from .cad_viewer_api import (
     SnapshotRequest,
     StandardView,
     ViewerAnnotation,
+    ViewerAnnotationAnchor,
     ViewerAnnotationRole,
     ViewerSelectionMode,
 )
@@ -1045,16 +1046,23 @@ class CadViewportHost(QFrame):
             return
         normalized = (float(screen[0]), float(screen[1]))
         updated = []
+        moved_payload: dict[str, Any] = {"screen": [normalized[0], normalized[1]]}
         for annotation in self._annotations:
             if annotation.id == annotation_id:
-                updated.append(replace(annotation, label_position=normalized))
+                anchor = annotation.anchor
+                if anchor is not None:
+                    anchor = anchor.with_screen(normalized)
+                    moved_payload = anchor.to_dict()
+                updated.append(
+                    replace(annotation, label_position=normalized, anchor=anchor)
+                )
             else:
                 updated.append(annotation)
         self._annotations = tuple(updated)
         if hasattr(self.viewer, "set_annotations"):
             self.viewer.set_annotations(self._annotations)  # type: ignore[attr-defined]
         self.annotation_canvas.set_annotations(self._annotations)
-        self.annotationMoved.emit(annotation_id, {"screen": [normalized[0], normalized[1]]})
+        self.annotationMoved.emit(annotation_id, moved_payload)
 
     def _viewer_uses_native_annotations(self) -> bool:
         return bool(getattr(self.viewer, "uses_native_annotations", False))
@@ -1146,6 +1154,8 @@ def _point_from_normalized(size: QSize, point: tuple[float, float]) -> QPointF:
 def _annotation_label_point(size: QSize, annotation: ViewerAnnotation) -> QPointF:
     if annotation.label_position is not None:
         return _point_from_normalized(size, annotation.label_position)
+    if annotation.anchor is not None and annotation.anchor.screen is not None:
+        return _point_from_normalized(size, annotation.anchor.screen)
     start = _point_from_normalized(size, annotation.start)
     end = _point_from_normalized(size, annotation.end)
     side = 0.055 if annotation.role == ViewerAnnotationRole.STACKUP else 0.04
@@ -1440,7 +1450,27 @@ class ResultPlotWidget(QWidget):
             _draw_plot_label(painter, rect, x, marker.value, marker.role)
 
 
+class _ContributionRowWidget(QWidget):
+    selected = pyqtSignal(str)
+
+    def __init__(self, contributor_id: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.contributor_id = contributor_id
+        if contributor_id:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.setProperty("contributorId", contributor_id)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
+        if self.contributor_id and event.button() == Qt.MouseButton.LeftButton:
+            self.selected.emit(self.contributor_id)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 class ContributionBarsWidget(QFrame):
+    contributorSelected = pyqtSignal(str)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("ContributionBarsWidget")
@@ -1465,8 +1495,9 @@ class ContributionBarsWidget(QFrame):
             insert_at += 1
 
     def _bar_row(self, row: ContributionBarRow) -> QWidget:
-        widget = QWidget()
+        widget = _ContributionRowWidget(row.contributor_id)
         widget.setObjectName("ContributionRow")
+        widget.selected.connect(self.contributorSelected.emit)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 2, 0, 2)
         layout.setSpacing(8)
@@ -2129,6 +2160,9 @@ class CadToleranceMainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.summary_table.doubleClicked.connect(lambda index: self._open_summary_index(index.row()))
         self.summary_table.activated.connect(lambda index: self._open_summary_index(index.row()))
+        self.summary_table.selectionModel().currentRowChanged.connect(
+            self._handle_summary_row_changed
+        )
         self.detail_model.editAccepted.connect(self.statusBar().showMessage)
         self.detail_model.editRejected.connect(self.statusBar().showMessage)
         self.detail_table.selectionModel().currentRowChanged.connect(
@@ -2142,6 +2176,12 @@ class CadToleranceMainWindow(QMainWindow):
         self.viewport_host.workflowCancelRequested.connect(self._cancel_workflow)
         self.viewport_host.workflowAddFeatureRequested.connect(self._start_add_feature_flow)
         self.viewport_host.workflowListRequested.connect(self._show_workflow_selection_list)
+        self.detail_contributions.contributorSelected.connect(
+            self._handle_contributor_selected
+        )
+        self.summary_contributions.contributorSelected.connect(
+            self._handle_contributor_selected
+        )
         selection_signal = getattr(self.viewer, "selection_changed", None)
         if selection_signal is not None and hasattr(selection_signal, "connect"):
             selection_signal.connect(self.handle_viewer_selections)
@@ -2199,17 +2239,42 @@ class CadToleranceMainWindow(QMainWindow):
         if shape_ref is not None:
             self._cross_highlight_shape(shape_ref)
 
+    def _handle_summary_row_changed(self, current, _previous) -> None:
+        if not current.isValid():
+            return
+        if current.row() < 0 or current.row() >= self.summary_model.rowCount():
+            return
+        summary = self.summary_model.row_at(current.row())
+        stackup = _stackup_by_id(self.project, summary.stackup_id)
+        if stackup is None:
+            return
+        self.workspace.select_stackup(stackup.id)
+        self._sync_viewer_annotations(stackup.id)
+        shape_ref = _first_stackup_shape_reference(stackup)
+        if shape_ref is not None:
+            self._cross_highlight_shape(shape_ref)
+
+    def _handle_contributor_selected(self, contributor_id: str) -> None:
+        stackup = _stackup_by_id(self.project, self.workspace.selected_stackup_id)
+        if stackup is None:
+            return
+        contributor = _contributor_by_id(stackup, contributor_id)
+        if contributor is None or contributor.source_feature is None:
+            return
+        shape_ref = contributor.source_feature.shape_reference
+        if shape_ref is not None:
+            self._cross_highlight_shape(shape_ref)
+        for row_index, row in enumerate(self.detail_model.rows):
+            if row.contributor_id == contributor_id:
+                self.detail_table.selectRow(row_index)
+                break
+
     def _handle_annotation_moved(self, _annotation_id: str, position: object) -> None:
         if not isinstance(position, dict):
             return
-        screen = position.get("screen")
-        if (
-            not isinstance(screen, list)
-            or len(screen) != 2
-            or not all(isinstance(value, (int, float)) for value in screen)
-        ):
+        stored_position = _clean_annotation_payload(position)
+        if not stored_position:
             return
-        stored_position = {"screen": [float(screen[0]), float(screen[1])]}
         if self.workflow_controller is not None:
             try:
                 update = self.workflow_controller.set_annotation_position(stored_position)
@@ -2288,7 +2353,12 @@ class CadToleranceMainWindow(QMainWindow):
         state = self.workflow_controller.state
         if state.start_feature is None and state.end_feature is None:
             return ()
-        position = _screen_position_tuple(state.annotation_position) or (0.58, 0.62)
+        anchor = _viewer_anchor_from_position(state.annotation_position)
+        position = (
+            _screen_position_tuple(state.annotation_position)
+            or (anchor.screen if anchor else None)
+            or (0.58, 0.62)
+        )
         shape_ids, feature_ids = _feature_reference_ids(
             [state.start_feature, state.end_feature, state.direction_feature]
         )
@@ -2302,6 +2372,7 @@ class CadToleranceMainWindow(QMainWindow):
                 label_position=position,
                 shape_ids=shape_ids,
                 feature_ids=feature_ids,
+                anchor=anchor,
             ),
         )
 
@@ -2403,7 +2474,8 @@ class CadToleranceMainWindow(QMainWindow):
         try:
             update = self.workflow_controller.apply_selection(selections[0])
         except ValueError as exc:
-            self.statusBar().showMessage(str(exc))
+            recovery = self.workflow_controller.recover_from_invalid_selection(str(exc))
+            self._apply_workflow_update(recovery)
             return
         self._apply_workflow_update(update)
 
@@ -2416,7 +2488,8 @@ class CadToleranceMainWindow(QMainWindow):
         for highlight in update.highlights:
             if hasattr(self.viewer, "highlight"):
                 self.viewer.highlight(highlight.shape_reference, highlight.role)  # type: ignore[attr-defined]
-        self.statusBar().showMessage(update.selection_filter.prompt)
+        message = update.recovery_message or update.selection_filter.prompt
+        self.statusBar().showMessage(message)
         if update.stackup is None:
             self.viewport_host.set_annotations(self._workflow_annotations())
         if update.stackup is not None:
@@ -3010,6 +3083,13 @@ def _snapshot_reference_ids(stackup: StackupRequirement | None) -> tuple[tuple[s
     return tuple(shape_ids), tuple(feature_ids)
 
 
+def _first_stackup_shape_reference(stackup: StackupRequirement):
+    for feature in _stackup_features(stackup):
+        if feature.shape_reference is not None:
+            return feature.shape_reference
+    return None
+
+
 def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -3098,7 +3178,12 @@ def _viewer_annotations_for_stackup(
     if stackup is None:
         return ()
     shape_ids, feature_ids = _snapshot_reference_ids(stackup)
-    position = _screen_position_tuple(stackup.annotation_position) or (0.58, 0.56)
+    stackup_anchor = _stackup_viewer_anchor(stackup)
+    position = (
+        _screen_position_tuple(stackup.annotation_position)
+        or (stackup_anchor.screen if stackup_anchor else None)
+        or (0.58, 0.56)
+    )
     annotations = [
         ViewerAnnotation(
             id=f"{stackup.id}:stackup",
@@ -3109,10 +3194,15 @@ def _viewer_annotations_for_stackup(
             label_position=position,
             shape_ids=shape_ids,
             feature_ids=feature_ids,
+            anchor=stackup_anchor,
         )
     ]
     for index, contributor in enumerate(stackup.contributors[:4], start=1):
         x = min(0.86, 0.64 + index * 0.055)
+        contributor_anchor = _contributor_viewer_anchor(
+            contributor,
+            screen=(min(0.94, x + 0.045), 0.44 + index * 0.065),
+        )
         annotations.append(
             ViewerAnnotation(
                 id=f"{stackup.id}:{contributor.id}",
@@ -3132,6 +3222,25 @@ def _viewer_annotations_for_stackup(
                     if contributor.source_feature is not None
                     else ()
                 ),
+                anchor=contributor_anchor,
+            )
+        )
+    for index, warning in enumerate(stackup.warnings[:3], start=1):
+        warning_anchor = _warning_viewer_anchor(stackup, warning, index)
+        annotations.append(
+            ViewerAnnotation(
+                id=f"{stackup.id}:{warning.id}",
+                label="!",
+                role=ViewerAnnotationRole.WARNING,
+                start=(0.36 + index * 0.035, 0.22),
+                end=(0.36 + index * 0.035, 0.28),
+                label_position=warning_anchor.screen
+                if warning_anchor and warning_anchor.screen
+                else (0.34 + index * 0.04, 0.18),
+                shape_ids=tuple(_shape_ids_for_warning(stackup, warning.feature_ids)),
+                feature_ids=tuple(warning.feature_ids),
+                anchor=warning_anchor,
+                draggable=False,
             )
         )
     return tuple(annotations)
@@ -3162,6 +3271,163 @@ def _screen_position_tuple(position: dict[str, Any]) -> tuple[float, float] | No
     ):
         return (max(0.0, min(1.0, float(screen[0]))), max(0.0, min(1.0, float(screen[1]))))
     return None
+
+
+def _clean_annotation_payload(position: dict[str, Any]) -> dict[str, Any]:
+    anchor = ViewerAnnotationAnchor.from_dict(position)
+    if anchor is not None:
+        return anchor.to_dict()
+    screen = _screen_position_tuple(position)
+    if screen is None:
+        return {}
+    return {"kind": "viewport", "version": 1, "screen": [screen[0], screen[1]]}
+
+
+def _viewer_anchor_from_position(position: dict[str, Any]) -> ViewerAnnotationAnchor | None:
+    if not isinstance(position, dict):
+        return None
+    return ViewerAnnotationAnchor.from_dict(position)
+
+
+def _stackup_viewer_anchor(stackup: StackupRequirement) -> ViewerAnnotationAnchor:
+    persisted = _viewer_anchor_from_position(stackup.annotation_position)
+    start_model = (persisted.start_model if persisted else None) or _feature_model_point(stackup.start_feature)
+    end_model = (persisted.end_model if persisted else None) or _feature_model_point(stackup.end_feature)
+    label_model = (
+        (persisted.label_model if persisted else None)
+        or _midpoint3(start_model, end_model)
+        or _feature_model_point(stackup.start_feature)
+    )
+    leader_points = persisted.leader_model_points if persisted else ()
+    if not leader_points:
+        leader_points = tuple(point for point in (start_model, end_model) if point is not None)
+    return ViewerAnnotationAnchor(
+        start_model=start_model,
+        end_model=end_model,
+        label_model=label_model,
+        leader_model_points=leader_points,
+        screen=(persisted.screen if persisted else _screen_position_tuple(stackup.annotation_position)),
+        source_feature_id=stackup.annotation_plane.source_feature_id,
+        metadata={"source": "stackup_requirement", "stackup_id": stackup.id},
+    )
+
+
+def _contributor_viewer_anchor(
+    contributor: StackupContributor,
+    *,
+    screen: tuple[float, float],
+) -> ViewerAnnotationAnchor | None:
+    point = _feature_model_point(contributor.source_feature)
+    return ViewerAnnotationAnchor(
+        start_model=point,
+        end_model=point,
+        label_model=point,
+        screen=screen,
+        source_feature_id=contributor.source_feature.id
+        if contributor.source_feature is not None
+        else "",
+        metadata={"source": "stackup_contributor", "contributor_id": contributor.id},
+    )
+
+
+def _warning_viewer_anchor(
+    stackup: StackupRequirement,
+    warning,
+    index: int,
+) -> ViewerAnnotationAnchor:
+    feature = _first_warning_feature(stackup, warning.feature_ids)
+    point = _feature_model_point(feature) or _feature_model_point(stackup.start_feature)
+    screen = (min(0.92, 0.34 + index * 0.04), 0.18)
+    return ViewerAnnotationAnchor(
+        start_model=point,
+        end_model=point,
+        label_model=point,
+        screen=screen,
+        source_feature_id=feature.id if feature is not None else "",
+        metadata={"source": "stackup_warning", "warning_id": warning.id},
+    )
+
+
+def _first_warning_feature(
+    stackup: StackupRequirement,
+    feature_ids: list[str],
+) -> FeatureReference | None:
+    wanted = set(feature_ids)
+    for feature in _stackup_features(stackup):
+        shape = feature.shape_reference
+        if feature.id in wanted or (shape is not None and shape.id in wanted):
+            return feature
+    return None
+
+
+def _shape_ids_for_warning(
+    stackup: StackupRequirement,
+    feature_ids: list[str],
+) -> list[str]:
+    wanted = set(feature_ids)
+    shape_ids: list[str] = []
+    for feature in _stackup_features(stackup):
+        shape = feature.shape_reference
+        if feature.id in wanted and shape is not None and shape.id not in shape_ids:
+            shape_ids.append(shape.id)
+    return shape_ids
+
+
+def _stackup_features(stackup: StackupRequirement) -> list[FeatureReference]:
+    features: list[FeatureReference] = []
+
+    def collect(feature: FeatureReference | None) -> None:
+        if feature is not None and all(existing.id != feature.id for existing in features):
+            features.append(feature)
+
+    collect(stackup.start_feature)
+    collect(stackup.end_feature)
+    for feature in stackup.loop_features:
+        collect(feature)
+    for feature in stackup.constraint_features:
+        collect(feature)
+    for contributor in stackup.contributors:
+        collect(contributor.source_feature)
+    return features
+
+
+def _feature_model_point(
+    feature: FeatureReference | None,
+) -> tuple[float, float, float] | None:
+    if feature is None:
+        return None
+    if feature.point is not None:
+        return (feature.point.x, feature.point.y, feature.point.z)
+    shape = feature.shape_reference
+    if shape is None:
+        return None
+    signature = shape.geometric_signature
+    return (
+        _tuple3(signature.get("point"))
+        or _tuple3(signature.get("center"))
+        or _tuple3(signature.get("origin"))
+    )
+
+
+def _tuple3(value: Any) -> tuple[float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    if not all(isinstance(item, (int, float)) for item in value):
+        return None
+    return float(value[0]), float(value[1]), float(value[2])
+
+
+def _midpoint3(
+    a: tuple[float, float, float] | None,
+    b: tuple[float, float, float] | None,
+) -> tuple[float, float, float] | None:
+    if a is None or b is None:
+        return a or b
+    return (
+        (a[0] + b[0]) / 2.0,
+        (a[1] + b[1]) / 2.0,
+        (a[2] + b[2]) / 2.0,
+    )
 
 
 def _summary_by_id(rows: list[StackupSummaryRow], stackup_id: str) -> StackupSummaryRow | None:

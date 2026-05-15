@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -105,10 +105,11 @@ class CadCameraState:
 
 @dataclass(frozen=True)
 class ViewerAnnotation:
-    """Snapshot-ready 2D annotation overlay anchored to the viewer widget.
+    """Snapshot-ready annotation overlay with optional model-space anchors.
 
-    Coordinates are normalized viewport fractions so the overlay can survive
-    resize, snapshot, and report capture without persisting Qt or OCCT handles.
+    ``start``/``end``/``label_position`` are normalized viewport fallbacks for
+    the lightweight Qt overlay. ``anchor`` carries the model-space points used
+    by native CAD viewers and persisted snapshot metadata.
     """
 
     id: str
@@ -120,6 +121,7 @@ class ViewerAnnotation:
     leader_points: tuple[tuple[float, float], ...] = ()
     shape_ids: tuple[str, ...] = ()
     feature_ids: tuple[str, ...] = ()
+    anchor: "ViewerAnnotationAnchor | None" = None
     draggable: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -139,7 +141,87 @@ class ViewerAnnotation:
             ],
             "shape_ids": list(self.shape_ids),
             "feature_ids": list(self.feature_ids),
+            "anchor": self.anchor.to_dict() if self.anchor else None,
             "draggable": self.draggable,
+        }
+
+
+@dataclass(frozen=True)
+class ViewerAnnotationAnchor:
+    """Serializable model-space anchor for CAD callouts.
+
+    The anchor is intentionally kernel-neutral: it stores only coordinates,
+    serializable ids, and small metadata. The screen coordinate is a normalized
+    fallback for the Qt overlay and for preserving a user's dragged label
+    placement when no reverse screen-to-model projection is available.
+    """
+
+    start_model: tuple[float, float, float] | None = None
+    end_model: tuple[float, float, float] | None = None
+    label_model: tuple[float, float, float] | None = None
+    leader_model_points: tuple[tuple[float, float, float], ...] = ()
+    screen: tuple[float, float] | None = None
+    source_feature_id: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "ViewerAnnotationAnchor | None":
+        if not isinstance(data, Mapping):
+            return None
+        payload = data.get("anchor")
+        if isinstance(payload, Mapping):
+            data = payload
+        model = _tuple3(data.get("model"))
+        start = _tuple3(data.get("start_model")) or model
+        end = _tuple3(data.get("end_model")) or model
+        label = _tuple3(data.get("label_model")) or model
+        leader_points = tuple(
+            point
+            for point in (_tuple3(item) for item in data.get("leader_model_points", ()))
+            if point is not None
+        )
+        screen = _tuple2(data.get("screen"))
+        if not any((start, end, label, leader_points, screen)):
+            return None
+        return cls(
+            start_model=start,
+            end_model=end,
+            label_model=label,
+            leader_model_points=leader_points,
+            screen=screen,
+            source_feature_id=str(data.get("source_feature_id") or ""),
+            metadata=dict(data.get("metadata") or {}),
+        )
+
+    def with_screen(self, screen: tuple[float, float]) -> "ViewerAnnotationAnchor":
+        return ViewerAnnotationAnchor(
+            start_model=self.start_model,
+            end_model=self.end_model,
+            label_model=self.label_model,
+            leader_model_points=self.leader_model_points,
+            screen=(_clamp01(screen[0]), _clamp01(screen[1])),
+            source_feature_id=self.source_feature_id,
+            metadata=dict(self.metadata),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        has_model = any((self.start_model, self.end_model, self.label_model, self.leader_model_points))
+        return {
+            "kind": "model_space" if has_model else "viewport",
+            "version": 1,
+            "start_model": _list3(self.start_model),
+            "end_model": _list3(self.end_model),
+            "label_model": _list3(self.label_model),
+            "leader_model_points": [
+                [float(value) for value in point] for point in self.leader_model_points
+            ],
+            "screen": (
+                [_clamp01(self.screen[0]), _clamp01(self.screen[1])]
+                if self.screen
+                else None
+            ),
+            "source_feature_id": self.source_feature_id,
+            "metadata": dict(self.metadata),
         }
 
 
@@ -152,6 +234,7 @@ class CadViewerSelection:
     mode: ViewerSelectionMode | None = None
     role: HighlightRole | None = None
     screen_position: tuple[int, int] | None = None
+    model_position: tuple[float, float, float] | None = None
 
     @property
     def shape_id(self) -> str:
@@ -176,7 +259,34 @@ class CadViewerSelection:
             "screen_position": list(self.screen_position)
             if self.screen_position
             else None,
+            "model_position": list(self.model_position)
+            if self.model_position
+            else None,
         }
+
+
+def _tuple2(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    if not all(isinstance(item, (int, float)) for item in value):
+        return None
+    return _clamp01(value[0]), _clamp01(value[1])
+
+
+def _tuple3(value: Any) -> tuple[float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    if not all(isinstance(item, (int, float)) for item in value):
+        return None
+    return float(value[0]), float(value[1]), float(value[2])
+
+
+def _list3(value: tuple[float, float, float] | None) -> list[float] | None:
+    return [float(item) for item in value] if value else None
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
 
 
 @dataclass(frozen=True)
