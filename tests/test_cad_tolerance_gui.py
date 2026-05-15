@@ -11,7 +11,7 @@ if "QT_QPA_PLATFORM" not in os.environ and importlib.util.find_spec("OCC") is No
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QDialogButtonBox, QLabel, QSplitter, QTabWidget, QWidget
+from PyQt6.QtWidgets import QApplication, QCheckBox, QComboBox, QDialogButtonBox, QLabel, QSplitter, QTabWidget, QWidget
 
 from mechanical_design_tool_suite.cad_tolerance_gui import (
     AddGeometricToleranceDialog,
@@ -19,6 +19,8 @@ from mechanical_design_tool_suite.cad_tolerance_gui import (
     NeutralCadImportOptionsDialog,
     PlaceholderCadViewerWidget,
     ResultPlotWidget,
+    SettingsDefaultsDialog,
+    ToleranceCellDelegate,
     create_cad_tolerance_window,
 )
 from mechanical_design_tool_suite.cad_geometry_api import cad_source_topology_hash
@@ -45,10 +47,13 @@ from mechanical_design_tool_suite.cad_viewer_api import (
     ViewerAnnotationRole,
 )
 from mechanical_design_tool_suite.cad_tolerance_models import (
+    AnalysisMode,
+    AnalysisSettings,
     CadDocument,
     CadFileFormat,
     CadSourceStatus,
     GeometricControlType,
+    QualityMetric,
     ShapeKind,
     ShapeReference,
     Snapshot,
@@ -211,6 +216,31 @@ class CadToleranceViewModelTest(unittest.TestCase):
             "Shared dimension affects",
             model.data(model.index(dimension_row, 1), Qt.ItemDataRole.ToolTipRole),
         )
+        gdt_row = _find_model_row(model, "Manual runout to datum A")
+        self.assertEqual(
+            model.data(model.index(gdt_row, 3)),
+            "[↗ Runout | ⌀0.1 | A]",
+        )
+        self.assertIn(
+            "Readable feature-control frame",
+            model.data(model.index(gdt_row, 3), Qt.ItemDataRole.ToolTipRole),
+        )
+
+    def test_tolerance_delegate_exposes_inline_parity_modes(self) -> None:
+        workspace = CadToleranceWorkspaceViewModel.from_project(load_project(FIXTURE_PATH))
+        model = CadStackupDetailTableModel(workspace.detail_rows())
+        row = _find_model_row(model, "Bracket to bushing face")
+        delegate = ToleranceCellDelegate()
+        parent = QWidget()
+        self.addCleanup(parent.close)
+        editor = delegate.createEditor(parent, None, model.index(row, 3))
+        self.addCleanup(editor.close)
+
+        self.assertIsInstance(editor, QComboBox)
+        choices = [editor.itemText(index) for index in range(editor.count())]
+        self.assertIn("symmetric +/-0.05", choices)
+        self.assertIn("limits +0.075/-0.05", choices)
+        self.assertIn("geometric ⌖ position 0.15 A", choices)
 
 
 class CadToleranceGuiShellTest(unittest.TestCase):
@@ -484,6 +514,7 @@ class CadToleranceGuiShellTest(unittest.TestCase):
             old_results,
         )
         self.assertIn("Shared dimension affects", self.window.statusBar().currentMessage())
+        self.assertIn("overall height", self.window.statusBar().currentMessage())
 
         rejected = self.window.detail_model.setData(
             self.window.detail_model.index(row, 2),
@@ -496,13 +527,54 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         self.assertIn("Nominal must be numeric", self.window.detail_model.last_error)
         self.assertIn("Nominal must be numeric", self.window.statusBar().currentMessage())
 
+    def test_settings_defaults_dialog_persists_and_applies_existing_stackups(self) -> None:
+        dialog = SettingsDefaultsDialog(
+            AnalysisSettings(
+                default_block_tolerance=0.25,
+                default_analysis_mode=AnalysisMode.RSS,
+                default_quality_metric=QualityMetric.SIGMA,
+            )
+        )
+        self.addCleanup(dialog.close)
+        self.assertEqual(dialog.block_tolerance_edit.text(), "0.25")
+        self.assertEqual(dialog.analysis_combo.currentData(), AnalysisMode.RSS.value)
+        self.assertEqual(dialog.quality_combo.currentData(), QualityMetric.SIGMA.value)
+        ok_button = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self.assertTrue(ok_button.isEnabled())
+        dialog.block_tolerance_edit.setText("-1")
+        self.assertFalse(ok_button.isEnabled())
+
+        self.window.load_project_file(FIXTURE_PATH)
+        settings = AnalysisSettings(
+            sigma_coverage=3.0,
+            default_target_cpk=1.5,
+            default_block_tolerance=0.05,
+            default_analysis_mode=AnalysisMode.WORST_CASE,
+            default_quality_metric=QualityMetric.CPK,
+        )
+        self.window.apply_settings_defaults(settings, apply_to_existing=True)
+        self.app.processEvents()
+
+        stackup = self.window.project.stackups[0]
+        self.assertEqual(self.window.project.settings.default_block_tolerance, 0.05)
+        self.assertEqual(stackup.analysis_mode, AnalysisMode.WORST_CASE)
+        self.assertEqual(stackup.target_quality.metric, QualityMetric.CPK)
+        self.assertAlmostEqual(stackup.target_quality.value, 1.5)
+        self.assertAlmostEqual(stackup.contributors[0].tolerance_plus, 0.05)
+        self.assertIn("Updated project tolerance defaults", self.window.statusBar().currentMessage())
+
     def test_add_geometric_tolerance_dialog_validates_and_adds_position_row(self) -> None:
-        dialog = AddGeometricToleranceDialog(["Bushing ID axis"])
+        dialog = AddGeometricToleranceDialog(
+            ["Bushing ID axis"],
+            datum_reference_names=["A"],
+        )
         self.addCleanup(dialog.close)
         ok_button = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
         self.assertFalse(ok_button.isEnabled())
 
         dialog.tolerance_edit.setText("0.15")
+        dialog.datum_edit.setText("Z")
+        self.assertFalse(ok_button.isEnabled())
         dialog.datum_edit.setText("A")
         self.assertTrue(ok_button.isEnabled())
         self.assertAlmostEqual(dialog.geometric_tolerance().derived_plus, 0.075)
@@ -510,6 +582,14 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         self.window.load_project_file(FIXTURE_PATH)
         self.window._open_summary_index(0)
         original_count = len(self.window.project.stackups[0].contributors)
+
+        with self.assertRaisesRegex(ValueError, "Unknown datum/reference"):
+            self.window.add_geometric_tolerance(
+                "Bushing ID axis",
+                GeometricControlType.POSITION,
+                0.15,
+                ["Z"],
+            )
 
         contributor = self.window.add_geometric_tolerance(
             "Bushing ID axis",
@@ -527,7 +607,7 @@ class CadToleranceGuiShellTest(unittest.TestCase):
             self.window.detail_model.data(self.window.detail_model.index(row_index, 3))
             for row_index in range(self.window.detail_model.rowCount())
         ]
-        self.assertTrue(any("position dia 0.15" in str(text) for text in detail_text))
+        self.assertTrue(any("[⌖ Position | ⌀0.15 | A]" in str(text) for text in detail_text))
 
     def test_placeholder_viewer_isolated_behind_viewer_api(self) -> None:
         placeholder = PlaceholderCadViewerWidget(reason="test runtime")

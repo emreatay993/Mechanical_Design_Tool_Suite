@@ -69,7 +69,7 @@ class CadToleranceEditingPersistenceTest(unittest.TestCase):
         self.assertTrue(
             self.window.detail_model.setData(
                 self.window.detail_model.index(row, 3),
-                "position 0.15 A",
+                "⌖ position ⌀0.15 A",
                 Qt.ItemDataRole.EditRole,
             )
         )

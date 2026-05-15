@@ -32,7 +32,7 @@ from .cad_tolerance_models import (
     StackupObjective,
     StackupRequirement,
     ToleranceType,
-    geometric_control_display_label,
+    geometric_tolerance_frame_text,
 )
 
 
@@ -57,7 +57,7 @@ GUIDED_STACKUP_STEPS = GUIDED_STACKUP_STEP_LABELS
 NON_1D_WARNING_TEXT = "Calculated results are ignoring potentially significant 3D effects"
 
 FIDELITY_GAP_NOTES = (
-    "Exact GD&T glyphs and material-condition modifiers remain unreadable in the source frames; the shell uses text-backed placeholders.",
+    "Readable GD&T rows use standard Unicode symbols with text labels; material-condition modifiers remain unresolved in the source frames.",
     "Tolerance-type dropdown labels are represented as Symmetric, Limits, and Geometric until higher-resolution crops confirm exact wording.",
     "Statistical submenu labels beyond Worst Case, RSS, and Statistical are unresolved in the targeted visual review.",
 )
@@ -433,6 +433,8 @@ class CadStackupDetailTableModel(QAbstractTableModel):
                     "Shared dimension affects: "
                     + ", ".join(_shared_stackup_label(value) for value in row.shared_with)
                 )
+            if column == 3 and row.geometric_control:
+                notes.append(f"Readable feature-control frame: {row.tolerance}")
             if _detail_cell_is_editable(row, column):
                 notes.append(_detail_edit_tooltip(row, column))
             if notes:
@@ -661,7 +663,7 @@ def _detail_edit_tooltip(row: StackupDetailRow, column: int) -> str:
         0: "Edit contributor or controlled-feature name.",
         1: "Edit stack sensitivity.",
         2: "Edit nominal contribution.",
-        3: "Edit tolerance as +/-0.05, +0.02/-0.01, runout 0.1 A, position 0.15 A, or profile 0.5 A.",
+        3: "Edit tolerance as symmetric +/-0.05, limits +0.02/-0.01, runout 0.1 A, position 0.15 A, or profile 0.5 A.",
         4: "Edit datum/reference labels, separated by commas or spaces.",
     }
     text = labels.get(column, "Edit value.")
@@ -876,9 +878,15 @@ def _format_result_envelope(objective: StackupObjective, minus: float, plus: flo
 
 def _format_tolerance(contributor: StackupContributor) -> str:
     if contributor.tolerance_type == ToleranceType.GEOMETRIC and contributor.geometric_tolerance:
-        value = f"{contributor.geometric_tolerance.tolerance_value:.3f}".rstrip("0").rstrip(".")
-        label = geometric_control_display_label(contributor.geometric_tolerance.control_type)
-        return f"{label} dia {value}"
+        datums = (
+            contributor.geometric_tolerance.datum_references
+            or contributor.datum_references
+        )
+        return geometric_tolerance_frame_text(
+            contributor.geometric_tolerance.control_type,
+            contributor.geometric_tolerance.tolerance_value,
+            datums,
+        )
     minus = float(contributor.tolerance_minus or 0.0)
     plus = float(contributor.tolerance_plus or 0.0)
     if abs(minus - plus) < 1.0e-9:

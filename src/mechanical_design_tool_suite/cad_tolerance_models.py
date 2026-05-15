@@ -13,6 +13,8 @@ PROJECT_TYPE = "cad_1d_tolerance"
 DEFAULT_UNIT_SYSTEM = "mm"
 DEFAULT_SIGMA_COVERAGE = 3.0
 DEFAULT_TARGET_CPK = 1.33
+DEFAULT_BLOCK_TOLERANCE = 0.10
+DIAMETER_SYMBOL = "⌀"
 
 
 class _StringEnum(str, Enum):
@@ -93,6 +95,20 @@ def geometric_control_display_label(control_type: GeometricControlType | str) ->
     }[control]
 
 
+def geometric_control_symbol(control_type: GeometricControlType | str) -> str:
+    control = _coerce_enum(
+        GeometricControlType,
+        control_type,
+        GeometricControlType.MANUAL,
+    )
+    return {
+        GeometricControlType.RUNOUT: "↗",
+        GeometricControlType.POSITION: "⌖",
+        GeometricControlType.PROFILE: "⌓",
+        GeometricControlType.MANUAL: "GDT",
+    }[control]
+
+
 def geometric_derived_effect(
     control_type: GeometricControlType | str,
     tolerance_value: float,
@@ -105,6 +121,35 @@ def geometric_derived_effect(
 def geometric_conversion_note(control_type: GeometricControlType | str) -> str:
     label = geometric_control_display_label(control_type)
     return f"{label} tolerance projected as a symmetric 1D contributor."
+
+
+def geometric_tolerance_frame_text(
+    control_type: GeometricControlType | str,
+    tolerance_value: float,
+    datum_references: list[str] | tuple[str, ...] = (),
+) -> str:
+    """Return a readable text-backed feature-control-frame display."""
+
+    control = _coerce_enum(
+        GeometricControlType,
+        control_type,
+        GeometricControlType.MANUAL,
+    )
+    labels = {
+        GeometricControlType.RUNOUT: "Runout",
+        GeometricControlType.POSITION: "Position",
+        GeometricControlType.PROFILE: "Profile-equivalent",
+        GeometricControlType.MANUAL: "Manual",
+    }
+    value = f"{abs(float(tolerance_value)):.3f}".rstrip("0").rstrip(".")
+    cells = [
+        f"{geometric_control_symbol(control)} {labels[control]}",
+        f"{DIAMETER_SYMBOL}{value}",
+    ]
+    datums = [str(item).strip() for item in datum_references if str(item).strip()]
+    if datums:
+        cells.append(" ".join(datums))
+    return "[" + " | ".join(cells) + "]"
 
 
 class AnalysisMode(_StringEnum):
@@ -240,6 +285,9 @@ class Vector3D:
 class AnalysisSettings:
     sigma_coverage: float = DEFAULT_SIGMA_COVERAGE
     default_target_cpk: float = DEFAULT_TARGET_CPK
+    default_block_tolerance: float = DEFAULT_BLOCK_TOLERANCE
+    default_analysis_mode: AnalysisMode = AnalysisMode.WORST_CASE
+    default_quality_metric: QualityMetric = QualityMetric.CPK
     lateral_offset_warning_threshold: float = 1.0
     min_direction_alignment: float = 0.95
     multi_interface_warning_count: int = 3
@@ -248,6 +296,17 @@ class AnalysisSettings:
     def __post_init__(self) -> None:
         self.sigma_coverage = float(self.sigma_coverage)
         self.default_target_cpk = float(self.default_target_cpk)
+        self.default_block_tolerance = float(self.default_block_tolerance)
+        self.default_analysis_mode = _coerce_enum(
+            AnalysisMode,
+            self.default_analysis_mode,
+            AnalysisMode.WORST_CASE,
+        )
+        self.default_quality_metric = _coerce_enum(
+            QualityMetric,
+            self.default_quality_metric,
+            QualityMetric.CPK,
+        )
         self.lateral_offset_warning_threshold = float(
             self.lateral_offset_warning_threshold
         )
@@ -261,6 +320,9 @@ class AnalysisSettings:
         return {
             "sigma_coverage": self.sigma_coverage,
             "default_target_cpk": self.default_target_cpk,
+            "default_block_tolerance": self.default_block_tolerance,
+            "default_analysis_mode": self.default_analysis_mode.value,
+            "default_quality_metric": self.default_quality_metric.value,
             "lateral_offset_warning_threshold": self.lateral_offset_warning_threshold,
             "min_direction_alignment": self.min_direction_alignment,
             "multi_interface_warning_count": self.multi_interface_warning_count,
@@ -276,6 +338,19 @@ class AnalysisSettings:
         return cls(
             sigma_coverage=float(data.get("sigma_coverage", DEFAULT_SIGMA_COVERAGE)),
             default_target_cpk=float(data.get("default_target_cpk", DEFAULT_TARGET_CPK)),
+            default_block_tolerance=float(
+                data.get("default_block_tolerance", DEFAULT_BLOCK_TOLERANCE)
+            ),
+            default_analysis_mode=_coerce_enum(
+                AnalysisMode,
+                data.get("default_analysis_mode"),
+                AnalysisMode.WORST_CASE,
+            ),
+            default_quality_metric=_coerce_enum(
+                QualityMetric,
+                data.get("default_quality_metric"),
+                QualityMetric.CPK,
+            ),
             lateral_offset_warning_threshold=float(
                 data.get("lateral_offset_warning_threshold", 1.0)
             ),

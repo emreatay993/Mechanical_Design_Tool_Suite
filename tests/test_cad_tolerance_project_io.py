@@ -258,6 +258,9 @@ def _sample_project() -> CadToleranceProject:
         settings=AnalysisSettings(
             sigma_coverage=3.0,
             default_target_cpk=1.67,
+            default_block_tolerance=0.05,
+            default_analysis_mode=AnalysisMode.STATISTICAL,
+            default_quality_metric=QualityMetric.CPK,
             lateral_offset_warning_threshold=1.0,
             min_direction_alignment=0.96,
             multi_interface_warning_count=4,
@@ -288,6 +291,9 @@ class CadToleranceProjectIoTest(unittest.TestCase):
         self.assertEqual(loaded.project_type, PROJECT_TYPE)
         self.assertEqual(loaded.title, "Caster tolerance study")
         self.assertEqual(loaded.settings.default_target_cpk, 1.67)
+        self.assertEqual(loaded.settings.default_block_tolerance, 0.05)
+        self.assertEqual(loaded.settings.default_analysis_mode, AnalysisMode.STATISTICAL)
+        self.assertEqual(loaded.settings.default_quality_metric, QualityMetric.CPK)
 
         document = loaded.cad_documents[0]
         self.assertEqual(document.file_format, CadFileFormat.STEP)
@@ -585,6 +591,8 @@ class CadToleranceProjectIoTest(unittest.TestCase):
         self.assertEqual(loaded.cad_documents, [])
         self.assertEqual(loaded.stackups, [])
         self.assertAlmostEqual(loaded.settings.sigma_coverage, 3.0)
+        self.assertAlmostEqual(loaded.settings.default_block_tolerance, 0.10)
+        self.assertEqual(loaded.settings.default_analysis_mode, AnalysisMode.WORST_CASE)
 
     def test_invalid_project_envelopes_raise_value_error(self) -> None:
         cases = [

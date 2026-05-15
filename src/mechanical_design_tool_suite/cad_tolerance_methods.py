@@ -359,6 +359,7 @@ def _combined_result_status(
 def _validate_settings(settings: AnalysisSettings) -> None:
     _validated_positive(settings.sigma_coverage, "Sigma coverage")
     _validated_positive(settings.default_target_cpk, "Default target Cpk")
+    _validated_positive(settings.default_block_tolerance, "Default block tolerance")
 
 
 def _validate_contributor(contributor: StackupContributor) -> None:

@@ -75,12 +75,16 @@ from .cad_geometry_occ import CadKernelUnavailable, OccCadGeometrySession
 from .cad_stackup_workflow import GuidedStackupWorkflowController, GuidedToolbarState
 from .cad_tolerance_methods import calculate_stackup
 from .cad_tolerance_models import (
+    AnalysisMode,
+    AnalysisSettings,
     CadDocument,
     CadSourceStatus,
     CadToleranceProject,
     FeatureReference,
     GeometricControlType,
     GeometricTolerance,
+    QualityMetric,
+    QualityTarget,
     ShapeKind,
     Snapshot,
     StackupContributor,
@@ -371,7 +375,7 @@ class AddGeometricToleranceDialog(QDialog):
     CONTROL_OPTIONS = (
         ("Runout", GeometricControlType.RUNOUT),
         ("Position", GeometricControlType.POSITION),
-        ("Profile", GeometricControlType.PROFILE),
+        ("Profile-equivalent / ISO position", GeometricControlType.PROFILE),
         ("Manual", GeometricControlType.MANUAL),
     )
 
@@ -380,8 +384,10 @@ class AddGeometricToleranceDialog(QDialog):
         feature_names: list[str] | tuple[str, ...] = (),
         parent: QWidget | None = None,
         default_feature: str = "",
+        datum_reference_names: list[str] | tuple[str, ...] = (),
     ) -> None:
         super().__init__(parent)
+        self._valid_datum_references = _datum_reference_key_set(datum_reference_names)
         self.setWindowTitle("Add Geometric Tolerance")
         self.setObjectName("AddGeometricToleranceDialog")
         self.resize(360, 180)
@@ -419,12 +425,16 @@ class AddGeometricToleranceDialog(QDialog):
         layout.addWidget(QLabel("Datum / Reference"), 2, 2)
         layout.addWidget(self.datum_edit, 2, 3)
 
+        self.validation_label = QLabel("")
+        self.validation_label.setObjectName("GdtValidationState")
+        layout.addWidget(self.validation_label, 3, 0, 1, 4)
+
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons, 3, 0, 1, 4)
+        layout.addWidget(self.buttons, 4, 0, 1, 4)
 
         self.feature_combo.currentTextChanged.connect(self._update_ok_state)
         self.control_combo.currentTextChanged.connect(self._update_ok_state)
@@ -442,7 +452,13 @@ class AddGeometricToleranceDialog(QDialog):
         return _parse_positive_float(self.tolerance_edit.text(), "Geometric tolerance")
 
     def datum_references(self) -> list[str]:
-        return _parse_datum_tokens(self.datum_edit.text())
+        datums = _parse_datum_tokens(self.datum_edit.text())
+        _validate_datum_references(
+            datums,
+            self._valid_datum_references,
+            required=True,
+        )
+        return datums
 
     def geometric_tolerance(self) -> GeometricTolerance:
         return GeometricTolerance(
@@ -457,9 +473,143 @@ class AddGeometricToleranceDialog(QDialog):
             valid = bool(self.controlled_feature()) and self.tolerance_value() > 0.0 and bool(
                 self.datum_references()
             )
+            message = "Ready"
         except ValueError:
             valid = False
+            message = "Complete feature, tolerance, and valid datum/reference fields."
         ok.setEnabled(valid)
+        self.validation_label.setText(message)
+
+
+class SettingsDefaultsDialog(QDialog):
+    """Project defaults dialog for block tolerances and result display modes."""
+
+    ANALYSIS_OPTIONS = (
+        ("Worst Case", AnalysisMode.WORST_CASE),
+        ("RSS", AnalysisMode.RSS),
+        ("Statistical", AnalysisMode.STATISTICAL),
+    )
+    QUALITY_OPTIONS = (
+        ("Cpk", QualityMetric.CPK),
+        ("Sigma", QualityMetric.SIGMA),
+        ("Yield", QualityMetric.YIELD),
+        ("Worst Case", QualityMetric.WORST_CASE),
+        ("RSS", QualityMetric.RSS),
+    )
+
+    def __init__(
+        self,
+        settings: AnalysisSettings,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._base_settings = settings
+        self.setWindowTitle("Settings")
+        self.setObjectName("SettingsDefaultsDialog")
+        self.resize(360, 220)
+
+        layout = QVBoxLayout(self)
+        defaults_group = QGroupBox("Defaults")
+        grid = QGridLayout(defaults_group)
+
+        self.block_tolerance_edit = QLineEdit(f"{settings.default_block_tolerance:g}")
+        self.block_tolerance_edit.setObjectName("DefaultBlockTolerance")
+        grid.addWidget(QLabel("Block tolerance"), 0, 0)
+        grid.addWidget(self.block_tolerance_edit, 0, 1)
+
+        self.analysis_combo = QComboBox()
+        self.analysis_combo.setObjectName("DefaultAnalysisMode")
+        for label, mode in self.ANALYSIS_OPTIONS:
+            self.analysis_combo.addItem(label, mode.value)
+        self.analysis_combo.setCurrentIndex(
+            max(0, self.analysis_combo.findData(settings.default_analysis_mode.value))
+        )
+        grid.addWidget(QLabel("Default result mode"), 1, 0)
+        grid.addWidget(self.analysis_combo, 1, 1)
+
+        self.quality_combo = QComboBox()
+        self.quality_combo.setObjectName("DefaultQualityMetric")
+        for label, metric in self.QUALITY_OPTIONS:
+            self.quality_combo.addItem(label, metric.value)
+        self.quality_combo.setCurrentIndex(
+            max(0, self.quality_combo.findData(settings.default_quality_metric.value))
+        )
+        grid.addWidget(QLabel("Default quality metric"), 2, 0)
+        grid.addWidget(self.quality_combo, 2, 1)
+
+        self.target_cpk_edit = QLineEdit(f"{settings.default_target_cpk:g}")
+        self.target_cpk_edit.setObjectName("DefaultTargetCpk")
+        grid.addWidget(QLabel("Target quality value"), 3, 0)
+        grid.addWidget(self.target_cpk_edit, 3, 1)
+
+        self.sigma_edit = QLineEdit(f"{settings.sigma_coverage:g}")
+        self.sigma_edit.setObjectName("DefaultSigmaCoverage")
+        grid.addWidget(QLabel("Sigma coverage"), 4, 0)
+        grid.addWidget(self.sigma_edit, 4, 1)
+        layout.addWidget(defaults_group)
+
+        self.apply_existing_check = QCheckBox("Apply defaults to existing stackups")
+        self.apply_existing_check.setObjectName("ApplyDefaultsToStackups")
+        layout.addWidget(self.apply_existing_check)
+
+        self.validation_label = QLabel("")
+        self.validation_label.setObjectName("SettingsValidationState")
+        layout.addWidget(self.validation_label)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+
+        self.block_tolerance_edit.textChanged.connect(self._update_ok_state)
+        self.target_cpk_edit.textChanged.connect(self._update_ok_state)
+        self.sigma_edit.textChanged.connect(self._update_ok_state)
+        self._update_ok_state()
+
+    def settings(self) -> AnalysisSettings:
+        return AnalysisSettings(
+            sigma_coverage=_parse_positive_float(
+                self.sigma_edit.text(),
+                "Sigma coverage",
+            ),
+            default_target_cpk=_parse_positive_float(
+                self.target_cpk_edit.text(),
+                "Target quality value",
+            ),
+            default_block_tolerance=_parse_positive_float(
+                self.block_tolerance_edit.text(),
+                "Block tolerance",
+            ),
+            default_analysis_mode=AnalysisMode(str(self.analysis_combo.currentData())),
+            default_quality_metric=QualityMetric(str(self.quality_combo.currentData())),
+            lateral_offset_warning_threshold=(
+                self._base_settings.lateral_offset_warning_threshold
+            ),
+            min_direction_alignment=self._base_settings.min_direction_alignment,
+            multi_interface_warning_count=(
+                self._base_settings.multi_interface_warning_count
+            ),
+            projection_sensitivity_warning_threshold=(
+                self._base_settings.projection_sensitivity_warning_threshold
+            ),
+        )
+
+    def apply_to_existing_stackups(self) -> bool:
+        return self.apply_existing_check.isChecked()
+
+    def _update_ok_state(self) -> None:
+        ok = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        try:
+            self.settings()
+            valid = True
+            message = "Ready"
+        except ValueError as exc:
+            valid = False
+            message = str(exc)
+        ok.setEnabled(valid)
+        self.validation_label.setText(message)
 
 
 class ToleranceCellDelegate(QStyledItemDelegate):
@@ -475,11 +625,11 @@ class ToleranceCellDelegate(QStyledItemDelegate):
         tolerance_type = str(index.data(DETAIL_TOLERANCE_TYPE_ROLE) or "")
         examples = [
             current,
-            "symmetric:+/-0.05",
-            "limits:+0.075/-0.05",
-            "runout 0.1 A",
-            "position 0.15 A",
-            "profile 0.5 A",
+            "symmetric +/-0.05",
+            "limits +0.075/-0.05",
+            "geometric ↗ runout 0.1 A",
+            "geometric ⌖ position 0.15 A",
+            "geometric ⌓ profile 0.5 A",
         ]
         if tolerance_type == ToleranceType.GEOMETRIC.value:
             examples.insert(1, "geometric:" + current)
@@ -1637,6 +1787,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.cad_source_status_messages: list[str] = []
         self.workflow_controller: GuidedStackupWorkflowController | None = None
         self.geometric_dialog_factory = AddGeometricToleranceDialog
+        self.settings_dialog_factory = SettingsDefaultsDialog
 
         self.summary_model = CadStackupSummaryTableModel(self.workspace.summary_rows)
         self.detail_model = CadStackupDetailTableModel(
@@ -1866,6 +2017,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.generate_report_action.triggered.connect(self._generate_report)
         self.settings_action = QAction(_chrome_icon("settings", 24), "Settings", self)
         self.settings_action.setToolTip("Open project tolerance defaults and display settings.")
+        self.settings_action.triggered.connect(self._open_settings_dialog)
         self.back_action = QAction("Back", self)
         self.back_action.triggered.connect(self.show_summary)
         self.view_iso_action = QAction(_chrome_icon("iso", 24), "Isometric", self)
@@ -2494,6 +2646,12 @@ class CadToleranceMainWindow(QMainWindow):
             self.viewport_host.set_annotations(self._workflow_annotations())
         if update.stackup is not None:
             self.viewport_host.hide_workflow_toolbar()
+            _apply_settings_defaults_to_stackup(
+                update.stackup,
+                self.project.settings,
+                apply_block_tolerance=True,
+            )
+            calculate_stackup(update.stackup, self.project.settings)
             self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
             self.summary_model.set_rows(self.workspace.summary_rows)
             self._set_detail_stackup(update.stackup.id)
@@ -2683,6 +2841,7 @@ class CadToleranceMainWindow(QMainWindow):
             _controlled_feature_names(stackup),
             self,
             default_feature=default_feature,
+            datum_reference_names=_known_datum_reference_names(stackup),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -2696,6 +2855,42 @@ class CadToleranceMainWindow(QMainWindow):
         except ValueError as exc:
             self.statusBar().showMessage(str(exc))
 
+    def _open_settings_dialog(self) -> None:
+        dialog = self.settings_dialog_factory(self.project.settings, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.apply_settings_defaults(
+            dialog.settings(),
+            apply_to_existing=dialog.apply_to_existing_stackups(),
+        )
+
+    def apply_settings_defaults(
+        self,
+        settings: AnalysisSettings,
+        *,
+        apply_to_existing: bool = False,
+    ) -> None:
+        self.project.settings = settings
+        selected_stackup_id = self.workspace.selected_stackup_id
+        if apply_to_existing:
+            for stackup in self.project.stackups:
+                _apply_settings_defaults_to_stackup(
+                    stackup,
+                    settings,
+                    apply_block_tolerance=True,
+                )
+                calculate_stackup(stackup, self.project.settings)
+        if selected_stackup_id:
+            self._rebuild_workspace_after_project_edit(
+                selected_stackup_id,
+                "Updated project tolerance defaults.",
+            )
+            return
+        self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
+        self.summary_model.set_rows(self.workspace.summary_rows)
+        self._refresh_dashboard()
+        self.statusBar().showMessage("Updated project tolerance defaults.")
+
     def add_geometric_tolerance(
         self,
         controlled_feature: str,
@@ -2707,11 +2902,20 @@ class CadToleranceMainWindow(QMainWindow):
         stackup = _stackup_by_id(self.project, stackup_id)
         if stackup is None:
             raise ValueError("Load or create a stackup before adding GD&T.")
-        datums = list(datum_references)
+        datums: list[str] = []
+        for datum in datum_references:
+            for token in _parse_datum_tokens(str(datum)):
+                if token not in datums:
+                    datums.append(token)
         if not controlled_feature.strip():
             raise ValueError("Controlled feature is required.")
         if not datums:
             raise ValueError("At least one datum/reference is required.")
+        _validate_datum_references(
+            datums,
+            _known_datum_reference_names(stackup),
+            required=True,
+        )
 
         control = GeometricControlType(str(control_type))
         geometric = GeometricTolerance(
@@ -3466,11 +3670,23 @@ def _apply_detail_edit(
         return _edit_status_message(contributor, "nominal")
 
     if column == 3:
-        _apply_tolerance_text(contributor, text)
+        _apply_tolerance_text(
+            contributor,
+            text,
+            valid_datum_references=_known_datum_reference_names(stackup),
+        )
         return _edit_status_message(contributor, "tolerance")
 
     if column == 4:
         datums = _parse_datum_tokens(text)
+        if row.row_type == "feature":
+            _validate_new_datum_labels(datums)
+        else:
+            _validate_datum_references(
+                datums,
+                _known_datum_reference_names(stackup),
+                required=contributor.tolerance_type == ToleranceType.GEOMETRIC,
+            )
         contributor.datum_references = datums
         if contributor.geometric_tolerance is not None:
             contributor.geometric_tolerance.datum_references = datums
@@ -3481,7 +3697,11 @@ def _apply_detail_edit(
     raise ValueError("This detail column is not editable.")
 
 
-def _apply_tolerance_text(contributor: StackupContributor, text: str) -> None:
+def _apply_tolerance_text(
+    contributor: StackupContributor,
+    text: str,
+    valid_datum_references: list[str] | tuple[str, ...] = (),
+) -> None:
     if not text:
         raise ValueError("Tolerance cannot be empty.")
     mode_text, body = _split_tolerance_mode(text)
@@ -3504,6 +3724,11 @@ def _apply_tolerance_text(contributor: StackupContributor, text: str) -> None:
         return
     if mode == ToleranceType.GEOMETRIC.value:
         control, tolerance, datums = _parse_geometric_tolerance(body, contributor)
+        _validate_datum_references(
+            datums,
+            valid_datum_references,
+            required=True,
+        )
         geometric = GeometricTolerance(
             control_type=control,
             tolerance_value=tolerance,
@@ -3548,7 +3773,10 @@ def _split_tolerance_mode(text: str) -> tuple[str, str]:
 
 def _infer_tolerance_mode(text: str, contributor: StackupContributor) -> str:
     lowered = text.lower().strip()
-    if lowered.startswith(("runout", "position", "profile", "manual", "dia ")):
+    stripped = lowered.strip("[] ")
+    if stripped.startswith(
+        ("runout", "position", "profile", "manual", "gdt", "dia ", "↗", "⌖", "⌓", "⌀")
+    ):
         return ToleranceType.GEOMETRIC.value
     if "+/-" in lowered or "+-" in lowered:
         return ToleranceType.SYMMETRIC.value
@@ -3566,6 +3794,7 @@ def _parse_symmetric_tolerance(text: str) -> float:
     body = (
         body.replace("+/-", " ")
         .replace("+-", " ")
+        .replace("⌀", " ")
         .replace("dia", " ")
         .replace("diameter", " ")
     )
@@ -3601,7 +3830,8 @@ def _parse_geometric_tolerance(
     text: str,
     contributor: StackupContributor,
 ) -> tuple[GeometricControlType, float, list[str]]:
-    raw = text.strip()
+    raw = text.strip().strip("[]")
+    raw = raw.replace("|", " ")
     lowered = raw.lower()
     control = (
         contributor.geometric_tolerance.control_type
@@ -3610,6 +3840,11 @@ def _parse_geometric_tolerance(
     )
     for candidate in GeometricControlType:
         label = candidate.value
+        symbol = _geometric_control_symbol(candidate)
+        if raw.startswith(symbol):
+            control = candidate
+            raw = raw[len(symbol) :].strip()
+            lowered = raw.lower()
         if lowered == label or lowered.startswith(label + " "):
             control = candidate
             raw = raw[len(label) :].strip()
@@ -3617,6 +3852,8 @@ def _parse_geometric_tolerance(
             break
     if lowered.startswith("dia "):
         raw = raw[4:].strip()
+    if raw.startswith("⌀"):
+        raw = raw[1:].strip()
     numbers = _extract_numbers(raw)
     if not numbers:
         raise ValueError("Geometric tolerance value is required.")
@@ -3643,21 +3880,81 @@ def _parse_datum_tokens(text: str) -> list[str]:
         "position",
         "profile",
         "manual",
+        "gdt",
         "to",
         "datum",
         "reference",
     }
     tokens: list[str] = []
-    for raw in re.split(r"[\s,;/]+", str(text).strip()):
+    for raw in re.split(r"[\s,;/|]+", str(text).strip()):
         token = raw.strip().strip("[]()")
         if not token or token.lower() in blocked:
             continue
         if _NUMBER_RE.fullmatch(token):
             continue
-        normalized = token.upper()
+        normalized = _normalize_datum_token(token)
         if normalized not in tokens:
             tokens.append(normalized)
     return tokens
+
+
+def _normalize_datum_token(token: str) -> str:
+    cleaned = str(token).strip().strip("[]()")
+    if re.fullmatch(r"[A-Za-z]{1,3}", cleaned):
+        return cleaned.upper()
+    return cleaned
+
+
+def _datum_reference_key(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value).strip()).upper()
+
+
+def _datum_reference_key_set(
+    values: list[str] | tuple[str, ...] | set[str],
+) -> set[str]:
+    return {_datum_reference_key(value) for value in values if str(value).strip()}
+
+
+def _validate_datum_references(
+    datums: list[str] | tuple[str, ...],
+    valid_references: list[str] | tuple[str, ...] | set[str],
+    *,
+    required: bool = False,
+) -> None:
+    if required and not datums:
+        raise ValueError("At least one datum/reference is required.")
+    valid_keys = _datum_reference_key_set(valid_references)
+    if not valid_keys:
+        return
+    unknown = [
+        datum
+        for datum in datums
+        if _datum_reference_key(datum) not in valid_keys
+    ]
+    if unknown:
+        raise ValueError(
+            "Unknown datum/reference: "
+            + ", ".join(unknown)
+            + ". Define the datum label or choose an existing feature reference first."
+        )
+
+
+def _validate_new_datum_labels(datums: list[str] | tuple[str, ...]) -> None:
+    for datum in datums:
+        if not re.fullmatch(r"[A-Z][A-Z0-9_:-]{0,7}", datum):
+            raise ValueError(
+                "Datum labels must start with a letter and use compact letters, numbers, '_', ':', or '-'."
+            )
+
+
+def _geometric_control_symbol(control_type: GeometricControlType | str) -> str:
+    control = GeometricControlType(str(control_type))
+    return {
+        GeometricControlType.RUNOUT: "↗",
+        GeometricControlType.POSITION: "⌖",
+        GeometricControlType.PROFILE: "⌓",
+        GeometricControlType.MANUAL: "GDT",
+    }[control]
 
 
 def _parse_finite_float(value: Any, label: str) -> float:
@@ -3707,6 +4004,44 @@ def _controlled_feature_names(stackup: StackupRequirement) -> list[str]:
     return names
 
 
+def _known_datum_reference_names(stackup: StackupRequirement) -> list[str]:
+    names: list[str] = []
+
+    def add(value: str) -> None:
+        cleaned = str(value).strip()
+        if cleaned and cleaned not in names:
+            names.append(cleaned)
+
+    for feature in (
+        stackup.start_feature,
+        stackup.end_feature,
+        *stackup.loop_features,
+        *stackup.constraint_features,
+    ):
+        if feature is None:
+            continue
+        add(feature.datum_label)
+        add(feature.name)
+        if feature.shape_reference is not None:
+            add(feature.shape_reference.fallback_display_name)
+
+    for contributor in stackup.contributors:
+        feature = contributor.source_feature
+        add(contributor.name)
+        for datum in contributor.datum_references:
+            add(datum)
+        if contributor.geometric_tolerance is not None:
+            for datum in contributor.geometric_tolerance.datum_references:
+                add(datum)
+        if feature is None:
+            continue
+        add(feature.datum_label)
+        add(feature.name)
+        if feature.shape_reference is not None:
+            add(feature.shape_reference.fallback_display_name)
+    return names
+
+
 def _feature_by_display_name(
     stackup: StackupRequirement,
     feature_name: str,
@@ -3738,11 +4073,56 @@ def _manual_gdt_contributor_name(
     return f"{label} {feature_name} to {datum_text}"
 
 
+def _apply_settings_defaults_to_stackup(
+    stackup: StackupRequirement,
+    settings: AnalysisSettings,
+    *,
+    apply_block_tolerance: bool,
+) -> None:
+    stackup.analysis_mode = settings.default_analysis_mode
+    stackup.target_quality = QualityTarget(
+        metric=settings.default_quality_metric,
+        value=_default_quality_value(settings, stackup.target_quality.value),
+        sigma_coverage=settings.sigma_coverage,
+    )
+    if not apply_block_tolerance:
+        return
+    for contributor in stackup.contributors:
+        if contributor.tolerance_type == ToleranceType.GEOMETRIC:
+            continue
+        if not contributor.source_note.startswith("Generated"):
+            continue
+        tolerance = settings.default_block_tolerance
+        contributor.tolerance_type = ToleranceType.SYMMETRIC
+        contributor.tolerance = tolerance
+        contributor.tolerance_minus = tolerance
+        contributor.tolerance_plus = tolerance
+
+
+def _default_quality_value(
+    settings: AnalysisSettings,
+    previous_value: float | None,
+) -> float | None:
+    if settings.default_quality_metric == QualityMetric.CPK:
+        return settings.default_target_cpk
+    if settings.default_quality_metric == QualityMetric.SIGMA:
+        return settings.sigma_coverage
+    if settings.default_quality_metric == QualityMetric.YIELD:
+        return previous_value
+    return None
+
+
+def _shared_stackup_label(value: str) -> str:
+    label = str(value).removeprefix("stackup_").strip()
+    return label.replace("_", " ") if label else str(value)
+
+
 def _edit_status_message(contributor: StackupContributor, field: str) -> str:
     message = f"Updated {contributor.name} {field}; results recalculated."
     if contributor.shared_with_stackup_ids:
         message += " Shared dimension affects: " + ", ".join(
-            contributor.shared_with_stackup_ids
+            _shared_stackup_label(stackup_id)
+            for stackup_id in contributor.shared_with_stackup_ids
         )
     return message
 
