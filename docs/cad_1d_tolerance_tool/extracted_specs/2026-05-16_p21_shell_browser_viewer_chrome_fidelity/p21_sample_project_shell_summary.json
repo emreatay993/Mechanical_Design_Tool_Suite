@@ -1,0 +1,27 @@
+{
+  "displayed_shape_count": 2,
+  "project": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\tests\\fixtures\\cad_1d_tolerance\\sample_cad_1d_project.tolproj",
+  "ribbon_tabs": [
+    "File",
+    "Tolerance Stackup",
+    "View"
+  ],
+  "shell_grab": {
+    "bytes": 100918,
+    "height": 1800,
+    "path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-16_p21_shell_browser_viewer_chrome_fidelity\\p21_sample_project_shell_grab.png",
+    "sampled_nonblack_ratio": 0.7597,
+    "sampled_unique_colors": 52,
+    "width": 3000
+  },
+  "viewer_class": "OccCadViewerWidget",
+  "viewport_snapshot": {
+    "bytes": 28721,
+    "height": 1510,
+    "path": "C:\\Users\\emre_\\PycharmProjects\\Mechanical_Design_Tool_Suite\\docs\\cad_1d_tolerance_tool\\extracted_specs\\2026-05-16_p21_shell_browser_viewer_chrome_fidelity\\p21_sample_project_viewport.png",
+    "sampled_nonblack_ratio": 1.0,
+    "sampled_unique_colors": 69,
+    "width": 922
+  },
+  "window_title": "MDTS CAD 1D Tolerance    Caster tolerance study"
+}

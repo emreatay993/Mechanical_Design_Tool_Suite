@@ -11,7 +11,7 @@ if "QT_QPA_PLATFORM" not in os.environ and importlib.util.find_spec("OCC") is No
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QDialogButtonBox, QLabel, QTabWidget, QWidget
+from PyQt6.QtWidgets import QApplication, QCheckBox, QDialogButtonBox, QLabel, QSplitter, QTabWidget, QWidget
 
 from mechanical_design_tool_suite.cad_tolerance_gui import (
     AddGeometricToleranceDialog,
@@ -229,15 +229,32 @@ class CadToleranceGuiShellTest(unittest.TestCase):
     def test_shell_has_dense_three_pane_layout_ribbon_tabs_and_tables(self) -> None:
         ribbon = self.window.findChild(QTabWidget, "RibbonTabs")
         self.assertIsNotNone(ribbon)
-        self.assertEqual([ribbon.tabText(index) for index in range(ribbon.count())], ["Stackup", "Report", "Data"])
+        self.assertEqual(
+            [ribbon.tabText(index) for index in range(ribbon.count())],
+            ["File", "Tolerance Stackup", "View"],
+        )
+        self.assertEqual(ribbon.currentIndex(), 1)
+        for group_name in ("RibbonGroupStackup", "RibbonGroupReport", "RibbonGroupData"):
+            self.assertIsNotNone(self.window.findChild(QWidget, group_name))
 
         self.assertIsNotNone(self.window.findChild(QWidget, "ModelBrowserPanel"))
+        self.assertIsNotNone(self.window.findChild(QWidget, "BrowserFilterButton"))
+        self.assertIsNotNone(self.window.findChild(QWidget, "BrowserAssemblyViewButton"))
+        self.assertIsNotNone(self.window.findChild(QWidget, "BrowserFindButton"))
+        splitter = self.window.findChild(QSplitter, "MainWorkspaceSplitter")
+        self.assertIsNotNone(splitter)
+        self.assertEqual(splitter.count(), 3)
         self.assertIsNotNone(self.window.findChild(QWidget, "CadViewportHost"))
+        self.assertIsNotNone(self.window.findChild(QWidget, "ViewCubeWidget"))
+        self.assertIsNotNone(self.window.findChild(QWidget, "AxisTriadWidget"))
+        self.assertIsNotNone(self.window.findChild(QWidget, "ViewportNavigationToolbar"))
         guided_toolbar = self.window.findChild(QWidget, "GuidedStackupToolbar")
         self.assertIsNotNone(guided_toolbar)
         self.assertTrue(guided_toolbar.isHidden())
         self.assertIsNotNone(self.window.findChild(QWidget, "SummaryTableView"))
         self.assertIsNotNone(self.window.findChild(QWidget, "DetailTableView"))
+        self.assertIsNotNone(self.window.findChild(QLabel, "StatusStackupCountLabel"))
+        self.assertIsNotNone(self.window.findChild(QLabel, "StatusSelectionCountLabel"))
         self.assertEqual(self.window.summary_model.rowCount(), 9)
         self.assertEqual(self.window.detail_model.columnCount(), len(DETAIL_COLUMNS))
 

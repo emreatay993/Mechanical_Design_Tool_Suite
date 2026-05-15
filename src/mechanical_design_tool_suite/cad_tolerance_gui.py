@@ -18,6 +18,7 @@ try:
         QColor,
         QFont,
         QFontDatabase,
+        QIcon,
         QImage,
         QMouseEvent,
         QPainter,
@@ -581,6 +582,247 @@ class _DraggableAnnotationLabel(QLabel):
         super().mouseReleaseEvent(event)
 
 
+class _ViewCubeWidget(QFrame):
+    viewRequested = pyqtSignal(object)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ViewCubeWidget")
+        self.setToolTip("Set isometric view")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(68, 60)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.viewRequested.emit(StandardView.ISO)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        top = [QPoint(16, 14), QPoint(38, 6), QPoint(58, 16), QPoint(34, 25)]
+        front = [QPoint(16, 14), QPoint(34, 25), QPoint(34, 50), QPoint(16, 39)]
+        right = [QPoint(34, 25), QPoint(58, 16), QPoint(58, 40), QPoint(34, 50)]
+        painter.setPen(QPen(QColor("#8f8f8f"), 1))
+        painter.setBrush(QColor("#efefef"))
+        painter.drawPolygon(*top)
+        painter.setBrush(QColor("#d8d8d8"))
+        painter.drawPolygon(*front)
+        painter.setBrush(QColor("#c9c9c9"))
+        painter.drawPolygon(*right)
+        painter.setPen(QPen(QColor("#555555"), 1))
+        font = painter.font()
+        font.setPointSize(6)
+        painter.setFont(font)
+        painter.drawText(QRect(14, 24, 23, 14), Qt.AlignmentFlag.AlignCenter, "FRONT")
+        painter.drawText(QRect(36, 23, 22, 14), Qt.AlignmentFlag.AlignCenter, "RIGHT")
+        painter.end()
+
+
+class _AxisTriadWidget(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("AxisTriadWidget")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setFixedSize(64, 56)
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        origin = QPoint(19, 39)
+        axes = (
+            ("X", QPoint(52, 41), QColor("#c00000")),
+            ("Y", QPoint(19, 9), QColor("#18a51d")),
+            ("Z", QPoint(8, 48), QColor("#192fd6")),
+        )
+        for label, end, color in axes:
+            painter.setPen(QPen(color, 2))
+            painter.drawLine(origin, end)
+            _draw_small_arrow_head(painter, origin, end, color)
+            painter.drawText(QRect(end.x() - 7, end.y() - 9, 16, 14), Qt.AlignmentFlag.AlignCenter, label)
+        painter.setPen(QPen(QColor("#333333"), 1))
+        painter.setBrush(QColor("#333333"))
+        painter.drawEllipse(origin, 2, 2)
+        painter.end()
+
+
+def _draw_small_arrow_head(painter: QPainter, tail: QPoint, tip: QPoint, color: QColor) -> None:
+    dx = tip.x() - tail.x()
+    dy = tip.y() - tail.y()
+    length = math.hypot(dx, dy)
+    if length <= 0.1:
+        return
+    ux = dx / length
+    uy = dy / length
+    px = -uy
+    py = ux
+    head = 6.0
+    spread = 3.0
+    left = QPointF(tip.x() - ux * head + px * spread, tip.y() - uy * head + py * spread)
+    right = QPointF(tip.x() - ux * head - px * spread, tip.y() - uy * head - py * spread)
+    painter.setBrush(color)
+    painter.drawPolygon(tip, left.toPoint(), right.toPoint())
+
+
+def _chrome_icon(kind: str, size: int = 24) -> QIcon:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    rect = pixmap.rect().adjusted(3, 3, -3, -3)
+    dark = QColor("#202020")
+    gray = QColor("#707070")
+    blue = QColor("#0070c0")
+    green = QColor("#109020")
+    red = QColor("#b82828")
+
+    if kind == "new_stackup":
+        painter.setPen(QPen(dark, 2))
+        painter.drawLine(rect.left(), rect.center().y(), rect.right(), rect.center().y())
+        painter.drawLine(rect.right() - 5, rect.center().y() - 4, rect.right(), rect.center().y())
+        painter.drawLine(rect.right() - 5, rect.center().y() + 4, rect.right(), rect.center().y())
+        painter.setBrush(green)
+        painter.setPen(QPen(green.darker(130), 1))
+        painter.drawEllipse(rect.left(), rect.top(), 9, 9)
+        painter.setPen(QPen(Qt.GlobalColor.white, 2))
+        painter.drawLine(rect.left() + 4, rect.top() + 2, rect.left() + 4, rect.top() + 7)
+        painter.drawLine(rect.left() + 2, rect.top() + 4, rect.left() + 7, rect.top() + 4)
+    elif kind == "add_feature":
+        painter.setPen(QPen(gray, 2))
+        painter.drawLine(rect.left(), rect.center().y(), rect.right(), rect.center().y())
+        painter.drawLine(rect.right() - 5, rect.center().y() - 4, rect.right(), rect.center().y())
+        painter.drawLine(rect.right() - 5, rect.center().y() + 4, rect.right(), rect.center().y())
+        painter.setBrush(QColor("#d6d6d6"))
+        painter.setPen(QPen(QColor("#b5b5b5"), 1))
+        painter.drawEllipse(rect.left(), rect.top(), 9, 9)
+        painter.setPen(QPen(Qt.GlobalColor.white, 2))
+        painter.drawLine(rect.left() + 4, rect.top() + 2, rect.left() + 4, rect.top() + 7)
+        painter.drawLine(rect.left() + 2, rect.top() + 4, rect.left() + 7, rect.top() + 4)
+    elif kind == "snapshot":
+        painter.setBrush(dark)
+        painter.setPen(QPen(dark, 1))
+        painter.drawRoundedRect(rect.adjusted(1, 4, -1, -2), 2, 2)
+        painter.drawRect(rect.left() + 5, rect.top() + 2, 8, 4)
+        painter.setBrush(QColor("#f6f6f6"))
+        painter.drawEllipse(rect.center(), 4, 4)
+    elif kind == "report":
+        painter.setBrush(QColor("#e9e9e9"))
+        painter.setPen(QPen(QColor("#b8b8b8"), 1))
+        painter.drawRect(rect.adjusted(3, 0, -2, 0))
+        painter.setPen(QPen(gray, 1))
+        for y in (8, 12, 16):
+            painter.drawLine(rect.left() + 8, rect.top() + y, rect.right() - 5, rect.top() + y)
+        painter.setBrush(QColor("#d6d6d6"))
+        painter.setPen(QPen(QColor("#b5b5b5"), 1))
+        painter.drawEllipse(rect.left(), rect.top(), 8, 8)
+        painter.setPen(QPen(Qt.GlobalColor.white, 2))
+        painter.drawLine(rect.left() + 4, rect.top() + 2, rect.left() + 4, rect.top() + 6)
+        painter.drawLine(rect.left() + 2, rect.top() + 4, rect.left() + 6, rect.top() + 4)
+    elif kind == "import":
+        painter.setPen(QPen(green, 2))
+        painter.drawLine(rect.left(), rect.center().y(), rect.right() - 3, rect.center().y())
+        painter.drawLine(rect.left(), rect.center().y(), rect.left() + 5, rect.center().y() - 5)
+        painter.drawLine(rect.left(), rect.center().y(), rect.left() + 5, rect.center().y() + 5)
+        painter.setPen(QPen(gray, 1))
+        painter.drawRect(rect.adjusted(6, 3, -2, -3))
+    elif kind == "export":
+        painter.setPen(QPen(red, 2))
+        painter.drawLine(rect.left() + 3, rect.center().y(), rect.right(), rect.center().y())
+        painter.drawLine(rect.right(), rect.center().y(), rect.right() - 5, rect.center().y() - 5)
+        painter.drawLine(rect.right(), rect.center().y(), rect.right() - 5, rect.center().y() + 5)
+        painter.setPen(QPen(gray, 1))
+        painter.drawRect(rect.adjusted(2, 3, -6, -3))
+    elif kind == "open":
+        painter.setBrush(QColor("#f4cf64"))
+        painter.setPen(QPen(QColor("#a5831c"), 1))
+        painter.drawRect(rect.adjusted(0, 5, 0, -1))
+        painter.drawRect(rect.left() + 2, rect.top() + 2, 9, 5)
+    elif kind == "save":
+        painter.setBrush(QColor("#e8e8e8"))
+        painter.setPen(QPen(gray, 1))
+        painter.drawRect(rect)
+        painter.fillRect(rect.adjusted(4, 3, -4, -11), QColor("#637d9a"))
+        painter.fillRect(rect.adjusted(5, 14, -5, -3), QColor("#ffffff"))
+    elif kind == "settings":
+        painter.setPen(QPen(dark, 2))
+        painter.drawEllipse(rect.center(), 5, 5)
+        for angle in range(0, 360, 45):
+            radians = math.radians(angle)
+            start = QPointF(rect.center().x() + math.cos(radians) * 7, rect.center().y() + math.sin(radians) * 7)
+            end = QPointF(rect.center().x() + math.cos(radians) * 10, rect.center().y() + math.sin(radians) * 10)
+            painter.drawLine(start, end)
+    elif kind == "refresh":
+        painter.setPen(QPen(blue, 2))
+        painter.drawArc(rect, 35 * 16, 270 * 16)
+        painter.drawLine(rect.right() - 4, rect.top() + 5, rect.right(), rect.top() + 5)
+        painter.drawLine(rect.right(), rect.top() + 5, rect.right() - 1, rect.top() + 10)
+    elif kind == "reattach":
+        painter.setBrush(QColor("#f4cf64"))
+        painter.setPen(QPen(QColor("#a5831c"), 1))
+        painter.drawRect(rect.adjusted(0, 5, 0, -1))
+        painter.setPen(QPen(blue, 2))
+        painter.drawLine(rect.left() + 5, rect.center().y(), rect.right() - 4, rect.center().y())
+    elif kind in {"iso", "front", "top", "right"}:
+        painter.setBrush(QColor("#ededed"))
+        painter.setPen(QPen(gray, 1))
+        if kind == "iso":
+            painter.drawPolygon(
+                QPoint(rect.center().x(), rect.top()),
+                QPoint(rect.right(), rect.center().y()),
+                QPoint(rect.center().x(), rect.bottom()),
+                QPoint(rect.left(), rect.center().y()),
+            )
+        elif kind == "front":
+            painter.drawRect(rect.adjusted(2, 4, -2, -4))
+        elif kind == "top":
+            painter.drawRect(rect.adjusted(1, 2, -1, -8))
+        else:
+            painter.drawRect(rect.adjusted(6, 2, -6, -2))
+    elif kind == "pan":
+        painter.setPen(QPen(dark, 2))
+        painter.drawLine(rect.center().x(), rect.top(), rect.center().x(), rect.bottom())
+        painter.drawLine(rect.left(), rect.center().y(), rect.right(), rect.center().y())
+        painter.drawLine(rect.center().x(), rect.top(), rect.center().x() - 4, rect.top() + 4)
+        painter.drawLine(rect.center().x(), rect.top(), rect.center().x() + 4, rect.top() + 4)
+    elif kind == "zoom":
+        painter.setPen(QPen(dark, 2))
+        painter.drawEllipse(rect.left() + 2, rect.top() + 2, 10, 10)
+        painter.drawLine(rect.left() + 11, rect.top() + 11, rect.right(), rect.bottom())
+        painter.drawLine(rect.left() + 5, rect.top() + 7, rect.left() + 10, rect.top() + 7)
+        painter.drawLine(rect.left() + 7, rect.top() + 5, rect.left() + 7, rect.top() + 10)
+    elif kind == "fit":
+        painter.setPen(QPen(dark, 2))
+        painter.drawRect(rect.adjusted(2, 2, -2, -2))
+        painter.drawLine(rect.left() + 2, rect.top() + 7, rect.left() + 7, rect.top() + 2)
+        painter.drawLine(rect.right() - 2, rect.bottom() - 7, rect.right() - 7, rect.bottom() - 2)
+    elif kind == "filter":
+        painter.setPen(QPen(blue, 2))
+        painter.drawLine(rect.left(), rect.top() + 1, rect.right(), rect.top() + 1)
+        painter.drawLine(rect.left(), rect.top() + 1, rect.center().x(), rect.center().y())
+        painter.drawLine(rect.right(), rect.top() + 1, rect.center().x(), rect.center().y())
+        painter.drawLine(rect.center().x(), rect.center().y(), rect.center().x(), rect.bottom())
+    elif kind == "find":
+        painter.setPen(QPen(dark, 2))
+        painter.drawEllipse(rect.left() + 2, rect.top() + 2, 9, 9)
+        painter.drawEllipse(rect.left() + 10, rect.top() + 2, 9, 9)
+        painter.drawLine(rect.left() + 7, rect.top() + 11, rect.left() + 5, rect.bottom())
+        painter.drawLine(rect.left() + 15, rect.top() + 11, rect.left() + 17, rect.bottom())
+    elif kind == "view":
+        painter.setBrush(QColor("#f4cf64"))
+        painter.setPen(QPen(QColor("#a5831c"), 1))
+        painter.drawRect(rect.adjusted(1, 4, -7, -2))
+        painter.setBrush(QColor("#f8dc72"))
+        painter.drawRect(rect.adjusted(7, 1, -1, -5))
+    else:
+        painter.setPen(QPen(QColor("#ee842b"), 2))
+        painter.drawEllipse(rect)
+
+    painter.end()
+    return QIcon(pixmap)
+
+
 class CadViewportHost(QFrame):
     """Hosts the CAD viewer widget plus observed orientation and workflow overlays."""
 
@@ -606,19 +848,19 @@ class CadViewportHost(QFrame):
 
         self.annotation_canvas = _ViewerAnnotationCanvas(self)
 
-        self.view_cube = QPushButton("FRONT\nRIGHT", self)
-        self.view_cube.setObjectName("ViewCubePlaceholder")
-        self.view_cube.setToolTip("Set isometric view")
-        self.view_cube.clicked.connect(lambda: self._set_standard_view(StandardView.ISO))
+        self.view_cube = _ViewCubeWidget(self)
+        self.view_cube.viewRequested.connect(self._set_standard_view)
 
         self.navigation_toolbar = QToolBar("Viewport Navigation", self)
         self.navigation_toolbar.setObjectName("ViewportNavigationToolbar")
         self.navigation_toolbar.setOrientation(Qt.Orientation.Vertical)
+        self.navigation_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.navigation_toolbar.setIconSize(QSize(18, 18))
+        self.navigation_toolbar.setMovable(False)
+        self.navigation_toolbar.setFloatable(False)
         self._build_navigation_toolbar()
 
-        self.axis_triad = QLabel("Y\n|\nZ--X", self)
-        self.axis_triad.setObjectName("AxisTriadPlaceholder")
-        self.axis_triad.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.axis_triad = _AxisTriadWidget(self)
 
         self.guided_toolbar = self._create_guided_toolbar()
         self.guided_toolbar.setParent(self)
@@ -745,17 +987,17 @@ class CadViewportHost(QFrame):
         self._layout_overlay()
 
     def _build_navigation_toolbar(self) -> None:
-        self._add_navigation_action("Iso", lambda: self._set_standard_view(StandardView.ISO))
-        self._add_navigation_action("Front", lambda: self._set_standard_view(StandardView.FRONT))
-        self._add_navigation_action("Top", lambda: self._set_standard_view(StandardView.TOP))
-        self._add_navigation_action("Right", lambda: self._set_standard_view(StandardView.RIGHT))
+        self._add_navigation_action("Isometric", "iso", lambda: self._set_standard_view(StandardView.ISO))
+        self._add_navigation_action("Front", "front", lambda: self._set_standard_view(StandardView.FRONT))
+        self._add_navigation_action("Top", "top", lambda: self._set_standard_view(StandardView.TOP))
+        self._add_navigation_action("Right", "right", lambda: self._set_standard_view(StandardView.RIGHT))
         self.navigation_toolbar.addSeparator()
-        self._add_navigation_action("Pan", lambda: self._pan(32, 0))
-        self._add_navigation_action("Zoom", lambda: self._zoom(1.15))
-        self._add_navigation_action("Fit", self._fit_all)
+        self._add_navigation_action("Pan", "pan", lambda: self._pan(32, 0))
+        self._add_navigation_action("Zoom", "zoom", lambda: self._zoom(1.15))
+        self._add_navigation_action("Fit", "fit", self._fit_all)
 
-    def _add_navigation_action(self, label: str, callback) -> None:
-        action = self.navigation_toolbar.addAction(label)
+    def _add_navigation_action(self, label: str, icon_name: str, callback) -> None:
+        action = self.navigation_toolbar.addAction(_chrome_icon(icon_name, 20), label)
         action.setToolTip(label)
         action.triggered.connect(callback)
 
@@ -828,7 +1070,7 @@ class CadViewportHost(QFrame):
         self.annotation_canvas.setGeometry(rect)
         self.annotation_canvas.raise_()
 
-        cube_size = QSize(70, 58)
+        cube_size = self.view_cube.size()
         self.view_cube.setGeometry(
             max(margin, rect.width() - cube_size.width() - margin),
             margin,
@@ -837,7 +1079,7 @@ class CadViewportHost(QFrame):
         )
 
         nav_hint = self.navigation_toolbar.sizeHint()
-        nav_width = max(42, nav_hint.width())
+        nav_width = max(34, nav_hint.width())
         nav_height = min(max(190, nav_hint.height()), max(120, rect.height() - 190))
         self.navigation_toolbar.setGeometry(
             max(margin, rect.width() - nav_width - margin),
@@ -846,7 +1088,13 @@ class CadViewportHost(QFrame):
             nav_height,
         )
 
-        self.axis_triad.setGeometry(margin, max(margin, rect.height() - 82), 82, 70)
+        axis_size = self.axis_triad.size()
+        self.axis_triad.setGeometry(
+            margin,
+            max(margin, rect.height() - axis_size.height() - margin),
+            axis_size.width(),
+            axis_size.height(),
+        )
 
         guided_hint = self.guided_toolbar.sizeHint()
         guided_width = min(max(380, guided_hint.width()), max(320, rect.width() - 2 * margin))
@@ -1366,7 +1614,7 @@ class CadToleranceMainWindow(QMainWindow):
         )
         self.assembly_model = CadAssemblyTreeModel(self.workspace.assembly_roots)
 
-        self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
+        self.setWindowTitle(f"MDTS CAD 1D Tolerance    {self.workspace.project_title}")
         self.resize(1500, 900)
         self.setMinimumSize(1000, 640)
         self._build_actions()
@@ -1417,7 +1665,8 @@ class CadToleranceMainWindow(QMainWindow):
         self.result_panel.set_stackup_name("Stackup")
         self._sync_stackup_action_state()
         self._update_cad_source_status_ui()
-        self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
+        self.setWindowTitle(f"MDTS CAD 1D Tolerance    {self.workspace.project_title}")
+        self._update_status_counters()
         self.statusBar().showMessage(f"Imported {document.display_name or Path(document.source_path).name}")
 
     def load_project_file(self, path: str | Path) -> None:
@@ -1431,9 +1680,10 @@ class CadToleranceMainWindow(QMainWindow):
         self._set_detail_stackup(self.workspace.selected_stackup_id)
         self._refresh_dashboard()
         self._sync_stackup_action_state()
-        self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
+        self.setWindowTitle(f"MDTS CAD 1D Tolerance    {self.workspace.project_title}")
         self._rehydrate_project_cad_sources(project_path)
         self._update_cad_source_status_ui()
+        self._update_status_counters()
         if self.cad_source_status_messages:
             self.statusBar().showMessage("; ".join(self.cad_source_status_messages))
         else:
@@ -1548,38 +1798,59 @@ class CadToleranceMainWindow(QMainWindow):
             return PlaceholderCadViewerWidget(self, str(exc))
 
     def _build_actions(self) -> None:
-        style = self.style()
-        self.open_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon), "Open", self)
+        self.open_action = QAction(_chrome_icon("open", 32), "Open", self)
+        self.open_action.setToolTip("Open a STEP, IGES, .tolproj, or .tolpack file.")
         self.open_action.triggered.connect(self._open_dialog)
-        self.import_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ArrowDown), "Import", self)
+        self.import_action = QAction(_chrome_icon("import", 24), "Import", self)
+        self.import_action.setToolTip("Import a neutral STEP or IGES CAD file.")
         self.import_action.triggered.connect(self._open_dialog)
-        self.export_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ArrowUp), "Export", self)
+        self.export_action = QAction(_chrome_icon("export", 24), "Export", self)
         self.export_action.setToolTip("Package Project (.tolpack)")
         self.export_action.triggered.connect(self._package_project)
-        self.save_project_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton), "Save Project", self)
+        self.save_project_action = QAction(_chrome_icon("save", 24), "Save Project", self)
+        self.save_project_action.setToolTip("Save the current CAD tolerance project.")
         self.save_project_action.triggered.connect(self._save_project)
-        self.refresh_source_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload), "Refresh Source", self)
+        self.refresh_source_action = QAction(_chrome_icon("refresh", 24), "Refresh Source", self)
         self.refresh_source_action.setToolTip("Refresh the saved STEP/IGES source reference.")
         self.refresh_source_action.triggered.connect(self.refresh_cad_source)
-        self.reattach_source_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), "Reattach Source", self)
+        self.reattach_source_action = QAction(_chrome_icon("reattach", 24), "Reattach Source", self)
         self.reattach_source_action.setToolTip("Choose a replacement STEP/IGES source file.")
         self.reattach_source_action.triggered.connect(self._reattach_cad_source_dialog)
-        self.new_stackup_action = QAction("New Stackup", self)
+        self.new_stackup_action = QAction(_chrome_icon("new_stackup", 36), "New Stackup", self)
+        self.new_stackup_action.setToolTip("Create a guided 1D tolerance stackup.")
         self.new_stackup_action.triggered.connect(self._start_new_stackup_workflow)
-        self.add_feature_action = QAction("Add Feature", self)
+        self.add_feature_action = QAction(_chrome_icon("add_feature", 36), "Add Feature", self)
+        self.add_feature_action.setToolTip("Add an intermediate feature to the selected stackup.")
         self.add_feature_action.setEnabled(False)
         self.add_feature_action.triggered.connect(self._start_add_feature_flow)
-        self.add_geometric_tolerance_action = QAction("Add Geometric Tolerance", self)
+        self.add_geometric_tolerance_action = QAction(_chrome_icon("report", 30), "Add Geometric Tolerance", self)
+        self.add_geometric_tolerance_action.setToolTip("Add a manual GD&T/GPS contributor.")
         self.add_geometric_tolerance_action.triggered.connect(self._open_add_geometric_tolerance_dialog)
-        self.snapshot_action = QAction("Snapshot", self)
+        self.snapshot_action = QAction(_chrome_icon("snapshot", 36), "Snapshot", self)
         self.snapshot_action.setToolTip("Sets the current view orientation and size for the report image.")
         self.snapshot_action.triggered.connect(self._save_snapshot)
-        self.generate_report_action = QAction("Generate Report", self)
+        self.generate_report_action = QAction(_chrome_icon("report", 36), "Generate Report", self)
+        self.generate_report_action.setToolTip("Generate a browser-style tolerance stackup report.")
         self.generate_report_action.setEnabled(False)
         self.generate_report_action.triggered.connect(self._generate_report)
-        self.settings_action = QAction("Settings", self)
+        self.settings_action = QAction(_chrome_icon("settings", 24), "Settings", self)
+        self.settings_action.setToolTip("Open project tolerance defaults and display settings.")
         self.back_action = QAction("Back", self)
         self.back_action.triggered.connect(self.show_summary)
+        self.view_iso_action = QAction(_chrome_icon("iso", 24), "Isometric", self)
+        self.view_iso_action.triggered.connect(lambda: self.viewport_host._set_standard_view(StandardView.ISO))
+        self.view_front_action = QAction(_chrome_icon("front", 24), "Front", self)
+        self.view_front_action.triggered.connect(lambda: self.viewport_host._set_standard_view(StandardView.FRONT))
+        self.view_top_action = QAction(_chrome_icon("top", 24), "Top", self)
+        self.view_top_action.triggered.connect(lambda: self.viewport_host._set_standard_view(StandardView.TOP))
+        self.view_right_action = QAction(_chrome_icon("right", 24), "Right", self)
+        self.view_right_action.triggered.connect(lambda: self.viewport_host._set_standard_view(StandardView.RIGHT))
+        self.view_fit_action = QAction(_chrome_icon("fit", 24), "Fit", self)
+        self.view_fit_action.triggered.connect(lambda: self.viewport_host._fit_all())
+        self.view_zoom_action = QAction(_chrome_icon("zoom", 24), "Zoom", self)
+        self.view_zoom_action.triggered.connect(lambda: self.viewport_host._zoom(1.15))
+        self.view_pan_action = QAction(_chrome_icon("pan", 24), "Pan", self)
+        self.view_pan_action.triggered.connect(lambda: self.viewport_host._pan(32, 0))
 
     def _build_shell(self) -> None:
         central = QWidget()
@@ -1590,54 +1861,90 @@ class CadToleranceMainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("MainWorkspaceSplitter")
+        self.main_splitter = splitter
         splitter.addWidget(self._create_left_browser())
         self.viewport_host = CadViewportHost(self.viewer)
         splitter.addWidget(self.viewport_host)
         splitter.addWidget(self._create_analysis_pane())
-        splitter.setSizes([250, 720, 620])
+        splitter.setSizes([270, 660, 570])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
         root_layout.addWidget(splitter, 1)
         self.setCentralWidget(central)
+        self._configure_status_bar()
 
     def _create_ribbon(self) -> QTabWidget:
         ribbon = QTabWidget()
         ribbon.setObjectName("RibbonTabs")
-        ribbon.setMaximumHeight(122)
-        ribbon.addTab(self._ribbon_page([self.new_stackup_action, self.add_feature_action, self.add_geometric_tolerance_action], "Stackup"), "Stackup")
-        ribbon.addTab(self._ribbon_page([self.snapshot_action, self.generate_report_action], "Report"), "Report")
+        ribbon.setMaximumHeight(120)
         ribbon.addTab(
             self._ribbon_page(
                 [
-                    self.open_action,
-                    self.import_action,
-                    self.refresh_source_action,
-                    self.reattach_source_action,
-                    self.save_project_action,
-                    self.export_action,
+                    ("Project", [self.open_action, self.save_project_action]),
+                    ("Source", [self.import_action, self.refresh_source_action, self.reattach_source_action]),
+                    ("Package", [self.export_action]),
                 ],
-                "Data",
             ),
-            "Data",
+            "File",
         )
+        ribbon.addTab(
+            self._ribbon_page(
+                [
+                    ("Stackup", [self.new_stackup_action, self.add_feature_action]),
+                    ("Report", [self.snapshot_action, self.generate_report_action]),
+                    ("Data", [self.import_action, self.export_action]),
+                ],
+            ),
+            "Tolerance Stackup",
+        )
+        ribbon.addTab(
+            self._ribbon_page(
+                [
+                    ("Standard Views", [self.view_iso_action, self.view_front_action, self.view_top_action, self.view_right_action]),
+                    ("Navigate", [self.view_pan_action, self.view_zoom_action, self.view_fit_action]),
+                    ("Display", [self.settings_action]),
+                ],
+            ),
+            "View",
+        )
+        ribbon.setCurrentIndex(1)
         return ribbon
 
-    def _ribbon_page(self, actions: list[QAction], group_label: str) -> QWidget:
+    def _ribbon_page(self, groups: list[tuple[str, list[QAction]]]) -> QWidget:
         page = QWidget()
+        page.setObjectName("RibbonPage")
         layout = QHBoxLayout(page)
-        layout.setContentsMargins(8, 6, 8, 3)
-        layout.setSpacing(12)
+        layout.setContentsMargins(4, 4, 8, 2)
+        layout.setSpacing(0)
+        for group_label, actions in groups:
+            layout.addWidget(self._ribbon_group(group_label, actions))
+        layout.addStretch(1)
+        return page
+
+    def _ribbon_group(self, group_label: str, actions: list[QAction]) -> QWidget:
+        frame = QFrame()
+        frame.setObjectName(f"RibbonGroup{group_label.replace(' ', '')}")
+        frame.setProperty("ribbonGroup", True)
+        group_layout = QVBoxLayout(frame)
+        group_layout.setContentsMargins(5, 2, 5, 1)
+        group_layout.setSpacing(1)
+        command_row = QHBoxLayout()
+        command_row.setSpacing(3)
         for action in actions:
             button = QToolButton()
             button.setDefaultAction(action)
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            button.setIconSize(QSize(30, 30))
+            button.setProperty("ribbonCommand", True)
             button.setObjectName(f"RibbonButton{action.text().replace(' ', '')}")
-            if action.icon().isNull():
-                button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
-            layout.addWidget(button)
+            command_row.addWidget(button)
+        group_layout.addLayout(command_row)
         group = QLabel(group_label)
         group.setObjectName("RibbonGroupLabel")
-        layout.addWidget(group, alignment=Qt.AlignmentFlag.AlignBottom)
-        layout.addStretch(1)
-        return page
+        group.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        group_layout.addWidget(group)
+        return frame
 
     def _create_left_browser(self) -> QFrame:
         panel = QFrame()
@@ -1646,20 +1953,47 @@ class CadToleranceMainWindow(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         header = QHBoxLayout()
+        header.setContentsMargins(8, 5, 5, 4)
         title = QLabel("Model")
         title.setObjectName("DockHeaderTitle")
         header.addWidget(title)
+        header.addWidget(QLabel("v"))
         header.addStretch(1)
-        header.addWidget(QLabel("?"))
-        header.addWidget(QLabel("X"))
+        help_button = QToolButton()
+        help_button.setObjectName("ModelBrowserHelpButton")
+        help_button.setText("?")
+        help_button.setToolTip("Model browser help")
+        header.addWidget(help_button)
+        close_button = QToolButton()
+        close_button.setObjectName("ModelBrowserCloseButton")
+        close_button.setText("X")
+        close_button.setToolTip("Close model browser")
+        header.addWidget(close_button)
         layout.addLayout(header)
 
-        toolbar = QToolBar("Assembly Browser")
-        toolbar.setObjectName("AssemblyBrowserToolbar")
-        toolbar.addAction("Filter")
-        toolbar.addAction("Assembly View")
-        toolbar.addAction("Find")
-        layout.addWidget(toolbar)
+        browser_controls = QFrame()
+        browser_controls.setObjectName("AssemblyBrowserToolbar")
+        control_layout = QHBoxLayout(browser_controls)
+        control_layout.setContentsMargins(4, 2, 4, 2)
+        control_layout.setSpacing(3)
+        filter_button = QToolButton()
+        filter_button.setObjectName("BrowserFilterButton")
+        filter_button.setIcon(_chrome_icon("filter", 18))
+        filter_button.setToolTip("Filter model browser")
+        control_layout.addWidget(filter_button)
+        view_button = QToolButton()
+        view_button.setObjectName("BrowserAssemblyViewButton")
+        view_button.setIcon(_chrome_icon("view", 18))
+        view_button.setText("Assembly View")
+        view_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        view_button.setToolTip("Assembly View")
+        control_layout.addWidget(view_button, 1)
+        find_button = QToolButton()
+        find_button.setObjectName("BrowserFindButton")
+        find_button.setIcon(_chrome_icon("find", 18))
+        find_button.setToolTip("Find in model browser")
+        control_layout.addWidget(find_button)
+        layout.addWidget(browser_controls)
 
         self.cad_source_status_label = QLabel()
         self.cad_source_status_label.setObjectName("CadSourceStatusLabel")
@@ -1671,8 +2005,31 @@ class CadToleranceMainWindow(QMainWindow):
         self.assembly_tree.setModel(self.assembly_model)
         self.assembly_tree.expandToDepth(1)
         self.assembly_tree.header().hide()
+        self.assembly_tree.setUniformRowHeights(True)
+        self.assembly_tree.setIndentation(14)
         layout.addWidget(self.assembly_tree, 1)
         return panel
+
+    def _configure_status_bar(self) -> None:
+        self.status_stackup_count_label = QLabel()
+        self.status_stackup_count_label.setObjectName("StatusStackupCountLabel")
+        self.status_selection_count_label = QLabel()
+        self.status_selection_count_label.setObjectName("StatusSelectionCountLabel")
+        self.statusBar().addPermanentWidget(self.status_stackup_count_label)
+        self.statusBar().addPermanentWidget(self.status_selection_count_label)
+        self._update_status_counters()
+
+    def _update_status_counters(self) -> None:
+        if not hasattr(self, "status_stackup_count_label"):
+            return
+        stackup_count = len(self.project.stackups) or len(self.workspace.summary_rows)
+        self.status_stackup_count_label.setText(str(stackup_count))
+        selected_count = "0/0"
+        if self.project.stackups:
+            selected = _stackup_by_id(self.project, self.workspace.selected_stackup_id)
+            if selected is not None:
+                selected_count = f"{len(selected.contributors)}/{len(selected.contributors)}"
+        self.status_selection_count_label.setText(selected_count)
 
     def _create_analysis_pane(self) -> QWidget:
         self.analysis_stack = QStackedWidget()
@@ -1690,14 +2047,17 @@ class CadToleranceMainWindow(QMainWindow):
         layout.setSpacing(0)
         header = QHBoxLayout()
         header.setContentsMargins(8, 8, 8, 6)
-        header.addWidget(QLabel("MDTS"))
+        brand = QLabel("MDTS")
+        brand.setObjectName("AnalysisPaneBrand")
+        header.addWidget(brand)
         title = QLabel("Summary of 1D Tolerance Stackups")
         title.setObjectName("AnalysisPaneTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.addWidget(title, 1)
         gear = QToolButton()
         gear.setDefaultAction(self.settings_action)
-        gear.setText("Gear")
+        gear.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        gear.setObjectName("AnalysisPaneGearButton")
         header.addWidget(gear)
         layout.addLayout(header)
 
@@ -1980,6 +2340,7 @@ class CadToleranceMainWindow(QMainWindow):
             self.workspace.contribution_rows(self.workspace.selected_stackup_id),
             "Contributions Rollup",
         )
+        self._update_status_counters()
 
     def _start_new_stackup_workflow(self) -> None:
         self.workflow_controller = GuidedStackupWorkflowController(
@@ -3161,7 +3522,7 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
     palette.setColor(QPalette.ColorRole.Text, QColor("#202020"))
     palette.setColor(QPalette.ColorRole.Button, QColor("#f4f4f4"))
     palette.setColor(QPalette.ColorRole.ButtonText, QColor("#202020"))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor("#d7eaff"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#e3eff9"))
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#111111"))
     app.setPalette(palette)
 
@@ -3171,51 +3532,96 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
             background: #f2f2f2;
         }
         QTabWidget#RibbonTabs::pane {
+            border: 0;
             border-bottom: 1px solid #c8c8c8;
-            background: #f4f4f4;
+            background: #f6f6f6;
         }
         QTabWidget#RibbonTabs QTabBar::tab {
-            padding: 7px 14px;
-            background: #efefef;
-            border-right: 1px solid #d2d2d2;
+            min-height: 24px;
+            padding: 3px 12px;
+            background: #525252;
+            color: #f0f0f0;
+            border-right: 1px solid #656565;
         }
         QTabWidget#RibbonTabs QTabBar::tab:selected {
-            background: #ffffff;
-            border-top: 3px solid #e87522;
+            background: #f6f6f6;
+            color: #202020;
+            border-right: 1px solid #d9d9d9;
+        }
+        QTabWidget#RibbonTabs QTabBar::tab:first {
+            background: #ee842b;
+            color: #ffffff;
+            border-right: 1px solid #c86a1f;
+        }
+        QTabWidget#RibbonTabs QTabBar::tab:first:selected {
+            background: #ee842b;
+            color: #ffffff;
         }
         QToolButton {
             border: 1px solid transparent;
             padding: 4px;
         }
+        QToolButton[ribbonCommand="true"] {
+            min-width: 76px;
+            max-width: 116px;
+            min-height: 54px;
+            padding: 2px 4px;
+            color: #202020;
+            font-size: 10px;
+        }
+        QToolButton[ribbonCommand="true"]:disabled {
+            color: #9a9a9a;
+        }
         QToolButton:hover, QPushButton:hover {
             background: #e4f0fb;
             border: 1px solid #7aa7d9;
         }
+        QFrame[ribbonGroup="true"] {
+            border-right: 1px solid #d9d9d9;
+            background: #f6f6f6;
+        }
         QLabel#RibbonGroupLabel {
             color: #555555;
-            padding-left: 10px;
-            padding-bottom: 3px;
+            font-size: 10px;
+            padding-top: 1px;
         }
         QFrame#ModelBrowserPanel {
             background: #ffffff;
-            border-right: 1px solid #b8b8b8;
+            border-right: 1px solid #d9d9d9;
         }
         QLabel#DockHeaderTitle {
             font-weight: 700;
-            padding: 6px 8px;
+            padding: 0;
         }
-        QToolBar#AssemblyBrowserToolbar {
+        QToolButton#ModelBrowserHelpButton, QToolButton#ModelBrowserCloseButton {
+            min-width: 18px;
+            max-width: 18px;
+            min-height: 18px;
+            padding: 0;
+        }
+        QFrame#AssemblyBrowserToolbar {
             border-top: 1px solid #d0d0d0;
             border-bottom: 1px solid #d0d0d0;
             background: #f7f7f7;
-            spacing: 4px;
+        }
+        QFrame#AssemblyBrowserToolbar QToolButton {
+            min-height: 20px;
+            padding: 1px 3px;
+        }
+        QLabel#CadSourceStatusLabel {
+            color: #555555;
+            font-size: 9px;
+            padding: 2px 6px;
+            border-bottom: 1px solid #eeeeee;
         }
         QTreeView#AssemblyTreeView {
-            selection-background-color: #d7eaff;
+            selection-background-color: #e3eff9;
             border: 0;
+            alternate-background-color: #f3f3f3;
+            font-size: 10px;
         }
         QFrame#CadViewportHost, QFrame#PlaceholderCadViewer {
-            background: #bfbfbf;
+            background: #c4c4c4;
             border: 1px solid #9c9c9c;
         }
         QLabel#PlaceholderViewerTitle {
@@ -3226,21 +3632,22 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
         QLabel#PlaceholderViewerDetail {
             color: #4a4a4a;
         }
-        QPushButton#ViewCubePlaceholder {
-            min-width: 58px;
-            min-height: 48px;
-            background: rgba(240, 240, 240, 180);
+        QFrame#ViewCubeWidget {
+            background: rgba(240, 240, 240, 165);
             border: 1px solid #9c9c9c;
-            color: #666666;
-            font-size: 10px;
         }
         QToolBar#ViewportNavigationToolbar {
-            background: rgba(235, 235, 235, 170);
+            background: rgba(235, 235, 235, 185);
             border: 1px solid #a5a5a5;
         }
-        QLabel#AxisTriadPlaceholder {
-            color: #1d4ed8;
-            font-weight: 700;
+        QToolBar#ViewportNavigationToolbar QToolButton {
+            min-width: 26px;
+            max-width: 28px;
+            min-height: 25px;
+            padding: 1px;
+        }
+        QWidget#AxisTriadWidget {
+            background: transparent;
         }
         QFrame#GuidedStackupToolbar {
             background: rgba(238, 238, 238, 210);
@@ -3278,9 +3685,13 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
             font-size: 15px;
             font-weight: 700;
         }
+        QLabel#AnalysisPaneBrand {
+            color: #333333;
+            padding-left: 2px;
+        }
         QTableView {
             gridline-color: #d0d0d0;
-            selection-background-color: #d7eaff;
+            selection-background-color: #e3eff9;
             selection-color: #111111;
             border: 1px solid #bcbcbc;
             background: #ffffff;
@@ -3370,6 +3781,12 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
         QStatusBar {
             background: #eeeeee;
             border-top: 1px solid #c8c8c8;
+        }
+        QLabel#StatusStackupCountLabel, QLabel#StatusSelectionCountLabel {
+            min-width: 44px;
+            padding: 0 8px;
+            border-left: 1px solid #d0d0d0;
+            color: #333333;
         }
         """
     )

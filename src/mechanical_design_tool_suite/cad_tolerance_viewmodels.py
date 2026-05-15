@@ -50,6 +50,7 @@ SUMMARY_COLUMNS = (
 DETAIL_COLUMNS = ("Name", "Sens", "Nominal", "Tolerance", "Datum")
 DETAIL_TOLERANCE_TYPE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 DETAIL_CONTRIBUTOR_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 2
+ASSEMBLY_VISIBILITY_ROLE = int(Qt.ItemDataRole.UserRole) + 3
 
 GUIDED_STACKUP_STEPS = GUIDED_STACKUP_STEP_LABELS
 
@@ -664,21 +665,21 @@ def _detail_edit_tooltip(row: StackupDetailRow, column: int) -> str:
 
 def _summary_background(row: StackupSummaryRow) -> QBrush | None:
     if row.status == ResultStatus.FAIL:
-        return QBrush(QColor("#f9e2e2"))
+        return QBrush(QColor("#faf2f2"))
     if row.status in {ResultStatus.PASS, ResultStatus.WARN}:
-        return QBrush(QColor("#eef8ee"))
+        return QBrush(QColor("#effbf1"))
     return None
 
 
 def _detail_background(row: StackupDetailRow) -> QBrush | None:
     if row.status == ResultStatus.FAIL:
-        return QBrush(QColor("#f9e2e2"))
+        return QBrush(QColor("#faf2f2"))
     if row.warning or row.status == ResultStatus.WARN:
         return QBrush(QColor("#fff7d6"))
     if row.row_type == "part":
         return QBrush(QColor("#ffffff"))
     if row.row_type == "feature":
-        return QBrush(QColor("#f7f7f7"))
+        return QBrush(QColor("#f3f3f3"))
     if row.row_type in {"result", "objective"}:
         return QBrush(QColor("#f2f2f2"))
     return None
@@ -785,6 +786,8 @@ def _tree_item(text: str, item_id: str, node_type: AssemblyNodeType) -> QStandar
     item = QStandardItem(text)
     item.setEditable(False)
     item.setData(item_id, Qt.ItemDataRole.UserRole)
+    item.setData(True, ASSEMBLY_VISIBILITY_ROLE)
+    item.setToolTip("Visible in the CAD viewport")
     item.setIcon(_tree_icon(node_type))
     return item
 
