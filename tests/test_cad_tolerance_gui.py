@@ -192,10 +192,23 @@ class CadToleranceGuiShellTest(unittest.TestCase):
 
         self.assertIsNotNone(self.window.findChild(QWidget, "ModelBrowserPanel"))
         self.assertIsNotNone(self.window.findChild(QWidget, "CadViewportHost"))
+        guided_toolbar = self.window.findChild(QWidget, "GuidedStackupToolbar")
+        self.assertIsNotNone(guided_toolbar)
+        self.assertTrue(guided_toolbar.isHidden())
         self.assertIsNotNone(self.window.findChild(QWidget, "SummaryTableView"))
         self.assertIsNotNone(self.window.findChild(QWidget, "DetailTableView"))
         self.assertEqual(self.window.summary_model.rowCount(), 9)
         self.assertEqual(self.window.detail_model.columnCount(), len(DETAIL_COLUMNS))
+
+    def test_guided_stackup_toolbar_is_only_visible_during_guided_workflow(self) -> None:
+        guided_toolbar = self.window.findChild(QWidget, "GuidedStackupToolbar")
+        self.assertIsNotNone(guided_toolbar)
+        self.assertTrue(guided_toolbar.isHidden())
+
+        self.window._start_new_stackup_workflow()
+        self.app.processEvents()
+
+        self.assertFalse(guided_toolbar.isHidden())
 
     def test_drilldown_updates_detail_title_and_contributions(self) -> None:
         self.window._open_summary_index(2)

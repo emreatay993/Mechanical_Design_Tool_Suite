@@ -589,6 +589,7 @@ class CadViewportHost(QFrame):
 
         self.guided_toolbar = self._create_guided_toolbar()
         self.guided_toolbar.setParent(self)
+        self.guided_toolbar.hide()
         self.set_annotations(())
 
     def _create_guided_toolbar(self) -> QFrame:
@@ -634,6 +635,7 @@ class CadViewportHost(QFrame):
         return frame
 
     def set_workflow_toolbar_state(self, state: GuidedToolbarState) -> None:
+        self.guided_toolbar.show()
         for label, button in self._step_buttons.items():
             button.setChecked(label == state.active_label)
         self.guided_prompt.setText(state.prompt)
@@ -648,6 +650,10 @@ class CadViewportHost(QFrame):
         for label, enabled in enabled_by_label.items():
             if label in self._control_buttons:
                 self._control_buttons[label].setEnabled(enabled)
+        self._layout_overlay()
+
+    def hide_workflow_toolbar(self) -> None:
+        self.guided_toolbar.hide()
 
     @property
     def annotations(self) -> tuple[ViewerAnnotation, ...]:
@@ -1866,6 +1872,7 @@ class CadToleranceMainWindow(QMainWindow):
         self._apply_workflow_update(update)
         self.workflow_controller = None
         self.viewport_host.set_annotations(())
+        self.viewport_host.hide_workflow_toolbar()
         self.statusBar().showMessage("Canceled guided stackup workflow")
 
     def _start_add_feature_flow(self) -> None:
@@ -1917,6 +1924,7 @@ class CadToleranceMainWindow(QMainWindow):
         if update.stackup is None:
             self.viewport_host.set_annotations(self._workflow_annotations())
         if update.stackup is not None:
+            self.viewport_host.hide_workflow_toolbar()
             self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
             self.summary_model.set_rows(self.workspace.summary_rows)
             self._set_detail_stackup(update.stackup.id)

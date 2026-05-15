@@ -1,0 +1,29 @@
+{
+  "css_path": "css/report.css",
+  "generated_at": "2026-05-15T00:00:00Z",
+  "html_path": "report.html",
+  "images": [
+    {
+      "path": "images/p17-current-viewport-snapshot.png",
+      "snapshot_id": "p17_current_viewport_snapshot",
+      "source_reference": "current_report_annotated_viewport_snapshot.png",
+      "source_state": "copied",
+      "visible_stackup_ids": [
+        "stackup_bushing_alignment"
+      ]
+    }
+  ],
+  "js_path": "js/report.js",
+  "project_title": "Caster tolerance study",
+  "report_format": "mdts-cad-1d-tolerance-report",
+  "report_format_version": 1,
+  "snapshot_ids": [
+    "p17_current_viewport_snapshot"
+  ],
+  "stackup_ids": [
+    "stackup_bushing_alignment"
+  ],
+  "summary_row_count": 1,
+  "title": "Tolerance Stackup Report",
+  "unit_system": "mm"
+}

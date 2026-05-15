@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tolerance Stackup Report - Caster tolerance study</title>
+<link rel="stylesheet" href="css/report.css">
+<script src="js/report.js" defer></script>
+</head>
+<body>
+<nav class="left-nav">
+<div class="nav-logo">MDTS</div>
+<div class="nav-title">Tolerance Report</div>
+<a href="#summary">Summary</a>
+<a href="#stackup-stackup-bushing-alignment">Bushing ID alignment</a>
+</nav>
+<main class="report-canvas">
+<section class="title-page">
+<h1>Tolerance Stackup Report</h1>
+<div class="project-name">Caster tolerance study</div>
+<div class="meta-line">Units: mm</div>
+<div class="meta-line">Generated: 2026-05-15T00:00:00Z</div>
+</section>
+<section id="summary" class="report-section">
+<h2>Summary of 1D Tolerance Stackups</h2>
+<div class="badges">
+<div class="badge badge-green"><strong>1</strong><span>Objectives met</span></div>
+<div class="badge badge-red"><strong>0</strong><span>Objectives not met</span></div>
+<div class="badge badge-pill"><strong>9.49 / 5.01</strong><span>Predicted / Target Sigma rollup</span></div>
+</div>
+<table class="summary-table">
+<thead><tr><th>OK</th><th>Name</th><th>Nominal</th><th>Objective</th><th>Target Quality</th><th>Results</th><th>Predicted Quality</th><th>#Dims</th></tr></thead>
+<tbody>
+<tr class="warn"><td>WARN</td><td>Bushing ID alignment</td><td>24</td><td>+0.750/-0.500</td><td>Cpk = 1.67</td><td>+0.158/-0.112</td><td>Cpk = 3.16</td><td>2</td></tr>
+</tbody>
+</table>
+<h3>Snapshots</h3>
+<div class="snapshots">
+<figure class="snapshot">
+<img src="images/p17-current-viewport-snapshot.png" alt="CAD snapshot p17_current_viewport_snapshot">
+<figcaption>Captured: 2026-05-15T00:00:00Z</figcaption>
+<ul class="snapshot-meta"><li>Snapshot: p17_current_viewport_snapshot</li><li>Visible stackups: stackup_bushing_alignment</li><li>Camera keys: eye, projection, scale, target, twist, up, view_name</li></ul>
+</figure>
+</div>
+</section>
+<section id="stackup-stackup-bushing-alignment" class="report-section">
+<h2>Bushing ID alignment</h2>
+<div class="stackup-status-row">
+<span class="status status-warn">WARN</span>
+<span>+0.750/-0.500</span>
+<span>Cpk = 1.67</span>
+</div>
+<div class="snapshots stackup-snapshots">
+<figure class="snapshot">
+<img src="images/p17-current-viewport-snapshot.png" alt="CAD snapshot p17_current_viewport_snapshot">
+<figcaption>Captured: 2026-05-15T00:00:00Z</figcaption>
+<ul class="snapshot-meta"><li>Snapshot: p17_current_viewport_snapshot</li><li>Visible stackups: stackup_bushing_alignment</li><li>Camera keys: eye, projection, scale, target, twist, up, view_name</li></ul>
+</figure>
+</div>
+<h3>Stackup Table</h3>
+<table class="detail-table">
+<thead><tr><th>Name</th><th>Sens</th><th>Nominal</th><th>Tolerance</th><th>Datum</th></tr></thead>
+<tbody>
+<tr class="part"><td>Bracket</td><td></td><td></td><td></td><td></td></tr>
+<tr class="feature"><td>Bracket datum face<span class="shared-marker" title="Shared with: stackup_overall_height">shared</span></td><td>0</td><td></td><td>+0.150/-0.100</td><td>A</td></tr>
+<tr class="dimension"><td>Bracket to bushing face<span class="shared-marker" title="Shared with: stackup_overall_height">shared</span></td><td>+1</td><td>24</td><td>+0.150/-0.100</td><td>A</td></tr>
+<tr class="part"><td>Bushing</td><td></td><td></td><td></td><td></td></tr>
+<tr class="feature"><td>Bushing ID axis</td><td>0</td><td>(dia 25.00)</td><td>dia 0.1</td><td>A</td></tr>
+<tr class="dimension"><td>Manual runout to datum A</td><td>+1</td><td>0</td><td>dia 0.1</td><td>A</td></tr>
+<tr class="result warn warn"><td>Bushing ID alignment</td><td></td><td>24</td><td>+0.158/-0.112</td><td></td></tr>
+<tr class="objective pass"><td>Objectives</td><td></td><td></td><td>+0.750/-0.500</td><td></td></tr>
+</tbody>
+</table>
+<h3>Bushing ID alignment Analysis Results</h3>
+<div class="result-panel">
+<h4>Statistical Results for Bushing ID alignment</h4>
+<div class="result-metrics">
+<div class="metric">Mean: 24.00</div>
+<div class="metric">Standard Deviation: 0.05</div>
+<div class="metric">Results: +0.158/-0.112</div>
+<div class="metric">Objective: +0.750/-0.500</div>
+<div class="metric">Cpk = 3.16</div>
+</div>
+<div class="range-bar result-plot">
+<div class="range-fail"></div><div class="range-pass"></div><div class="range-fail"></div>
+<span class="result-marker marker-result" style="left:34.72%"><span>23.888</span></span>
+<span class="result-marker marker-result" style="left:52.14%"><span>24.158</span></span>
+<span class="result-marker marker-objective" style="left:9.68%"><span>23.500</span></span>
+<span class="result-marker marker-objective" style="left:90.32%"><span>24.750</span></span>
+<span class="result-marker marker-mean" style="left:41.94%"><span>24.000</span></span>
+</div>
+<ul class="markers">
+<li><span>Result lower</span><strong>23.888</strong></li>
+<li><span>Result upper</span><strong>24.158</strong></li>
+<li><span>Lower objective</span><strong>23.500</strong></li>
+<li><span>Upper objective</span><strong>24.750</strong></li>
+<li><span>Mean</span><strong>24.000</strong></li>
+</ul>
+</div>
+<div class="warning-box">
+<strong>Calculated results are ignoring potentially significant 3D effects</strong>
+<ul>
+<li>Endpoint features are laterally offset from the stack direction.</li>
+</ul>
+</div>
+<h3>Bushing ID alignment Analysis Contributions</h3>
+<div class="contributions">
+<div class="contribution-row">
+<span class="contribution-label">Bracket to bushing face</span>
+<span class="tolerance-box">+0.150/-0.100 A</span>
+<span class="contribution-track">
+<span class="contribution-bar" style="width:90.0%"></span>
+</span>
+<strong>90.0%</strong>
+</div>
+<div class="contribution-row">
+<span class="contribution-label">Manual runout to datum A</span>
+<span class="tolerance-box">dia 0.1 A</span>
+<span class="contribution-track">
+<span class="contribution-bar" style="width:10.0%"></span>
+</span>
+<strong>10.0%</strong>
+</div>
+</div>
+</section>
+</main>
+</body>
+</html>
