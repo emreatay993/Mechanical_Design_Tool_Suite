@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
+import hashlib
 import math
 from pathlib import Path
 import re
@@ -67,12 +68,14 @@ from .cad_geometry_api import (
     CadImportSettings,
     UnsupportedCadFormatError,
     is_supported_neutral_cad,
+    validate_cad_source_reimport,
 )
 from .cad_geometry_occ import CadKernelUnavailable, OccCadGeometrySession
 from .cad_stackup_workflow import GuidedStackupWorkflowController, GuidedToolbarState
 from .cad_tolerance_methods import calculate_stackup
 from .cad_tolerance_models import (
     CadDocument,
+    CadSourceStatus,
     CadToleranceProject,
     FeatureReference,
     GeometricControlType,
@@ -138,6 +141,15 @@ NEUTRAL_CAD_FILTER = (
 )
 PROJECT_FILTER = "CAD tolerance projects (*.tolproj)"
 PACKAGE_FILTER = "CAD tolerance packages (*.tolpack)"
+SOURCE_STATUS_LABELS = {
+    CadSourceStatus.PRESENT: "Present",
+    CadSourceStatus.MISSING: "Missing",
+    CadSourceStatus.RELOCATED: "Relocated",
+    CadSourceStatus.CHANGED_HASH: "Changed",
+    CadSourceStatus.CHANGED_TOPOLOGY: "Topology changed",
+    CadSourceStatus.PROJECT_LOCAL_PACKAGE_ASSET: "Project-local asset",
+    CadSourceStatus.UNKNOWN: "Unknown",
+}
 
 
 class PlaceholderCadViewerWidget(QFrame):
@@ -257,10 +269,16 @@ class NeutralCadImportOptionsDialog(QDialog):
         self.tabs.addTab(self._select_tab(), "Select")
         layout.addWidget(self.tabs)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.setObjectName("ImportDialogButtons")
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        ok_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_button is not None:
+            ok_button.setEnabled(is_supported_neutral_cad(self._path))
+        layout.addWidget(self.buttons)
 
     def import_settings(self) -> dict[str, Any]:
         filters = [
@@ -272,7 +290,9 @@ class NeutralCadImportOptionsDialog(QDialog):
             "path": str(self._path),
             "units": self.units_combo.currentText(),
             "import_type": self.import_type_combo.currentText(),
+            "source_mode": self.import_type_combo.currentData(),
             "object_filters": filters,
+            "object_filter": ",".join(label.lower().replace(" ", "_") for label in filters),
             "assembly_option": self.assembly_combo.currentText(),
             "part_option": self.part_combo.currentText(),
         }
@@ -284,11 +304,12 @@ class NeutralCadImportOptionsDialog(QDialog):
         import_group = QGroupBox("Import Type")
         import_layout = QGridLayout(import_group)
         self.import_type_combo = QComboBox()
-        self.import_type_combo.addItems(["Reference Model", "Convert Model"])
+        self.import_type_combo.addItem("Reference neutral CAD source", "reference")
+        self.import_type_combo.addItem("Convert neutral CAD geometry", "convert")
         import_layout.addWidget(QLabel("Type"), 0, 0)
         import_layout.addWidget(self.import_type_combo, 0, 1)
         self.units_combo = QComboBox()
-        self.units_combo.addItems(["From source", "Millimeters", "Inches"])
+        self.units_combo.addItems(["From source", "Millimeters", "Inches", "Centimeters"])
         import_layout.addWidget(QLabel("Length Units"), 1, 0)
         import_layout.addWidget(self.units_combo, 1, 1)
         layout.addWidget(import_group)
@@ -316,10 +337,18 @@ class NeutralCadImportOptionsDialog(QDialog):
 
         file_group = QGroupBox("File Name")
         file_layout = QGridLayout(file_group)
+        name_edit = QLineEdit(self._path.name)
+        name_edit.setReadOnly(True)
         path_edit = QLineEdit(str(self._path))
         path_edit.setReadOnly(True)
-        file_layout.addWidget(QLabel("File Location"), 0, 0)
-        file_layout.addWidget(path_edit, 0, 1)
+        type_edit = QLineEdit("STEP / IGES neutral CAD")
+        type_edit.setReadOnly(True)
+        file_layout.addWidget(QLabel("File Name"), 0, 0)
+        file_layout.addWidget(name_edit, 0, 1)
+        file_layout.addWidget(QLabel("File Location"), 1, 0)
+        file_layout.addWidget(path_edit, 1, 1)
+        file_layout.addWidget(QLabel("Files of Type"), 2, 0)
+        file_layout.addWidget(type_edit, 2, 1)
         layout.addWidget(file_group)
         layout.addStretch(1)
         return tab
@@ -327,7 +356,9 @@ class NeutralCadImportOptionsDialog(QDialog):
     def _select_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.addWidget(QLabel("Select imported objects after the neutral CAD adapter builds the B-Rep index."))
+        layout.addWidget(QLabel("Objects selected by the neutral CAD B-Rep import filters:"))
+        for label in self.OBJECT_FILTER_LABELS:
+            layout.addWidget(QLabel(label))
         layout.addStretch(1)
         return tab
 
@@ -1342,6 +1373,7 @@ class CadToleranceMainWindow(QMainWindow):
         self._build_shell()
         self._connect_signals()
         self._refresh_dashboard()
+        self._update_cad_source_status_ui()
         self.statusBar().showMessage("Ready")
 
     def open_cad_file(self, path: str | Path) -> None:
@@ -1349,15 +1381,24 @@ class CadToleranceMainWindow(QMainWindow):
         dialog = NeutralCadImportOptionsDialog(input_path, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        import_settings = dialog.import_settings()
         try:
-            document = self.geometry_session.import_file(input_path)
+            document = self.geometry_session.import_file(
+                input_path,
+                _cad_import_settings_from_dialog(import_settings),
+            )
             if hasattr(self.viewer, "display_document"):
                 self.viewer.display_document(self.geometry_session)  # type: ignore[attr-defined]
         except (CadKernelUnavailable, Exception) as exc:
             QMessageBox.warning(self, "CAD import failed", str(exc))
             self.statusBar().showMessage("CAD import failed")
             return
-        document.import_settings.update(dialog.import_settings())
+        document.import_settings.update(import_settings)
+        document.source_status = CadSourceStatus.PRESENT
+        document.source_status_message = (
+            f"CAD source present: {document.display_name or input_path.name}"
+        )
+        document.source_last_checked_at = _utc_timestamp()
         self.set_imported_document(document)
 
     def set_imported_document(self, document: CadDocument) -> None:
@@ -1375,6 +1416,7 @@ class CadToleranceMainWindow(QMainWindow):
         self.summary_contributions.set_rows([], "Contributions Rollup")
         self.result_panel.set_stackup_name("Stackup")
         self._sync_stackup_action_state()
+        self._update_cad_source_status_ui()
         self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
         self.statusBar().showMessage(f"Imported {document.display_name or Path(document.source_path).name}")
 
@@ -1391,6 +1433,7 @@ class CadToleranceMainWindow(QMainWindow):
         self._sync_stackup_action_state()
         self.setWindowTitle(f"MDTS CAD 1D Tolerance - {self.workspace.project_title}")
         self._rehydrate_project_cad_sources(project_path)
+        self._update_cad_source_status_ui()
         if self.cad_source_status_messages:
             self.statusBar().showMessage("; ".join(self.cad_source_status_messages))
         else:
@@ -1406,42 +1449,94 @@ class CadToleranceMainWindow(QMainWindow):
             source_path = document.source_path
             source_name = Path(source_path).name if source_path else "CAD source"
             if not source_path:
+                _set_document_source_status(
+                    document,
+                    CadSourceStatus.UNKNOWN,
+                    "CAD source not recorded",
+                )
                 self.cad_source_status_messages.append("CAD source not recorded")
                 continue
             resolved_path = resolve_project_asset_path(source_path, project_path)
+            relocated = False
             if resolved_path is None:
-                self.cad_source_status_messages.append(
-                    f"CAD source not found: {source_name}"
-                )
-                continue
+                resolved_path = _find_relocated_cad_source(document, project_path)
+                relocated = resolved_path is not None
+                if resolved_path is None:
+                    message = f"CAD source not found: {source_name}"
+                    _set_document_source_status(
+                        document,
+                        CadSourceStatus.MISSING,
+                        message,
+                    )
+                    self.cad_source_status_messages.append(message)
+                    continue
             if not is_supported_neutral_cad(resolved_path):
-                self.cad_source_status_messages.append(
-                    f"Unsupported CAD source: {source_name}"
+                message = f"Unsupported CAD source: {source_name}"
+                _set_document_source_status(
+                    document,
+                    CadSourceStatus.UNKNOWN,
+                    message,
                 )
+                self.cad_source_status_messages.append(message)
                 continue
             try:
-                self.geometry_session.import_file(
+                imported_document = self.geometry_session.import_file(
                     resolved_path,
                     _cad_import_settings_from_document(document, self.project),
                 )
                 if hasattr(self.viewer, "display_document"):
                     self.viewer.display_document(self.geometry_session)  # type: ignore[attr-defined]
                 displayed = True
-                self.cad_source_status_messages.append(
-                    f"Reloaded CAD source: {resolved_path.name}"
+                validation = validate_cad_source_reimport(
+                    document,
+                    imported_document,
+                    _session_shape_references(self.geometry_session),
+                    _session_feature_references(self.geometry_session),
                 )
+                status = validation.status
+                message = validation.message
+                if relocated and status == CadSourceStatus.PRESENT:
+                    status = CadSourceStatus.RELOCATED
+                    message = f"CAD source relocated: {resolved_path.name}"
+                elif (
+                    status == CadSourceStatus.PRESENT
+                    and _is_project_local_cad_asset(resolved_path, project_path)
+                ):
+                    status = CadSourceStatus.PROJECT_LOCAL_PACKAGE_ASSET
+                    message = f"Using project-local CAD asset: {resolved_path.name}"
+                elif status == CadSourceStatus.PRESENT:
+                    message = f"Reloaded CAD source: {resolved_path.name}"
+                _set_document_source_status(
+                    document,
+                    status,
+                    message,
+                    topology_hash=validation.topology_hash,
+                )
+                self.cad_source_status_messages.append(message)
             except UnsupportedCadFormatError:
-                self.cad_source_status_messages.append(
-                    f"Unsupported CAD source: {source_name}"
+                message = f"Unsupported CAD source: {source_name}"
+                _set_document_source_status(
+                    document,
+                    CadSourceStatus.UNKNOWN,
+                    message,
                 )
+                self.cad_source_status_messages.append(message)
             except FileNotFoundError:
-                self.cad_source_status_messages.append(
-                    f"CAD source not found: {source_name}"
+                message = f"CAD source not found: {source_name}"
+                _set_document_source_status(
+                    document,
+                    CadSourceStatus.MISSING,
+                    message,
                 )
+                self.cad_source_status_messages.append(message)
             except (CadKernelUnavailable, Exception) as exc:
-                self.cad_source_status_messages.append(
-                    f"CAD source unavailable: {source_name} ({exc})"
+                message = f"CAD source unavailable: {source_name} ({exc})"
+                _set_document_source_status(
+                    document,
+                    CadSourceStatus.UNKNOWN,
+                    message,
                 )
+                self.cad_source_status_messages.append(message)
 
         if not displayed and hasattr(self.viewer, "clear"):
             self.viewer.clear()  # type: ignore[attr-defined]
@@ -1463,6 +1558,12 @@ class CadToleranceMainWindow(QMainWindow):
         self.export_action.triggered.connect(self._package_project)
         self.save_project_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton), "Save Project", self)
         self.save_project_action.triggered.connect(self._save_project)
+        self.refresh_source_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload), "Refresh Source", self)
+        self.refresh_source_action.setToolTip("Refresh the saved STEP/IGES source reference.")
+        self.refresh_source_action.triggered.connect(self.refresh_cad_source)
+        self.reattach_source_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), "Reattach Source", self)
+        self.reattach_source_action.setToolTip("Choose a replacement STEP/IGES source file.")
+        self.reattach_source_action.triggered.connect(self._reattach_cad_source_dialog)
         self.new_stackup_action = QAction("New Stackup", self)
         self.new_stackup_action.triggered.connect(self._start_new_stackup_workflow)
         self.add_feature_action = QAction("Add Feature", self)
@@ -1503,7 +1604,20 @@ class CadToleranceMainWindow(QMainWindow):
         ribbon.setMaximumHeight(122)
         ribbon.addTab(self._ribbon_page([self.new_stackup_action, self.add_feature_action, self.add_geometric_tolerance_action], "Stackup"), "Stackup")
         ribbon.addTab(self._ribbon_page([self.snapshot_action, self.generate_report_action], "Report"), "Report")
-        ribbon.addTab(self._ribbon_page([self.open_action, self.import_action, self.save_project_action, self.export_action], "Data"), "Data")
+        ribbon.addTab(
+            self._ribbon_page(
+                [
+                    self.open_action,
+                    self.import_action,
+                    self.refresh_source_action,
+                    self.reattach_source_action,
+                    self.save_project_action,
+                    self.export_action,
+                ],
+                "Data",
+            ),
+            "Data",
+        )
         return ribbon
 
     def _ribbon_page(self, actions: list[QAction], group_label: str) -> QWidget:
@@ -1546,6 +1660,11 @@ class CadToleranceMainWindow(QMainWindow):
         toolbar.addAction("Assembly View")
         toolbar.addAction("Find")
         layout.addWidget(toolbar)
+
+        self.cad_source_status_label = QLabel()
+        self.cad_source_status_label.setObjectName("CadSourceStatusLabel")
+        self.cad_source_status_label.setWordWrap(True)
+        layout.addWidget(self.cad_source_status_label)
 
         self.assembly_tree = QTreeView()
         self.assembly_tree.setObjectName("AssemblyTreeView")
@@ -1952,8 +2071,127 @@ class CadToleranceMainWindow(QMainWindow):
         self.add_feature_action.setEnabled(has_stackups)
         self.generate_report_action.setEnabled(has_stackups)
 
+    def _update_cad_source_status_ui(self) -> None:
+        has_documents = bool(self.project.cad_documents)
+        if hasattr(self, "refresh_source_action"):
+            self.refresh_source_action.setEnabled(has_documents and self.project_path is not None)
+        if hasattr(self, "reattach_source_action"):
+            self.reattach_source_action.setEnabled(has_documents)
+        if not hasattr(self, "cad_source_status_label"):
+            return
+        if not has_documents:
+            self.cad_source_status_label.setText("Source: No CAD source")
+            self.cad_source_status_label.setToolTip("")
+            return
+        document = self.project.cad_documents[0]
+        label = SOURCE_STATUS_LABELS.get(document.source_status, "Unknown")
+        source_name = (
+            Path(document.source_path).name
+            or document.display_name
+            or "CAD source"
+        )
+        message = document.source_status_message or f"CAD source status: {label}"
+        self.cad_source_status_label.setText(f"Source: {label} - {source_name}")
+        self.cad_source_status_label.setToolTip(message)
+
     def show_summary(self) -> None:
         self.analysis_stack.setCurrentWidget(self.summary_page)
+
+    def refresh_cad_source(self) -> None:
+        if self.project_path is None:
+            self.statusBar().showMessage("Save or load a project before refreshing CAD sources.")
+            return
+        self._rehydrate_project_cad_sources(self.project_path)
+        self._update_cad_source_status_ui()
+        if self.cad_source_status_messages:
+            self.statusBar().showMessage("; ".join(self.cad_source_status_messages))
+        else:
+            self.statusBar().showMessage("No CAD source references to refresh.")
+
+    def reattach_cad_source(
+        self,
+        path: str | Path,
+        document_id: str = "",
+    ) -> CadDocument:
+        if not self.project.cad_documents:
+            raise ValueError("Load or import a CAD document before reattaching a source.")
+        document = _document_by_id(self.project, document_id) or self.project.cad_documents[0]
+        input_path = Path(path)
+        if not is_supported_neutral_cad(input_path):
+            raise UnsupportedCadFormatError(
+                f"Unsupported CAD source: {input_path.name}. "
+                "Use STEP or IGES for P20 source reattach."
+            )
+        imported_document = self.geometry_session.import_file(
+            input_path,
+            _cad_import_settings_from_document(document, self.project),
+        )
+        validation = validate_cad_source_reimport(
+            document,
+            imported_document,
+            _session_shape_references(self.geometry_session),
+            _session_feature_references(self.geometry_session),
+        )
+        if hasattr(self.viewer, "display_document"):
+            self.viewer.display_document(self.geometry_session)  # type: ignore[attr-defined]
+
+        document.source_path = _source_path_for_project(input_path, self.project_path)
+        document.file_hash = imported_document.file_hash
+        document.source_topology_hash = validation.topology_hash
+        document.file_format = imported_document.file_format
+        document.imported_at = imported_document.imported_at
+        document.units = imported_document.units
+        document.assembly_root = imported_document.assembly_root
+        document.display_name = imported_document.display_name or input_path.name
+        document.import_settings = {
+            **document.import_settings,
+            **imported_document.import_settings,
+        }
+
+        status = validation.status
+        message = validation.message
+        if (
+            status == CadSourceStatus.PRESENT
+            and _is_project_local_cad_asset(input_path.resolve(), self.project_path)
+        ):
+            status = CadSourceStatus.PROJECT_LOCAL_PACKAGE_ASSET
+            message = f"Reattached project-local CAD asset: {input_path.name}"
+        elif status == CadSourceStatus.PRESENT:
+            message = f"Reattached CAD source: {input_path.name}"
+        else:
+            message = f"Reattached CAD source: {input_path.name}; {message}"
+        _set_document_source_status(
+            document,
+            status,
+            message,
+            topology_hash=validation.topology_hash,
+            update_topology_hash=True,
+        )
+
+        self.workspace = CadToleranceWorkspaceViewModel.from_project(self.project)
+        self.assembly_model.set_roots(self.workspace.assembly_roots)
+        self.summary_model.set_rows(self.workspace.summary_rows)
+        self._set_detail_stackup(self.workspace.selected_stackup_id)
+        self._refresh_dashboard()
+        self._sync_stackup_action_state()
+        self._update_cad_source_status_ui()
+        self.statusBar().showMessage(message)
+        return document
+
+    def _reattach_cad_source_dialog(self) -> None:
+        path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Reattach neutral CAD source",
+            "",
+            NEUTRAL_CAD_FILTER,
+        )
+        if not path:
+            return
+        try:
+            self.reattach_cad_source(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "CAD source reattach failed", str(exc))
+            self.statusBar().showMessage("CAD source reattach failed")
 
     def _open_dialog(self) -> None:
         path, selected_filter = QFileDialog.getOpenFileName(
@@ -1998,6 +2236,7 @@ class CadToleranceMainWindow(QMainWindow):
             self.project_path = save_project(self.project, path)
         else:
             save_project(self.project, self.project_path)
+        self._update_cad_source_status_ui()
         self.statusBar().showMessage(f"Saved project {self.project_path.name}")
 
     def _open_add_geometric_tolerance_dialog(self) -> None:
@@ -2212,12 +2451,169 @@ def _cad_import_settings_from_document(
 ) -> CadImportSettings:
     settings = dict(document.import_settings)
     return CadImportSettings(
-        units=str(settings.get("units") or document.units or project.unit_system),
+        units=_unit_setting(str(settings.get("units") or document.units or project.unit_system)),
         heal_shapes=bool(settings.get("heal_shapes", True)),
-        object_filter=str(settings.get("object_filter") or "solids"),
+        object_filter=str(
+            settings.get("object_filter")
+            or _object_filter_from_labels(settings.get("object_filters"))
+            or "solids"
+        ),
         include_edges=bool(settings.get("include_edges", True)),
         include_vertices=bool(settings.get("include_vertices", True)),
     )
+
+
+def _cad_import_settings_from_dialog(settings: dict[str, Any]) -> CadImportSettings:
+    filters = settings.get("object_filters")
+    return CadImportSettings(
+        units=_unit_setting(str(settings.get("units") or "mm")),
+        heal_shapes=True,
+        object_filter=_object_filter_from_labels(filters) or "solids",
+        include_edges=_filter_enabled(filters, "Wires"),
+        include_vertices=_filter_enabled(filters, "Points"),
+    )
+
+
+def _unit_setting(value: str) -> str:
+    normalized = value.strip().lower()
+    return {
+        "from source": "mm",
+        "millimeters": "mm",
+        "millimetres": "mm",
+        "mm": "mm",
+        "inches": "in",
+        "inch": "in",
+        "in": "in",
+        "centimeters": "cm",
+        "centimetres": "cm",
+        "cm": "cm",
+    }.get(normalized, value or "mm")
+
+
+def _object_filter_from_labels(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, (list, tuple)):
+        return ""
+    return ",".join(str(item).lower().replace(" ", "_") for item in value if item)
+
+
+def _filter_enabled(filters: Any, label: str) -> bool:
+    if not isinstance(filters, (list, tuple)):
+        return True
+    return label in filters
+
+
+def _session_shape_references(session: Any) -> list[Any]:
+    try:
+        return list(session.shape_references())
+    except Exception:
+        return []
+
+
+def _session_feature_references(session: Any) -> list[Any]:
+    try:
+        return list(session.feature_references())
+    except Exception:
+        return []
+
+
+def _set_document_source_status(
+    document: CadDocument,
+    status: CadSourceStatus,
+    message: str,
+    *,
+    topology_hash: str = "",
+    update_topology_hash: bool = False,
+) -> None:
+    document.source_status = status
+    document.source_status_message = message
+    document.source_last_checked_at = _utc_timestamp()
+    if topology_hash and (update_topology_hash or not document.source_topology_hash):
+        document.source_topology_hash = topology_hash
+
+
+def _document_by_id(
+    project: CadToleranceProject,
+    document_id: str,
+) -> CadDocument | None:
+    if not document_id:
+        return None
+    for document in project.cad_documents:
+        if document.id == document_id:
+            return document
+    return None
+
+
+def _source_path_for_project(path: Path, project_path: Path | None) -> str:
+    if project_path is None:
+        return str(path)
+    return project_relative_path(path, project_path)
+
+
+def _find_relocated_cad_source(
+    document: CadDocument,
+    project_path: Path,
+) -> Path | None:
+    name = Path(document.source_path).name
+    if not name:
+        return None
+    roots = [
+        project_asset_dir(project_path) / "cad",
+        project_path.parent / "assets" / "cad",
+        project_path.parent,
+    ]
+    candidates: list[Path] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        try:
+            candidates.extend(
+                path
+                for path in root.rglob(name)
+                if path.is_file() and is_supported_neutral_cad(path)
+            )
+        except OSError:
+            continue
+    if not candidates:
+        return None
+    wanted_hash = document.file_hash
+    if wanted_hash:
+        for candidate in candidates:
+            try:
+                if f"sha256:{_sha256_file(candidate)}" == wanted_hash:
+                    return candidate.resolve()
+            except OSError:
+                continue
+    return candidates[0].resolve()
+
+
+def _is_project_local_cad_asset(
+    path: Path,
+    project_path: Path | None,
+) -> bool:
+    if project_path is None:
+        return False
+    resolved = path.resolve()
+    roots = [
+        project_asset_dir(project_path).resolve(),
+        (project_path.parent / "assets").resolve(),
+    ]
+    for root in roots:
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _stackup_by_id(project: CadToleranceProject, stackup_id: str) -> StackupRequirement | None:

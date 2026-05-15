@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Any
 import zipfile
 
-from .cad_tolerance_models import CadToleranceProject, PROJECT_TYPE, SCHEMA_VERSION
+from .cad_tolerance_models import (
+    CadSourceStatus,
+    CadToleranceProject,
+    PROJECT_TYPE,
+    SCHEMA_VERSION,
+)
 
 
 PROJECT_SUFFIX = ".tolproj"
@@ -180,6 +185,10 @@ def export_project_package(
     for document in project.cad_documents:
         if document.source_path:
             document.source_path = package_asset("cad", document.source_path, "cad")
+            document.source_status = CadSourceStatus.PROJECT_LOCAL_PACKAGE_ASSET
+            document.source_status_message = (
+                f"Packaged CAD source asset: {Path(document.source_path).name}"
+            )
     for snapshot in project.snapshots:
         if snapshot.image_path:
             snapshot.image_path = package_asset(
@@ -302,6 +311,10 @@ def migrate_project_data(data: Mapping[str, Any]) -> dict[str, Any]:
             migrated = _migrate_v1_to_v2(migrated)
             schema_version = 2
             continue
+        if schema_version == 2:
+            migrated = _migrate_v2_to_v3(migrated)
+            schema_version = 3
+            continue
         raise ValueError(
             "Unsupported CAD tolerance project schema_version "
             f"{schema_version}; latest supported is {CURRENT_SCHEMA_VERSION}."
@@ -338,6 +351,20 @@ def _migrate_v1_to_v2(data: Mapping[str, Any]) -> dict[str, Any]:
     migrated.setdefault("snapshots", [])
     migrated.setdefault("reports", [])
     migrated["schema_version"] = 2
+    return migrated
+
+
+def _migrate_v2_to_v3(data: Mapping[str, Any]) -> dict[str, Any]:
+    migrated = dict(data)
+    migrated.setdefault("cad_documents", [])
+    for document in migrated["cad_documents"]:
+        if not isinstance(document, dict):
+            continue
+        document.setdefault("source_topology_hash", "")
+        document.setdefault("source_status", CadSourceStatus.UNKNOWN.value)
+        document.setdefault("source_status_message", "")
+        document.setdefault("source_last_checked_at", "")
+    migrated["schema_version"] = 3
     return migrated
 
 

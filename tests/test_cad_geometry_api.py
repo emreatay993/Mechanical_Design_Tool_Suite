@@ -11,15 +11,18 @@ from mechanical_design_tool_suite.cad_display_style import (
 from mechanical_design_tool_suite.cad_geometry_api import (
     CadImportSettings,
     CadRuntimeShapeProvider,
+    CadSourceValidationResult,
     GeometryIndex,
     InMemoryCadGeometrySession,
     MeasurementKind,
     UnsupportedCadFormatError,
     cad_format_from_path,
+    cad_source_topology_hash,
     feature_from_shape_reference,
     is_supported_neutral_cad,
     measure_feature_pair,
     normalize_vector,
+    validate_cad_source_reimport,
 )
 from mechanical_design_tool_suite.cad_geometry_occ import (
     OCC_DEPENDENCY_MESSAGE,
@@ -32,6 +35,7 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
     AssemblyNodeType,
     CadDocument,
     CadFileFormat,
+    CadSourceStatus,
     FeatureKind,
     FeatureReference,
     ShapeKind,
@@ -250,6 +254,71 @@ class CadGeometryApiTest(unittest.TestCase):
                 "include_vertices": False,
             },
         )
+
+    def test_source_topology_hash_ignores_runtime_ids_and_file_hash_labels(self) -> None:
+        first = ShapeReference(
+            id="shape_old",
+            document_id="cad_old",
+            assembly_path=["Caster", "Bracket"],
+            shape_type=ShapeKind.FACE,
+            kernel_label="sha256:old:xde:0:1:face:7",
+            geometric_signature={"area": 42.1234567, "normal": [1.0, 0.0, 0.0]},
+            fallback_display_name="Datum face",
+            metadata={"xde_label": "0:1"},
+        )
+        second = ShapeReference(
+            id="shape_new",
+            document_id="cad_new",
+            assembly_path=["Caster", "Bracket"],
+            shape_type=ShapeKind.FACE,
+            kernel_label="sha256:new:xde:0:1:face:7",
+            geometric_signature={"area": 42.12345671, "normal": [1.0, 0.0, 0.0]},
+            fallback_display_name="Datum face",
+            metadata={"xde_label": "0:1"},
+        )
+
+        self.assertEqual(
+            cad_source_topology_hash([first]),
+            cad_source_topology_hash([second]),
+        )
+
+    def test_source_validation_separates_hash_and_topology_changes(self) -> None:
+        baseline_shape = ShapeReference(
+            id="shape_a",
+            assembly_path=["Caster", "Bracket"],
+            shape_type=ShapeKind.FACE,
+            kernel_label="cad_old:Caster/Bracket:face:1",
+            geometric_signature={"area": 42.0},
+            fallback_display_name="Datum face",
+        )
+        changed_shape = ShapeReference(
+            id="shape_b",
+            assembly_path=["Caster", "Bracket"],
+            shape_type=ShapeKind.FACE,
+            kernel_label="cad_new:Caster/Bracket:face:1",
+            geometric_signature={"area": 84.0},
+            fallback_display_name="Datum face",
+        )
+        original = CadDocument(
+            source_path="old.step",
+            file_hash="sha256:old",
+            source_topology_hash=cad_source_topology_hash([baseline_shape]),
+        )
+        reexported = CadDocument(source_path="new.step", file_hash="sha256:new")
+
+        hash_only = validate_cad_source_reimport(original, reexported, [baseline_shape])
+        topology_changed = validate_cad_source_reimport(
+            original,
+            reexported,
+            [changed_shape],
+        )
+
+        self.assertIsInstance(hash_only, CadSourceValidationResult)
+        self.assertEqual(hash_only.status, CadSourceStatus.CHANGED_HASH)
+        self.assertTrue(hash_only.hash_changed)
+        self.assertFalse(hash_only.topology_changed)
+        self.assertEqual(topology_changed.status, CadSourceStatus.CHANGED_TOPOLOGY)
+        self.assertTrue(topology_changed.topology_changed)
 
     def test_occ_session_advertises_explicit_runtime_shape_provider_contract(self) -> None:
         session = OccCadGeometrySession()

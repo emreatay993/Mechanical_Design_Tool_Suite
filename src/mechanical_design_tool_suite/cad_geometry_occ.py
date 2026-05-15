@@ -19,6 +19,7 @@ from .cad_geometry_api import (
     GeometryIndex,
     Measurement,
     cad_format_from_path,
+    cad_source_topology_hash,
     feature_from_shape_reference,
     measure_feature_pair,
     shape_reference_label,
@@ -145,8 +146,10 @@ class OccCadGeometrySession(CadGeometrySession):
                 active_settings,
             )
             if self._index.shapes:
+                _stamp_source_topology_hash(self._index)
                 return self._index.document
         self._index = self._build_index(document, root_shape, modules, active_settings)
+        _stamp_source_topology_hash(self._index)
         return self._index.document
 
     def assembly_tree(self) -> list[AssemblyNode]:
@@ -1256,6 +1259,13 @@ def _gp_point(point: Any) -> list[float]:
 
 def _gp_direction(direction: Any) -> list[float]:
     return [float(direction.X()), float(direction.Y()), float(direction.Z())]
+
+
+def _stamp_source_topology_hash(index: GeometryIndex) -> None:
+    index.document.source_topology_hash = cad_source_topology_hash(
+        index.shapes,
+        index.features,
+    )
 
 
 def _sha256_file(path: Path) -> str:

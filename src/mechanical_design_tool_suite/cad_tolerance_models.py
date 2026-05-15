@@ -8,7 +8,7 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PROJECT_TYPE = "cad_1d_tolerance"
 DEFAULT_UNIT_SYSTEM = "mm"
 DEFAULT_SIGMA_COVERAGE = 3.0
@@ -23,6 +23,16 @@ class _StringEnum(str, Enum):
 class CadFileFormat(_StringEnum):
     STEP = "step"
     IGES = "iges"
+    UNKNOWN = "unknown"
+
+
+class CadSourceStatus(_StringEnum):
+    PRESENT = "present"
+    MISSING = "missing"
+    RELOCATED = "relocated"
+    CHANGED_HASH = "changed_hash"
+    CHANGED_TOPOLOGY = "changed_topology"
+    PROJECT_LOCAL_PACKAGE_ASSET = "project_local_package_asset"
     UNKNOWN = "unknown"
 
 
@@ -877,6 +887,10 @@ class StackupRequirement:
 class CadDocument:
     source_path: str
     file_hash: str = ""
+    source_topology_hash: str = ""
+    source_status: CadSourceStatus = CadSourceStatus.UNKNOWN
+    source_status_message: str = ""
+    source_last_checked_at: str = ""
     file_format: CadFileFormat = CadFileFormat.UNKNOWN
     imported_at: str = ""
     units: str = DEFAULT_UNIT_SYSTEM
@@ -890,6 +904,9 @@ class CadDocument:
         self.file_format = _coerce_enum(
             CadFileFormat, self.file_format, CadFileFormat.UNKNOWN
         )
+        self.source_status = _coerce_enum(
+            CadSourceStatus, self.source_status, CadSourceStatus.UNKNOWN
+        )
         self.import_settings = dict(self.import_settings)
         self.metadata = dict(self.metadata)
 
@@ -898,6 +915,10 @@ class CadDocument:
             "id": self.id,
             "source_path": self.source_path,
             "file_hash": self.file_hash,
+            "source_topology_hash": self.source_topology_hash,
+            "source_status": self.source_status.value,
+            "source_status_message": self.source_status_message,
+            "source_last_checked_at": self.source_last_checked_at,
             "file_format": self.file_format.value,
             "imported_at": self.imported_at,
             "units": self.units,
@@ -913,6 +934,14 @@ class CadDocument:
             id=str(data.get("id") or new_id("cad")),
             source_path=str(data.get("source_path") or ""),
             file_hash=str(data.get("file_hash") or ""),
+            source_topology_hash=str(data.get("source_topology_hash") or ""),
+            source_status=_coerce_enum(
+                CadSourceStatus,
+                data.get("source_status"),
+                CadSourceStatus.UNKNOWN,
+            ),
+            source_status_message=str(data.get("source_status_message") or ""),
+            source_last_checked_at=str(data.get("source_last_checked_at") or ""),
             file_format=_coerce_enum(
                 CadFileFormat, data.get("file_format"), CadFileFormat.UNKNOWN
             ),

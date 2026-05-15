@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
+import json
 from math import sqrt
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -14,6 +16,7 @@ from .cad_tolerance_models import (
     AssemblyNode,
     CadDocument,
     CadFileFormat,
+    CadSourceStatus,
     FeatureKind,
     FeatureReference,
     ShapeKind,
@@ -101,6 +104,18 @@ class GeometryIndex:
         if not wanted:
             return list(self.features)
         return [feature for feature in self.features if feature.feature_type in wanted]
+
+
+@dataclass(frozen=True)
+class CadSourceValidationResult:
+    """Hash/topology comparison for a refreshed or reattached CAD source."""
+
+    status: CadSourceStatus
+    message: str
+    file_hash: str = ""
+    topology_hash: str = ""
+    hash_changed: bool = False
+    topology_changed: bool = False
 
 
 @runtime_checkable
@@ -203,6 +218,11 @@ class InMemoryCadGeometrySession(CadGeometrySession):
                 import_settings=(settings or CadImportSettings()).to_dict(),
             )
             self._index = GeometryIndex(document=document)
+        if not self._index.document.source_topology_hash:
+            self._index.document.source_topology_hash = cad_source_topology_hash(
+                self._index.shapes,
+                self._index.features,
+            )
         return self._index.document
 
     def assembly_tree(self) -> list[AssemblyNode]:
@@ -249,6 +269,82 @@ def cad_format_from_path(path: str | Path) -> CadFileFormat:
 
 def is_supported_neutral_cad(path: str | Path) -> bool:
     return Path(path).suffix.lower() in SUPPORTED_NEUTRAL_CAD_SUFFIXES
+
+
+def cad_source_topology_hash(
+    shapes: Iterable[ShapeReference],
+    features: Iterable[FeatureReference] = (),
+) -> str:
+    """Return a stable hash for serializable topology references.
+
+    The digest deliberately ignores runtime ids and source file hashes so that a
+    re-exported STEP file can be recognized as topology-equivalent even when the
+    bytes and OCCT-generated ids differ.
+    """
+
+    payload = {
+        "shapes": [_shape_topology_fingerprint(shape) for shape in shapes],
+        "features": [_feature_topology_fingerprint(feature) for feature in features],
+    }
+    payload["shapes"].sort(key=lambda item: json.dumps(item, sort_keys=True))
+    payload["features"].sort(key=lambda item: json.dumps(item, sort_keys=True))
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def validate_cad_source_reimport(
+    original: CadDocument,
+    imported: CadDocument,
+    shapes: Iterable[ShapeReference],
+    features: Iterable[FeatureReference] = (),
+) -> CadSourceValidationResult:
+    """Compare an imported source against the persisted source baseline."""
+
+    topology_hash = cad_source_topology_hash(shapes, features)
+    hash_changed = bool(
+        original.file_hash
+        and imported.file_hash
+        and original.file_hash != imported.file_hash
+    )
+    topology_changed = bool(
+        original.source_topology_hash
+        and topology_hash
+        and original.source_topology_hash != topology_hash
+    )
+
+    source_name = Path(imported.source_path or original.source_path).name or "CAD source"
+    if topology_changed:
+        return CadSourceValidationResult(
+            status=CadSourceStatus.CHANGED_TOPOLOGY,
+            message=(
+                f"CAD source topology changed for {source_name}; "
+                "review stackup feature references before saving."
+            ),
+            file_hash=imported.file_hash,
+            topology_hash=topology_hash,
+            hash_changed=hash_changed,
+            topology_changed=True,
+        )
+    if hash_changed:
+        return CadSourceValidationResult(
+            status=CadSourceStatus.CHANGED_HASH,
+            message=(
+                f"CAD source content changed for {source_name}; "
+                "topology still matches the saved reference."
+            ),
+            file_hash=imported.file_hash,
+            topology_hash=topology_hash,
+            hash_changed=True,
+            topology_changed=False,
+        )
+    return CadSourceValidationResult(
+        status=CadSourceStatus.PRESENT,
+        message=f"CAD source present: {source_name}",
+        file_hash=imported.file_hash,
+        topology_hash=topology_hash,
+        hash_changed=False,
+        topology_changed=False,
+    )
 
 
 def feature_from_shape_reference(
@@ -383,6 +479,52 @@ def _feature_kind_from_shape(shape: ShapeReference) -> FeatureKind:
     if shape.shape_type == ShapeKind.PLANE:
         return FeatureKind.PLANE
     return FeatureKind.UNKNOWN
+
+
+def _shape_topology_fingerprint(shape: ShapeReference) -> dict[str, Any]:
+    metadata = shape.metadata
+    return {
+        "assembly_path": list(shape.assembly_path),
+        "display_name": shape.fallback_display_name,
+        "kind": shape.shape_type.value,
+        "kernel_label": _stable_kernel_label(shape.kernel_label),
+        "signature": _normalise_topology_value(shape.geometric_signature),
+        "xde_label": metadata.get("xde_label", ""),
+        "xde_referred_label": metadata.get("xde_referred_label", ""),
+    }
+
+
+def _feature_topology_fingerprint(feature: FeatureReference) -> dict[str, Any]:
+    shape = feature.shape_reference
+    return {
+        "feature_type": feature.feature_type.value,
+        "shape": _shape_topology_fingerprint(shape) if shape is not None else None,
+    }
+
+
+def _stable_kernel_label(label: str) -> str:
+    if not label:
+        return ""
+    if ":xde:" in label:
+        return "xde:" + label.split(":xde:", 1)[1]
+    if ":" in label:
+        return label.split(":", 1)[1]
+    return label
+
+
+def _normalise_topology_value(value: Any) -> Any:
+    if isinstance(value, float):
+        return round(value, 6)
+    if isinstance(value, (int, str, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): _normalise_topology_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_normalise_topology_value(item) for item in value]
+    return str(value)
 
 
 def _measurement_kind(

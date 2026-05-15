@@ -21,7 +21,12 @@ from mechanical_design_tool_suite.cad_tolerance_gui import (
     ResultPlotWidget,
     create_cad_tolerance_window,
 )
-from mechanical_design_tool_suite.cad_tolerance_project_io import load_project, save_project
+from mechanical_design_tool_suite.cad_geometry_api import cad_source_topology_hash
+from mechanical_design_tool_suite.cad_tolerance_project_io import (
+    load_project,
+    project_asset_dir,
+    save_project,
+)
 from mechanical_design_tool_suite.cad_tolerance_viewmodels import (
     DETAIL_COLUMNS,
     DETAIL_TOLERANCE_TYPE_ROLE,
@@ -42,7 +47,10 @@ from mechanical_design_tool_suite.cad_viewer_api import (
 from mechanical_design_tool_suite.cad_tolerance_models import (
     CadDocument,
     CadFileFormat,
+    CadSourceStatus,
     GeometricControlType,
+    ShapeKind,
+    ShapeReference,
     Snapshot,
     ToleranceType,
 )
@@ -103,10 +111,26 @@ class NativeAnnotationFakeViewer(FakeViewer):
 
 
 class FakeGeometrySession:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        file_hash: str = "sha256:0123456789abcdef",
+        shape_area: float = 42.0,
+    ) -> None:
         self.imported_paths: list[Path] = []
         self.imported_settings = []
         self.selection_filters = []
+        self.file_hash = file_hash
+        self.shapes = [
+            ShapeReference(
+                id="shape_fake_face",
+                assembly_path=["Caster Assembly", "Bracket"],
+                shape_type=ShapeKind.FACE,
+                kernel_label="cad_doc_1:Caster Assembly/Bracket:face:1",
+                geometric_signature={"area": shape_area},
+                fallback_display_name="Bracket face",
+            )
+        ]
 
     def import_file(self, path, settings=None) -> CadDocument:
         resolved = Path(path)
@@ -116,9 +140,17 @@ class FakeGeometrySession:
         self.imported_settings.append(settings)
         return CadDocument(
             source_path=str(resolved),
+            file_hash=self.file_hash,
+            source_topology_hash=cad_source_topology_hash(self.shapes),
             file_format=CadFileFormat.STEP,
             display_name=resolved.name,
         )
+
+    def shape_references(self, kinds=None):
+        return list(self.shapes)
+
+    def feature_references(self, kinds=None):
+        return []
 
     def set_selection_filter(self, kinds) -> None:
         self.selection_filters.append(kinds)
@@ -289,6 +321,11 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         )
         self.assertIs(self.viewer.displayed_session, geometry)
         self.assertIn("Reloaded CAD source", self.window.statusBar().currentMessage())
+        self.assertEqual(
+            self.window.project.cad_documents[0].source_status,
+            CadSourceStatus.PRESENT,
+        )
+        self.assertIn("Source: Present", self.window.cad_source_status_label.text())
 
     def test_project_load_keeps_data_visible_when_cad_source_is_missing(self) -> None:
         project = load_project(FIXTURE_PATH)
@@ -303,6 +340,10 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         self.assertEqual(self.window.summary_model.rowCount(), 1)
         self.assertEqual(geometry.imported_paths, [])
         self.assertIsNone(self.viewer.displayed_session)
+        self.assertEqual(
+            self.window.project.cad_documents[0].source_status,
+            CadSourceStatus.MISSING,
+        )
         self.assertIn(
             "CAD source not found: missing.step",
             self.window.statusBar().currentMessage(),
@@ -323,7 +364,84 @@ class CadToleranceGuiShellTest(unittest.TestCase):
             self.window.load_project_file(project_path)
 
         self.assertEqual(geometry.imported_paths, [cad_asset.resolve()])
-        self.assertIn("Reloaded CAD source: local.step", self.window.cad_source_status_messages)
+        self.assertEqual(
+            self.window.project.cad_documents[0].source_status,
+            CadSourceStatus.PROJECT_LOCAL_PACKAGE_ASSET,
+        )
+        self.assertIn("Using project-local CAD asset: local.step", self.window.cad_source_status_messages)
+
+    def test_project_load_reports_relocated_cad_source_by_name(self) -> None:
+        project = load_project(FIXTURE_PATH)
+        geometry = FakeGeometrySession()
+        self.window.geometry_session = geometry
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            relocated = root / "neutral_step_two_part_loop.step"
+            relocated.write_bytes((FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").read_bytes())
+            project.cad_documents[0].source_path = "old_folder/neutral_step_two_part_loop.step"
+            project_path = save_project(project, root / "caster_study.tolproj")
+            self.window.load_project_file(project_path)
+
+        self.assertEqual(geometry.imported_paths, [relocated.resolve()])
+        self.assertEqual(
+            self.window.project.cad_documents[0].source_status,
+            CadSourceStatus.RELOCATED,
+        )
+        self.assertIn("CAD source relocated", self.window.statusBar().currentMessage())
+
+    def test_project_load_reports_changed_hash_and_changed_topology(self) -> None:
+        project = load_project(FIXTURE_PATH)
+        baseline_shape = ShapeReference(
+            id="shape_baseline",
+            assembly_path=["Caster Assembly", "Bracket"],
+            shape_type=ShapeKind.FACE,
+            kernel_label="cad_doc_1:Caster Assembly/Bracket:face:1",
+            geometric_signature={"area": 42.0},
+            fallback_display_name="Bracket face",
+        )
+        project.cad_documents[0].source_topology_hash = cad_source_topology_hash([baseline_shape])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cad_asset = project_asset_dir(root / "caster_study.tolproj") / "cad" / "local.step"
+            cad_asset.parent.mkdir(parents=True)
+            cad_asset.write_bytes((FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").read_bytes())
+            project.cad_documents[0].source_path = "caster_study_assets/cad/local.step"
+            project_path = save_project(project, root / "caster_study.tolproj")
+
+            self.window.geometry_session = FakeGeometrySession(file_hash="sha256:changed", shape_area=42.0)
+            self.window.load_project_file(project_path)
+            self.assertEqual(
+                self.window.project.cad_documents[0].source_status,
+                CadSourceStatus.CHANGED_HASH,
+            )
+
+            self.window.geometry_session = FakeGeometrySession(file_hash="sha256:changed", shape_area=84.0)
+            self.window.load_project_file(project_path)
+
+        self.assertEqual(
+            self.window.project.cad_documents[0].source_status,
+            CadSourceStatus.CHANGED_TOPOLOGY,
+        )
+
+    def test_reattach_cad_source_updates_document_and_status(self) -> None:
+        project = load_project(FIXTURE_PATH)
+        geometry = FakeGeometrySession(file_hash="sha256:reattached", shape_area=84.0)
+        self.window.geometry_session = geometry
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = save_project(project, root / "caster_study.tolproj")
+            source = root / "replacement.step"
+            source.write_bytes((FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").read_bytes())
+            self.window.load_project_file(project_path)
+            document = self.window.reattach_cad_source(source)
+
+        self.assertEqual(document.source_path, "replacement.step")
+        self.assertEqual(document.file_hash, "sha256:reattached")
+        self.assertIn(document.source_status, {CadSourceStatus.PRESENT, CadSourceStatus.CHANGED_HASH})
+        self.assertIs(self.viewer.displayed_session, geometry)
 
     def test_loaded_project_detail_table_edits_validate_recalculate_and_warn_on_shared(self) -> None:
         self.window.load_project_file(FIXTURE_PATH)
@@ -416,6 +534,15 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         for label in ("Solids", "Surfaces", "Meshes", "Wires", "Work Features", "Points"):
             self.assertIn(label, labels)
         self.assertEqual(dialog.import_settings()["units"], "From source")
+        self.assertEqual(dialog.import_settings()["source_mode"], "reference")
+        self.assertIn("solids", dialog.import_settings()["object_filter"])
+        ok_button = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self.assertTrue(ok_button.isEnabled())
+
+        unsupported = NeutralCadImportOptionsDialog(Path("native.sldprt"))
+        self.addCleanup(unsupported.close)
+        unsupported_ok = unsupported.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self.assertFalse(unsupported_ok.isEnabled())
 
 
 def _find_model_row(model: CadStackupDetailTableModel, name: str) -> int:

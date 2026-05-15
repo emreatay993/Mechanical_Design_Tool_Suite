@@ -15,6 +15,7 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
     AssemblyNodeType,
     CadDocument,
     CadFileFormat,
+    CadSourceStatus,
     CadToleranceProject,
     FeatureKind,
     FeatureReference,
@@ -127,6 +128,10 @@ def _sample_project() -> CadToleranceProject:
         file_hash="sha256:0123456789abcdef",
         file_format=CadFileFormat.STEP,
         imported_at="2026-05-12T20:10:00Z",
+        source_topology_hash="sha256:topology-baseline",
+        source_status=CadSourceStatus.PRESENT,
+        source_status_message="CAD source present: neutral_step_two_part_loop.step",
+        source_last_checked_at="2026-05-12T20:11:00Z",
         units="mm",
         assembly_root=assembly_root,
         display_name="neutral_step_two_part_loop.step",
@@ -287,6 +292,12 @@ class CadToleranceProjectIoTest(unittest.TestCase):
         document = loaded.cad_documents[0]
         self.assertEqual(document.file_format, CadFileFormat.STEP)
         self.assertEqual(document.file_hash, "sha256:0123456789abcdef")
+        self.assertEqual(document.source_topology_hash, "sha256:topology-baseline")
+        self.assertEqual(document.source_status, CadSourceStatus.PRESENT)
+        self.assertEqual(
+            document.source_status_message,
+            "CAD source present: neutral_step_two_part_loop.step",
+        )
         self.assertEqual(document.import_settings["object_filter"], "solids")
         self.assertEqual(document.assembly_root.children[1].display_color, (80, 140, 180))
 
@@ -438,6 +449,10 @@ class CadToleranceProjectIoTest(unittest.TestCase):
             self.assertEqual(
                 packaged_data["cad_documents"][0]["source_path"],
                 "assets/cad/neutral_step_two_part_loop.step",
+            )
+            self.assertEqual(
+                packaged_data["cad_documents"][0]["source_status"],
+                CadSourceStatus.PROJECT_LOCAL_PACKAGE_ASSET.value,
             )
             self.assertEqual(
                 packaged_data["snapshots"][0]["image_path"],
@@ -621,6 +636,24 @@ class CadToleranceProjectIoTest(unittest.TestCase):
         self.assertEqual(migrated["snapshots"], [])
         self.assertEqual(migrated["reports"], [])
         self.assertNotIn("unit_system", legacy)
+
+    def test_schema_v2_migration_adds_source_status_defaults(self) -> None:
+        legacy = _sample_project().to_dict()
+        legacy["schema_version"] = 2
+        document = legacy["cad_documents"][0]
+        document.pop("source_topology_hash")
+        document.pop("source_status")
+        document.pop("source_status_message")
+        document.pop("source_last_checked_at")
+
+        migrated = migrate_project_data(legacy)
+
+        self.assertEqual(migrated["schema_version"], CURRENT_SCHEMA_VERSION)
+        self.assertEqual(
+            migrated["cad_documents"][0]["source_status"],
+            CadSourceStatus.UNKNOWN.value,
+        )
+        self.assertEqual(migrated["cad_documents"][0]["source_topology_hash"], "")
 
     def test_save_rejects_wrong_project_type(self) -> None:
         project = _sample_project()
