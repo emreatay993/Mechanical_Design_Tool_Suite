@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -32,6 +34,7 @@ from mechanical_design_tool_suite.cad_viewer_occ import (
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "cad_1d_tolerance"
 STEP_FIXTURE = FIXTURE_DIR / "neutral_step_two_part_loop.step"
+_OCC_VIEWER_DIRECT_SMOKE_ENV = "MDTS_OCC_VIEWER_DIRECT_SMOKE"
 
 
 class _NoRuntimeShapeProvider:
@@ -186,7 +189,34 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
         self.assertEqual(get_loaded_backend(), "pyqt6")
         self.assertFalse(is_pyqt5_available())
 
+    def _run_step_fixture_smoke_in_subprocess(self) -> None:
+        child_env = dict(os.environ)
+        child_env[_OCC_VIEWER_DIRECT_SMOKE_ENV] = "1"
+        child_env.pop("QT_QPA_PLATFORM", None)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "OccCadViewerRuntimeTest.test_step_fixture_displays_with_live_occ_shapes_and_snapshot",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            env=child_env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        if result.returncode != 0:
+            self.fail(
+                "Isolated OCC viewer smoke subprocess failed with exit code "
+                f"{result.returncode}.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            )
+
     def test_step_fixture_displays_with_live_occ_shapes_and_snapshot(self) -> None:
+        if os.environ.get(_OCC_VIEWER_DIRECT_SMOKE_ENV) != "1":
+            self._run_step_fixture_smoke_in_subprocess()
+            return
+
         from PyQt6.QtGui import QImage
         from PyQt6.QtWidgets import QApplication
 
