@@ -218,6 +218,10 @@ class CadToleranceWorkspaceViewModel:
     @classmethod
     def from_project(cls, project: CadToleranceProject) -> "CadToleranceWorkspaceViewModel":
         projected_rows, projected_badges = build_dashboard_projection(project)
+        results = {
+            stackup.id: calculate_stackup(stackup, project.settings)
+            for stackup in project.stackups
+        }
         summary_rows = [
             StackupSummaryRow(
                 row.stackup_id,
@@ -236,10 +240,13 @@ class CadToleranceWorkspaceViewModel:
         detail_rows = {stackup.id: _detail_rows_from_stackup(stackup, project) for stackup in project.stackups}
         contributions = {stackup.id: _contribution_rows_from_stackup(stackup, project) for stackup in project.stackups}
         result_projections = {
-            stackup.id: build_result_display(stackup, project=project)
+            stackup.id: build_result_display(stackup, results[stackup.id], project)
             for stackup in project.stackups
         }
-        warnings = {stackup.id: list(stackup.warnings) for stackup in project.stackups}
+        warnings = {
+            stackup.id: list(results[stackup.id].warnings)
+            for stackup in project.stackups
+        }
         annotation_positions = {
             stackup.id: dict(stackup.annotation_position)
             for stackup in project.stackups
@@ -675,8 +682,12 @@ def _detail_edit_tooltip(row: StackupDetailRow, column: int) -> str:
 def _summary_background(row: StackupSummaryRow) -> QBrush | None:
     if row.status == ResultStatus.FAIL:
         return QBrush(QColor("#faf2f2"))
-    if row.status in {ResultStatus.PASS, ResultStatus.WARN}:
+    if row.status == ResultStatus.WARN or row.has_warning:
+        return QBrush(QColor("#fff7d6"))
+    if row.status == ResultStatus.PASS:
         return QBrush(QColor("#effbf1"))
+    if row.status == ResultStatus.INCOMPLETE:
+        return QBrush(QColor("#f4f4f4"))
     return None
 
 

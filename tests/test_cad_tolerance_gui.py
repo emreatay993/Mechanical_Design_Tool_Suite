@@ -52,12 +52,20 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
     CadDocument,
     CadFileFormat,
     CadSourceStatus,
+    CadToleranceProject,
+    FeatureKind,
+    FeatureReference,
     GeometricControlType,
     QualityMetric,
+    ResultStatus,
     ShapeKind,
     ShapeReference,
     Snapshot,
+    StackupContributor,
+    StackupObjective,
+    StackupRequirement,
     ToleranceType,
+    Vector3D,
 )
 
 
@@ -226,6 +234,41 @@ class CadToleranceViewModelTest(unittest.TestCase):
             model.data(model.index(gdt_row, 3), Qt.ItemDataRole.ToolTipRole),
         )
 
+    def test_project_viewmodel_surfaces_computed_non_1d_warnings(self) -> None:
+        project = CadToleranceProject(
+            stackups=[
+                StackupRequirement(
+                    "computed warning",
+                    start_feature=FeatureReference(
+                        "start",
+                        FeatureKind.FACE,
+                        point=Vector3D(0.0, 0.0, 0.0),
+                        normal=Vector3D(1.0, 0.0, 0.0),
+                    ),
+                    end_feature=FeatureReference(
+                        "end",
+                        FeatureKind.FACE,
+                        point=Vector3D(8.0, 2.0, 0.0),
+                        normal=Vector3D(1.0, 0.0, 0.0),
+                    ),
+                    direction=Vector3D(1.0, 0.0, 0.0),
+                    objective=StackupObjective.bilateral(nominal=0.0, tolerance=1.0),
+                    contributors=[StackupContributor("A", nominal=0.0, tolerance=0.1)],
+                )
+            ]
+        )
+
+        workspace = CadToleranceWorkspaceViewModel.from_project(project)
+        model = CadStackupSummaryTableModel(workspace.summary_rows)
+
+        self.assertEqual(workspace.summary_rows[0].status, ResultStatus.WARN)
+        self.assertTrue(workspace.summary_rows[0].has_warning)
+        self.assertEqual(len(workspace.warnings()), 1)
+        self.assertIn(
+            NON_1D_WARNING_TEXT,
+            model.data(model.index(0, 0), Qt.ItemDataRole.ToolTipRole),
+        )
+
     def test_tolerance_delegate_exposes_inline_parity_modes(self) -> None:
         workspace = CadToleranceWorkspaceViewModel.from_project(load_project(FIXTURE_PATH))
         model = CadStackupDetailTableModel(workspace.detail_rows())
@@ -351,8 +394,33 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         self.assertIsNotNone(plot._projection)
         self.assertEqual(plot._projection.mode_label, "Statistical")
         self.assertIn("Actual: Cpk = 3.16", self.window.result_panel.metrics.text())
+        self.assertIn("Cp = 3.95", self.window.result_panel.metrics.text())
+        self.assertIn("Sigma = 9.49", self.window.result_panel.metrics.text())
+        self.assertIn("At target quality: Results +/-0.264", self.window.result_panel.metrics.text())
         self.assertFalse(self.window.result_panel.warning_row.isHidden())
         self.assertIn(NON_1D_WARNING_TEXT, warning.text())
+
+    def test_contribution_selection_marks_row_and_reports_shared_stackups(self) -> None:
+        self.window.load_project_file(FIXTURE_PATH)
+        self.window._open_summary_index(0)
+        self.app.processEvents()
+
+        self.window._handle_contributor_selected("contrib_generated_1")
+        self.app.processEvents()
+
+        selected_rows = self.window.detail_table.selectionModel().selectedRows()
+        self.assertTrue(selected_rows)
+        self.assertEqual(
+            self.window.detail_model.data(self.window.detail_model.index(selected_rows[0].row(), 0)),
+            "Bracket to bushing face",
+        )
+        selected_widgets = [
+            widget
+            for widget in self.window.findChildren(QWidget, "ContributionRow")
+            if widget.property("contributorId") == "contrib_generated_1"
+        ]
+        self.assertTrue(any(widget.property("selected") for widget in selected_widgets))
+        self.assertIn("overall height", self.window.statusBar().currentMessage())
 
     def test_project_load_rehydrates_existing_fixture_cad_source(self) -> None:
         geometry = FakeGeometrySession()

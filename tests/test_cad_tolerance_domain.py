@@ -25,6 +25,7 @@ from mechanical_design_tool_suite.cad_tolerance_models import (
     StackupObjective,
     StackupRequirement,
     ToleranceType,
+    Vector3D,
 )
 
 
@@ -237,6 +238,62 @@ class CadToleranceDomainTest(unittest.TestCase):
         self.assertEqual(result.objective.status, ResultStatus.PASS)
         self.assertEqual(result.status, ResultStatus.WARN)
         self.assertEqual(len(result.warnings), 1)
+
+    def test_objective_failure_takes_precedence_over_warning_status(self) -> None:
+        warnings = list(detect_non_1d_warnings(has_rotational_constraints=True))
+        stackup = StackupRequirement(
+            "warning fail",
+            objective=StackupObjective.bilateral(nominal=0.0, tolerance=0.10),
+            warnings=warnings,
+            contributors=[StackupContributor("A", nominal=0.0, tolerance=0.20)],
+        )
+
+        result = calculate_stackup(stackup)
+
+        self.assertEqual(result.objective.status, ResultStatus.FAIL)
+        self.assertEqual(result.status, ResultStatus.FAIL)
+        self.assertEqual(len(result.warnings), 1)
+
+    def test_empty_stackup_with_warning_stays_incomplete(self) -> None:
+        warnings = list(detect_non_1d_warnings(has_rotational_constraints=True))
+
+        result = calculate_stackup(StackupRequirement("empty warning", warnings=warnings))
+
+        self.assertEqual(result.status, ResultStatus.INCOMPLETE)
+        self.assertEqual(len(result.warnings), 1)
+
+    def test_stackup_calculation_derives_non_1d_offset_warning_from_features(self) -> None:
+        start = FeatureReference(
+            name="start face",
+            feature_type=FeatureKind.FACE,
+            point=Vector3D(0.0, 0.0, 0.0),
+            normal=Vector3D(1.0, 0.0, 0.0),
+        )
+        end = FeatureReference(
+            name="offset end face",
+            feature_type=FeatureKind.FACE,
+            point=Vector3D(10.0, 2.0, 0.0),
+            normal=Vector3D(1.0, 0.0, 0.0),
+        )
+        stackup = StackupRequirement(
+            "computed offset warning",
+            start_feature=start,
+            end_feature=end,
+            direction=Vector3D(1.0, 0.0, 0.0),
+            objective=StackupObjective.bilateral(nominal=0.0, tolerance=1.0),
+            contributors=[StackupContributor("A", nominal=0.0, tolerance=0.10)],
+        )
+
+        result = calculate_stackup(stackup)
+
+        self.assertEqual(result.status, ResultStatus.WARN)
+        self.assertEqual(len(result.warnings), 1)
+        self.assertEqual(result.warnings[0].warning_kind, NonOneDWarningKind.OFFSET_FEATURES)
+        self.assertEqual(
+            result.warnings[0].feature_ids,
+            [start.id, end.id],
+        )
+        self.assertAlmostEqual(result.warnings[0].observed_value, 2.0)
 
     def test_domain_models_round_trip_nested_serializable_references(self) -> None:
         shape = ShapeReference(

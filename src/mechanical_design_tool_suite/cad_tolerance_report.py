@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from html import escape
 import json
+import math
 from pathlib import Path
 import shutil
 from typing import Any
@@ -118,11 +119,15 @@ class ResultDisplayProjection:
     mean_label: str
     standard_deviation_label: str
     markers: tuple[ResultMarker, ...] = ()
+    quality_metric_labels: tuple[str, ...] = ()
+    statistical_interpretation_labels: tuple[str, ...] = ()
     warnings: tuple[WarningProjectionRow, ...] = ()
     objective_lower: float | None = None
     objective_upper: float | None = None
     result_lower: float = 0.0
     result_upper: float = 0.0
+    mean: float = 0.0
+    standard_deviation: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -184,7 +189,7 @@ def build_dashboard_projection(
             target_sigma.append(target)
     projected_rows = tuple(rows)
     failed = sum(1 for row in rows if row.status == ResultStatus.FAIL)
-    met = sum(1 for row in rows if row.status != ResultStatus.FAIL)
+    met = sum(1 for row in rows if row.status in {ResultStatus.PASS, ResultStatus.WARN})
     return projected_rows, DashboardBadgesProjection(
         met,
         failed,
@@ -200,7 +205,10 @@ def build_result_display(
     result = result or calculate_stackup(stackup, project.settings if project else None)
     mode_label = _analysis_mode_label(result.analysis_mode)
     warnings = tuple(_warning_projection(warning) for warning in result.warnings)
-    markers = _result_markers(result)
+    display_minus, display_plus = _display_variation_for_result(stackup, result)
+    display_lower = result.nominal - display_minus
+    display_upper = result.nominal + display_plus
+    markers = _result_markers(result, display_lower, display_upper)
     predicted_quality = _format_predicted_quality(
         result.quality.target_metric,
         result.quality.cpk,
@@ -219,8 +227,8 @@ def build_result_display(
             "Results: "
             + _format_result_envelope(
                 stackup.objective,
-                result.evaluated_minus,
-                result.evaluated_plus,
+                display_minus,
+                display_plus,
                 result.nominal,
             )
         ),
@@ -228,11 +236,21 @@ def build_result_display(
         mean_label=f"Mean: {result.quality.mean:.2f}",
         standard_deviation_label=f"Standard Deviation: {result.quality.standard_deviation:.2f}",
         markers=markers,
+        quality_metric_labels=_quality_metric_labels(result.quality),
+        statistical_interpretation_labels=_statistical_interpretation_labels(
+            stackup,
+            result,
+            display_minus,
+            display_plus,
+            predicted_quality,
+        ),
         warnings=warnings,
         objective_lower=result.objective.lower_bound,
         objective_upper=result.objective.upper_bound,
-        result_lower=result.objective.result_lower,
-        result_upper=result.objective.result_upper,
+        result_lower=display_lower,
+        result_upper=display_upper,
+        mean=result.quality.mean,
+        standard_deviation=result.quality.standard_deviation,
     )
 
 
@@ -694,10 +712,14 @@ def _report_manifest(
     }
 
 
-def _result_markers(result: StackupResult) -> tuple[ResultMarker, ...]:
+def _result_markers(
+    result: StackupResult,
+    display_lower: float,
+    display_upper: float,
+) -> tuple[ResultMarker, ...]:
     markers: list[ResultMarker] = [
-        ResultMarker("Result lower", result.objective.result_lower, "result"),
-        ResultMarker("Result upper", result.objective.result_upper, "result"),
+        ResultMarker("Result lower", display_lower, "result"),
+        ResultMarker("Result upper", display_upper, "result"),
     ]
     if result.objective.lower_bound is not None:
         markers.append(ResultMarker("Lower objective", result.objective.lower_bound, "objective"))
@@ -843,6 +865,14 @@ def _render_result_panel(result: ResultDisplayProjection) -> str:
         for marker in result.markers
     )
     plot_markers = "\n".join(_render_result_plot_marker(result, marker) for marker in result.markers)
+    quality_metrics = "\n".join(
+        f'<div class="metric">{_e(label)}</div>'
+        for label in result.quality_metric_labels
+    )
+    interpretation = "\n".join(
+        f'<div class="metric interpretation">{_e(label)}</div>'
+        for label in result.statistical_interpretation_labels
+    )
     predicted = (
         f'<div class="metric">{_e(result.predicted_quality_label)}</div>'
         if result.predicted_quality_label
@@ -858,6 +888,8 @@ def _render_result_panel(result: ResultDisplayProjection) -> str:
             f'<div class="metric">{_e(result.result_label)}</div>',
             f'<div class="metric">{_e(result.objective_label)}</div>',
             predicted,
+            quality_metrics,
+            interpretation,
             "</div>",
             '<div class="range-bar result-plot">',
             '<div class="range-fail"></div><div class="range-pass"></div><div class="range-fail"></div>',
@@ -1035,6 +1067,85 @@ def _format_predicted_quality(
     return ""
 
 
+def _quality_metric_labels(quality) -> tuple[str, ...]:
+    labels: list[str] = []
+    if quality.cp is not None:
+        labels.append(f"Cp = {_format_quality_number(quality.cp)}")
+    if quality.cpk is not None:
+        labels.append(f"Cpk = {_format_quality_number(quality.cpk)}")
+    if quality.sigma is not None:
+        labels.append(f"Sigma = {_format_quality_number(quality.sigma)}")
+    if quality.yield_probability is not None:
+        labels.append(f"Yield = {quality.yield_probability * 100.0:.2f}%")
+    return tuple(labels)
+
+
+def _statistical_interpretation_labels(
+    stackup: StackupRequirement,
+    result: StackupResult,
+    display_minus: float,
+    display_plus: float,
+    predicted_quality: str,
+) -> tuple[str, ...]:
+    if result.analysis_mode != AnalysisMode.STATISTICAL:
+        return ()
+    labels = []
+    if result.quality.target_value is not None and result.quality.target_metric not in {
+        QualityMetric.RSS,
+        QualityMetric.WORST_CASE,
+    }:
+        labels.append(
+            "At target quality: Results "
+            + _format_result_envelope(
+                stackup.objective,
+                display_minus,
+                display_plus,
+                result.nominal,
+            )
+        )
+    if predicted_quality:
+        labels.append(f"At objective: {predicted_quality}")
+    return tuple(labels)
+
+
+def _display_variation_for_result(
+    stackup: StackupRequirement,
+    result: StackupResult,
+) -> tuple[float, float]:
+    if result.analysis_mode != AnalysisMode.STATISTICAL:
+        return result.evaluated_minus, result.evaluated_plus
+    sigma_distance = _target_sigma_distance(stackup, result)
+    if sigma_distance is None or result.quality.standard_deviation <= 0.0:
+        return result.evaluated_minus, result.evaluated_plus
+    variation = sigma_distance * result.quality.standard_deviation
+    return variation, variation
+
+
+def _target_sigma_distance(
+    stackup: StackupRequirement,
+    result: StackupResult,
+) -> float | None:
+    target = result.quality.target_value
+    if target is None:
+        return None
+    metric = result.quality.target_metric
+    if metric == QualityMetric.CPK:
+        return target * 3.0
+    if metric == QualityMetric.SIGMA:
+        return target
+    if metric == QualityMetric.YIELD:
+        return _yield_target_to_sigma(target, stackup.objective)
+    return None
+
+
+def _format_quality_number(value: float) -> str:
+    if math.isinf(value):
+        return "inf" if value > 0 else "-inf"
+    if math.isnan(value):
+        return "n/a"
+    return f"{value:.2f}"
+
+
 def _format_result_envelope(
     objective: StackupObjective,
     minus: float,
@@ -1150,7 +1261,43 @@ def _target_sigma_from_stackup(stackup: StackupRequirement) -> float | None:
         return target.value
     if target.metric == QualityMetric.CPK:
         return target.value * 3.0
+    if target.metric == QualityMetric.YIELD:
+        return _yield_target_to_sigma(target.value, stackup.objective)
     return None
+
+
+def _yield_target_to_sigma(
+    target_value: float,
+    objective: StackupObjective,
+) -> float | None:
+    probability = float(target_value)
+    if probability > 1.0:
+        probability /= 100.0
+    probability = max(0.0, min(0.999999999, probability))
+    if probability <= 0.0:
+        return 0.0
+    bounded_sides = sum(
+        bound is not None for bound in (objective.lower_bound(), objective.upper_bound())
+    )
+    if bounded_sides >= 2:
+        return _normal_quantile((1.0 + probability) / 2.0)
+    return _normal_quantile(probability)
+
+
+def _normal_quantile(probability: float) -> float:
+    low = -10.0
+    high = 10.0
+    for _ in range(90):
+        mid = (low + high) / 2.0
+        if _normal_cdf(mid) < probability:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2.0
+
+
+def _normal_cdf(z_score: float) -> float:
+    return 0.5 * (1.0 + math.erf(z_score / math.sqrt(2.0)))
 
 
 def _anchor(prefix: str, value: str) -> str:

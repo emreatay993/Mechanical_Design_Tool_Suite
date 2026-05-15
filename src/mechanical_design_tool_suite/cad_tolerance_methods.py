@@ -8,6 +8,8 @@ from .cad_tolerance_models import (
     AnalysisMode,
     AnalysisSettings,
     ContributionResult,
+    FeatureKind,
+    FeatureReference,
     ToleranceType,
     NonOneDWarning,
     NonOneDWarningKind,
@@ -19,6 +21,7 @@ from .cad_tolerance_models import (
     StackupObjective,
     StackupRequirement,
     StackupResult,
+    Vector3D,
 )
 
 
@@ -32,7 +35,7 @@ def calculate_stackup(
     for contributor in contributors:
         _validate_contributor(contributor)
 
-    warnings = tuple(stackup.warnings)
+    warnings = _stackup_warnings(stackup, settings)
     if not contributors:
         objective = _incomplete_objective()
         quality = _empty_quality(stackup)
@@ -354,6 +357,145 @@ def _combined_result_status(
     if warnings:
         return ResultStatus.WARN
     return ResultStatus.PASS
+
+
+def _stackup_warnings(
+    stackup: StackupRequirement,
+    settings: AnalysisSettings,
+) -> tuple[NonOneDWarning, ...]:
+    warnings = list(stackup.warnings)
+    seen = {_warning_signature(warning) for warning in warnings}
+    for warning in _detect_stackup_non_1d_warnings(stackup, settings):
+        signature = _warning_signature(warning)
+        if signature in seen:
+            continue
+        warnings.append(warning)
+        seen.add(signature)
+    return tuple(warnings)
+
+
+def _detect_stackup_non_1d_warnings(
+    stackup: StackupRequirement,
+    settings: AnalysisSettings,
+) -> tuple[NonOneDWarning, ...]:
+    offset_distance = _lateral_offset_distance(
+        stackup.start_feature,
+        stackup.end_feature,
+        stackup.direction,
+    )
+    direction_alignment = _weakest_direction_alignment(stackup)
+    rotational_constraints = any(
+        feature.feature_type == FeatureKind.CYLINDER
+        for feature in stackup.constraint_features
+    )
+    projection_sensitivity = _projection_sensitivity(stackup.contributors)
+    warnings = list(
+        detect_non_1d_warnings(
+            offset_distance=offset_distance,
+            direction_alignment_cosine=direction_alignment,
+            has_rotational_constraints=rotational_constraints,
+            interface_count=len(stackup.constraint_features) or None,
+            projection_sensitivity=projection_sensitivity,
+            settings=settings,
+        )
+    )
+    endpoint_ids = _feature_ids(stackup.start_feature, stackup.end_feature)
+    constraint_ids = _feature_ids(*stackup.constraint_features)
+    for warning in warnings:
+        if warning.warning_kind == NonOneDWarningKind.OFFSET_FEATURES:
+            warning.feature_ids = list(endpoint_ids)
+        elif warning.warning_kind in {
+            NonOneDWarningKind.DIRECTION_MISALIGNMENT,
+            NonOneDWarningKind.ROTATIONAL_CONSTRAINT,
+            NonOneDWarningKind.MULTI_INTERFACE_LOOP,
+        }:
+            warning.feature_ids = list(constraint_ids or endpoint_ids)
+    return tuple(warnings)
+
+
+def _warning_signature(warning: NonOneDWarning) -> tuple[str, str, tuple[str, ...]]:
+    return (
+        warning.warning_kind.value,
+        warning.message,
+        tuple(sorted(warning.feature_ids)),
+    )
+
+
+def _feature_ids(*features: FeatureReference | None) -> tuple[str, ...]:
+    return tuple(feature.id for feature in features if feature is not None and feature.id)
+
+
+def _lateral_offset_distance(
+    start_feature: FeatureReference | None,
+    end_feature: FeatureReference | None,
+    direction: Vector3D,
+) -> float | None:
+    if start_feature is None or end_feature is None:
+        return None
+    if start_feature.point is None or end_feature.point is None:
+        return None
+    direction_unit = _unit_vector(direction)
+    if direction_unit is None:
+        return None
+    delta = Vector3D(
+        end_feature.point.x - start_feature.point.x,
+        end_feature.point.y - start_feature.point.y,
+        end_feature.point.z - start_feature.point.z,
+    )
+    along = _dot(delta, direction_unit)
+    lateral = Vector3D(
+        delta.x - along * direction_unit.x,
+        delta.y - along * direction_unit.y,
+        delta.z - along * direction_unit.z,
+    )
+    return _magnitude(lateral)
+
+
+def _weakest_direction_alignment(stackup: StackupRequirement) -> float | None:
+    direction_unit = _unit_vector(stackup.direction)
+    if direction_unit is None:
+        return None
+    alignments: list[float] = []
+    for feature in (
+        stackup.start_feature,
+        stackup.end_feature,
+        *stackup.constraint_features,
+    ):
+        if feature is None:
+            continue
+        for vector in (feature.axis, feature.normal):
+            vector_unit = _unit_vector(vector)
+            if vector_unit is not None:
+                alignments.append(abs(_dot(direction_unit, vector_unit)))
+    return min(alignments) if alignments else None
+
+
+def _projection_sensitivity(
+    contributors: list[StackupContributor] | tuple[StackupContributor, ...],
+) -> float | None:
+    values = [
+        abs(abs(contributor.sensitivity) - round(abs(contributor.sensitivity)))
+        for contributor in contributors
+        if contributor.include_in_stackup
+    ]
+    return max(values) if values else None
+
+
+def _unit_vector(vector: Vector3D | None) -> Vector3D | None:
+    if vector is None:
+        return None
+    magnitude = _magnitude(vector)
+    if magnitude <= 1.0e-12:
+        return None
+    return Vector3D(vector.x / magnitude, vector.y / magnitude, vector.z / magnitude)
+
+
+def _magnitude(vector: Vector3D) -> float:
+    return math.sqrt(vector.x**2 + vector.y**2 + vector.z**2)
+
+
+def _dot(left: Vector3D, right: Vector3D) -> float:
+    return left.x * right.x + left.y * right.y + left.z * right.z
 
 
 def _validate_settings(settings: AnalysisSettings) -> None:

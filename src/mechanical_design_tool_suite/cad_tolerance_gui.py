@@ -1477,7 +1477,9 @@ class ResultPanelWidget(QFrame):
         if projection.mode_label == "Statistical":
             if projection.predicted_quality_label:
                 metrics.append("Actual: " + projection.predicted_quality_label)
+            metrics.extend(projection.quality_metric_labels)
             metrics.extend([projection.mean_label, projection.standard_deviation_label])
+            metrics.extend(projection.statistical_interpretation_labels)
         else:
             metrics.extend([projection.result_label, projection.objective_label])
         if projection.mode_label != "Statistical" and projection.predicted_quality_label:
@@ -1570,8 +1572,10 @@ class ResultPlotWidget(QWidget):
         x_for = lambda value: _plot_x(rect, value_range, value)
         painter.setPen(QPen(QColor("#111111"), 1))
         painter.drawRect(rect)
-        mean = next((marker.value for marker in projection.markers if marker.role == "mean"), (value_range[0] + value_range[1]) / 2.0)
-        sigma = max((value_range[1] - value_range[0]) / 9.0, 0.001)
+        mean = projection.mean
+        sigma = projection.standard_deviation
+        if sigma <= 0.0:
+            sigma = max((value_range[1] - value_range[0]) / 9.0, 0.001)
         base_y = rect.bottom() - 1
         peak_height = rect.height() * 0.78
         path = QPainterPath()
@@ -1591,9 +1595,12 @@ class ResultPlotWidget(QWidget):
             color = QColor("#111111")
             width = 2
             if marker.role == "result":
-                color = QColor("#157f2a") if projection.status != ResultStatus.FAIL else QColor("#b51f1f")
+                color = QColor("#b51f1f")
             if marker.role == "objective":
                 color = QColor("#111111")
+            if marker.role == "mean":
+                color = QColor("#157f2a")
+                width = 1
             x = x_for(marker.value)
             painter.setPen(QPen(color, width))
             painter.drawLine(QPointF(x, rect.top() - 8), QPointF(x, rect.bottom() + 1))
@@ -1630,6 +1637,7 @@ class ContributionBarsWidget(QFrame):
         self.title.setObjectName("ContributionTitle")
         self._layout.addWidget(self.title)
         self._bars: list[QWidget] = []
+        self._selected_contributor_id = ""
         self._layout.addStretch(1)
 
     def set_rows(self, rows: list[ContributionBarRow], title: str) -> None:
@@ -1643,10 +1651,21 @@ class ContributionBarsWidget(QFrame):
             self._layout.insertWidget(insert_at, widget)
             self._bars.append(widget)
             insert_at += 1
+        self.set_selected_contributor(self._selected_contributor_id)
+
+    def set_selected_contributor(self, contributor_id: str) -> None:
+        self._selected_contributor_id = contributor_id
+        for widget in self._bars:
+            selected = bool(contributor_id) and widget.property("contributorId") == contributor_id
+            widget.setProperty("selected", selected)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+            widget.update()
 
     def _bar_row(self, row: ContributionBarRow) -> QWidget:
         widget = _ContributionRowWidget(row.contributor_id)
         widget.setObjectName("ContributionRow")
+        widget.selected.connect(self.set_selected_contributor)
         widget.selected.connect(self.contributorSelected.emit)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 2, 0, 2)
@@ -1713,6 +1732,13 @@ def _warning_pixmap(size: int) -> QPixmap:
 def _plot_value_range(projection: ResultDisplayProjection) -> tuple[float, float]:
     values = [marker.value for marker in projection.markers]
     values.extend([projection.result_lower, projection.result_upper])
+    if projection.mode_label == "Statistical" and projection.standard_deviation > 0.0:
+        values.extend(
+            [
+                projection.mean - 4.0 * projection.standard_deviation,
+                projection.mean + 4.0 * projection.standard_deviation,
+            ]
+        )
     if projection.objective_lower is not None:
         values.append(projection.objective_lower)
     if projection.objective_upper is not None:
@@ -2401,6 +2427,12 @@ class CadToleranceMainWindow(QMainWindow):
         if stackup is None:
             return
         self.workspace.select_stackup(stackup.id)
+        projection = self.workspace.result_projection(stackup.id)
+        mode_label = projection.mode_label if projection else "Statistical"
+        self.summary_contributions.set_rows(
+            self.workspace.contribution_rows(stackup.id),
+            f"{mode_label} Contributions for {summary.name}",
+        )
         self._sync_viewer_annotations(stackup.id)
         shape_ref = _first_stackup_shape_reference(stackup)
         if shape_ref is not None:
@@ -2416,10 +2448,28 @@ class CadToleranceMainWindow(QMainWindow):
         shape_ref = contributor.source_feature.shape_reference
         if shape_ref is not None:
             self._cross_highlight_shape(shape_ref)
-        for row_index, row in enumerate(self.detail_model.rows):
-            if row.contributor_id == contributor_id:
+        self.detail_contributions.set_selected_contributor(contributor_id)
+        self.summary_contributions.set_selected_contributor(contributor_id)
+        matching_rows = [
+            (row_index, row)
+            for row_index, row in enumerate(self.detail_model.rows)
+            if row.contributor_id == contributor_id
+        ]
+        for row_index, row in matching_rows:
+            if row.row_type == "dimension":
                 self.detail_table.selectRow(row_index)
                 break
+        else:
+            if matching_rows:
+                self.detail_table.selectRow(matching_rows[0][0])
+        if contributor.shared_with_stackup_ids:
+            self.statusBar().showMessage(
+                "Shared dimension affects: "
+                + ", ".join(
+                    _shared_stackup_label(value)
+                    for value in contributor.shared_with_stackup_ids
+                )
+            )
 
     def _handle_annotation_moved(self, _annotation_id: str, position: object) -> None:
         if not isinstance(position, dict):
@@ -4415,6 +4465,9 @@ def _apply_cad_tolerance_style(app: QApplication) -> None:
         }
         QWidget#ContributionRow {
             min-height: 26px;
+        }
+        QWidget#ContributionRow[selected="true"] {
+            background: #e3eff9;
         }
         QWidget#ContributionBarMeter {
             background: #ffffff;

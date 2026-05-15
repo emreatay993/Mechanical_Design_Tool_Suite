@@ -11,7 +11,15 @@ from mechanical_design_tool_suite.cad_tolerance_report import (
     generate_html_report,
     render_report_html,
 )
-from mechanical_design_tool_suite.cad_tolerance_models import ResultStatus
+from mechanical_design_tool_suite.cad_tolerance_models import (
+    CadToleranceProject,
+    NonOneDWarning,
+    NonOneDWarningKind,
+    ResultStatus,
+    StackupContributor,
+    StackupObjective,
+    StackupRequirement,
+)
 from mechanical_design_tool_suite.cad_viewer_api import SnapshotRequest
 
 
@@ -47,6 +55,11 @@ class CadToleranceReportTest(unittest.TestCase):
         self.assertEqual(section.result.title, "Statistical Results for Bushing ID alignment")
         self.assertEqual(section.result.mean_label, "Mean: 24.00")
         self.assertEqual(section.result.standard_deviation_label, "Standard Deviation: 0.05")
+        self.assertIn("Cp = 3.95", section.result.quality_metric_labels)
+        self.assertIn("Cpk = 3.16", section.result.quality_metric_labels)
+        self.assertIn("Sigma = 9.49", section.result.quality_metric_labels)
+        self.assertIn("At target quality: Results +/-0.264", section.result.statistical_interpretation_labels)
+        self.assertIn("At objective: Cpk = 3.16", section.result.statistical_interpretation_labels)
         self.assertEqual(section.warnings[0].warning_id, "warn_offset_1")
         self.assertEqual(section.warnings[0].feature_ids, ("feature_start", "feature_end"))
         self.assertIn("laterally offset", section.warnings[0].message)
@@ -144,6 +157,42 @@ class CadToleranceReportTest(unittest.TestCase):
         self.assertEqual(request.highlight_feature_ids, ("feature_start", "feature_end"))
         self.assertEqual(request.warning_ids, ("warn_offset_1",))
         self.assertEqual(request.artifact_metadata["image_role"], "annotated_model_snapshot")
+
+    def test_projection_preserves_multiple_warning_rows_without_counting_incomplete_as_met(self) -> None:
+        incomplete = StackupRequirement("unfinished")
+        warning_stackup = StackupRequirement(
+            "warning stackup",
+            objective=StackupObjective.bilateral(nominal=0.0, tolerance=1.0),
+            contributors=[StackupContributor("A", nominal=0.0, tolerance=0.10)],
+            warnings=[
+                NonOneDWarning(
+                    NonOneDWarningKind.OFFSET_FEATURES,
+                    "Endpoint features are laterally offset from the stack direction.",
+                    feature_ids=["feature_a"],
+                    id="warn_a",
+                ),
+                NonOneDWarning(
+                    NonOneDWarningKind.ROTATIONAL_CONSTRAINT,
+                    "Loop includes cylindrical constraints that may amplify variation.",
+                    feature_ids=["feature_b"],
+                    id="warn_b",
+                ),
+            ],
+        )
+        project = CadToleranceProject(stackups=[warning_stackup, incomplete])
+
+        projection = build_report_projection(project)
+        html = render_report_html(projection)
+
+        self.assertEqual(projection.badges.objectives_met, 1)
+        self.assertEqual(projection.badges.objectives_not_met, 0)
+        self.assertEqual(projection.summary_rows[0].status, ResultStatus.WARN)
+        self.assertEqual(projection.summary_rows[1].status, ResultStatus.INCOMPLETE)
+        self.assertEqual(
+            [warning.warning_id for warning in projection.stackups[0].warnings],
+            ["warn_a", "warn_b"],
+        )
+        self.assertIn("Loop includes cylindrical constraints", html)
 
 
 if __name__ == "__main__":
