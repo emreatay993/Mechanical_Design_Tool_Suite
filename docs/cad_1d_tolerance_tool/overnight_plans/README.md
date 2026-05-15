@@ -21,6 +21,7 @@ Every worker must reread these files at startup and after every context compacti
 - `docs/cad_1d_tolerance_tool/extracted_specs/2026-05-12_eztol_demo_extracted_spec.md`
 - `docs/cad_1d_tolerance_tool/extracted_specs/2026-05-12_eztol_targeted_visual_review.md`
 - `docs/cad_1d_tolerance_tool/extracted_specs/2026-05-14_full_clone_gap_matrix.md`
+- `docs/cad_1d_tolerance_tool/extracted_specs/2026-05-15_final_fidelity_audit_and_roadmap.md`
 - `docs/cad_1d_tolerance_tool/source_artifacts/transcripts/2026-05-12_eztol_demo_timestamped_transcript.md`
 - The packet file assigned to that worker.
 
@@ -69,14 +70,16 @@ Use `environment-cad312.yml` or an equivalent Python 3.12 environment with `pyth
 | P14 | Report and snapshot fidelity | After P11/P13 |
 | P15 | Runtime, launcher, and packaging hardening | After P10/P11 enough for smoke tests |
 | P16 | Final fidelity audit and roadmap split | Last after P08-P15 or documented blockers |
+| P17 | Visual evidence closeout | After P16; before broad UI polish claims |
 
 ## Full Clone Packet Rules
 
-P08-P16 are intended to move the product from a working prototype toward the requested 95% demo clone target. These packets must:
+P08-P17 are intended to move the product from a working prototype toward the requested 95% demo clone target. These packets must:
 
 - Treat P07 as the first end-to-end path, not the final feature target.
 - Compare behavior against `09_full_clone_gap_closure_plan.md`, the targeted visual review, and the full video context pack.
 - Record unresolved visual or transcript ambiguity as a fidelity gap instead of silently guessing.
+- Treat live screenshots and report captures as required evidence before claiming final visual fidelity.
 - Keep STEP/IGES as the supported P0 CAD formats.
 - Keep native commercial CAD import, external CAD add-ins, automatic native PMI import, full 3D tolerance solving, and thermal expansion out of scope unless a later packet explicitly changes the roadmap.
 - Preserve P06 report/dashboard behavior unless the active packet is intentionally improving the same behavior with tests.
