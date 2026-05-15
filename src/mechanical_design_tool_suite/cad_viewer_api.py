@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
 
-from .cad_geometry_api import CadGeometrySession
+from .cad_geometry_api import CadRuntimeShapeProvider
 from .cad_tolerance_models import FeatureReference, ShapeKind, ShapeReference, Snapshot
 
 
@@ -198,7 +198,7 @@ class CadViewer(Protocol):
 
     def display_document(
         self,
-        session: CadGeometrySession,
+        session: CadRuntimeShapeProvider,
         display_kinds: set[ShapeKind] | None = None,
     ) -> None:
         """Display live kernel shapes from an imported geometry session."""

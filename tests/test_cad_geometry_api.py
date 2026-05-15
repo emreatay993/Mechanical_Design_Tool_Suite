@@ -10,6 +10,7 @@ from mechanical_design_tool_suite.cad_display_style import (
 )
 from mechanical_design_tool_suite.cad_geometry_api import (
     CadImportSettings,
+    CadRuntimeShapeProvider,
     GeometryIndex,
     InMemoryCadGeometrySession,
     MeasurementKind,
@@ -249,6 +250,23 @@ class CadGeometryApiTest(unittest.TestCase):
                 "include_vertices": False,
             },
         )
+
+    def test_occ_session_advertises_explicit_runtime_shape_provider_contract(self) -> None:
+        session = OccCadGeometrySession()
+        missing_shape = ShapeReference(
+            id="shape_not_imported",
+            shape_type=ShapeKind.BODY,
+            fallback_display_name="Not imported",
+        )
+
+        self.assertIsInstance(session, CadRuntimeShapeProvider)
+        self.assertIsNone(session.runtime_shape(missing_shape))
+        self.assertIsNone(session.kernel_shape(missing_shape))
+
+    def test_in_memory_session_does_not_claim_live_runtime_shapes(self) -> None:
+        session = InMemoryCadGeometrySession()
+
+        self.assertNotIsInstance(session, CadRuntimeShapeProvider)
 
     def test_cad_metadata_fields_are_additive_and_serializable(self) -> None:
         root = AssemblyNode(

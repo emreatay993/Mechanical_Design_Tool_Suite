@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+from typing import Any
 import unittest
 import zipfile
 
@@ -55,6 +56,44 @@ FIXTURE_PATH = (
     / "cad_1d_tolerance"
     / "sample_cad_1d_project.tolproj"
 )
+RUNTIME_HANDLE_TOKENS = (
+    "PyQt",
+    "QtCore",
+    "QtGui",
+    "QtWidgets",
+    "QObject",
+    "QWidget",
+    "QWindow",
+    "OCC.Core",
+    "OCP.",
+    "AIS_",
+    "V3d_",
+    "TopoDS",
+    "Handle_",
+    "Graphic3d",
+    "SelectMgr",
+)
+
+
+def _assert_no_runtime_handles(test_case: unittest.TestCase, value: Any, path: str = "$") -> None:
+    if value is None or isinstance(value, (bool, int, float)):
+        return
+    if isinstance(value, str):
+        for token in RUNTIME_HANDLE_TOKENS:
+            test_case.assertNotIn(token, value, f"{path} persisted runtime token {token!r}")
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _assert_no_runtime_handles(test_case, item, f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            test_case.assertIsInstance(key, str, f"{path} has non-string JSON key")
+            for token in RUNTIME_HANDLE_TOKENS:
+                test_case.assertNotIn(token, key, f"{path} persisted runtime key {token!r}")
+            _assert_no_runtime_handles(test_case, item, f"{path}.{key}")
+        return
+    test_case.fail(f"{path} persisted non-JSON runtime object: {type(value).__name__}")
 
 
 def _sample_project() -> CadToleranceProject:
@@ -273,6 +312,40 @@ class CadToleranceProjectIoTest(unittest.TestCase):
 
         self.assertEqual(loaded.snapshots[0].camera["target"], [12.0, 0.0, 0.0])
         self.assertEqual(loaded.reports[0]["snapshot_ids"], ["snapshot_summary_1"])
+
+    def test_project_and_package_artifacts_do_not_persist_runtime_handles(self) -> None:
+        project = _sample_project()
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = root / "caster_study.tolproj"
+            assets_dir = project_asset_dir(project_path)
+            cad_asset = assets_dir / "cad" / "neutral_step_two_part_loop.step"
+            snapshot_asset = assets_dir / "snapshots" / "bushing_alignment.png"
+            cad_asset.parent.mkdir(parents=True)
+            snapshot_asset.parent.mkdir(parents=True)
+            cad_asset.write_bytes(
+                (FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").read_bytes()
+            )
+            snapshot_asset.write_bytes(b"fake-png")
+            project.cad_documents[0].source_path = (
+                "caster_study_assets/cad/neutral_step_two_part_loop.step"
+            )
+            project.snapshots[0].image_path = (
+                "caster_study_assets/snapshots/bushing_alignment.png"
+            )
+
+            saved_path = save_project(project, project_path)
+            saved_data = json.loads(saved_path.read_text(encoding="utf-8"))
+            _assert_no_runtime_handles(self, saved_data)
+
+            package_path = export_project_package(project_path, root / "caster_study")
+            with zipfile.ZipFile(package_path, "r") as archive:
+                packaged_manifest = json.loads(archive.read(PACKAGE_MANIFEST_NAME))
+                packaged_project = json.loads(archive.read("project.tolproj"))
+
+            _assert_no_runtime_handles(self, packaged_manifest)
+            _assert_no_runtime_handles(self, packaged_project)
 
     def test_fixture_project_round_trips_through_disk(self) -> None:
         project = load_project(FIXTURE_PATH)

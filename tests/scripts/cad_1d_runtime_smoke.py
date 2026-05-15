@@ -80,12 +80,17 @@ def main(argv: list[str] | None = None) -> int:
         "viewport_snapshot": _image_summary(Path(snapshot.image_path)),
         "full_window_snapshot": full_window,
     }
+    gate_failures = _runtime_gate_failures(summary)
+    summary["runtime_gate_failures"] = gate_failures
     summary_path = output_dir / f"{args.prefix}_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(summary, indent=2, sort_keys=True))
 
     window.close()
     app.processEvents()
+    if gate_failures:
+        print("CAD runtime smoke gate failed: " + "; ".join(gate_failures), file=sys.stderr)
+        return 1
     return 0
 
 
@@ -144,6 +149,27 @@ def _image_summary(path: Path) -> dict[str, Any]:
         "sampled_unique_colors": _sampled_unique_color_count(image),
         "sampled_nonblack_ratio": _sampled_nonblack_ratio(image),
     }
+
+
+def _runtime_gate_failures(summary: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if summary["viewer_class"] != "OccCadViewerWidget":
+        failures.append(
+            "primary viewer is not the PyQt6/pythonocc OccCadViewerWidget "
+            f"({summary['viewer_class']})"
+        )
+    if int(summary["displayed_shape_count"]) <= 0:
+        failures.append("no B-Rep-backed runtime shapes were displayed")
+
+    viewport = summary["viewport_snapshot"]
+    if int(viewport["sampled_unique_colors"]) <= 1:
+        failures.append("viewport snapshot has one sampled color")
+    if float(viewport["sampled_nonblack_ratio"]) <= 0.05:
+        failures.append(
+            "viewport snapshot sampled nonblack ratio is too low "
+            f"({viewport['sampled_nonblack_ratio']})"
+        )
+    return failures
 
 
 def _sampled_unique_color_count(image: QImage) -> int:

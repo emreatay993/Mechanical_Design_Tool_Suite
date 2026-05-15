@@ -179,10 +179,15 @@ class OccCadGeometrySession(CadGeometrySession):
         units = self._index.document.units if self._index is not None else "mm"
         return measure_feature_pair(a, b, direction, units=units)
 
-    def kernel_shape(self, shape_ref: ShapeReference) -> Any | None:
+    def runtime_shape(self, shape_ref: ShapeReference) -> Any | None:
         """Return the live OCCT shape for viewport code; never persist this value."""
 
         return self._shape_cache.get(shape_ref.id)
+
+    def kernel_shape(self, shape_ref: ShapeReference) -> Any | None:
+        """Backward-compatible alias for the explicit runtime shape contract."""
+
+        return self.runtime_shape(shape_ref)
 
     def _build_index(
         self,

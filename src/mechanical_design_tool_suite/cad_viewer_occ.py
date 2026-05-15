@@ -8,7 +8,7 @@ import importlib.util
 from pathlib import Path
 from typing import Any
 
-from .cad_geometry_api import CadGeometrySession, feature_from_shape_reference
+from .cad_geometry_api import CadRuntimeShapeProvider, feature_from_shape_reference
 from .cad_display_style import display_color_for_part, rgb_bytes_to_unit
 from .cad_tolerance_models import (
     AssemblyNode,
@@ -121,7 +121,7 @@ if _IMPORT_ERROR is None:
 
             self._display: Any | None = None
             self._context: Any | None = None
-            self._session: CadGeometrySession | None = None
+            self._session: CadRuntimeShapeProvider | None = None
             self._initialized = False
             self._selection_modes: set[ViewerSelectionMode] = {ViewerSelectionMode.BODY}
             self._displayed_ais_by_shape_id: dict[str, Any] = {}
@@ -182,7 +182,7 @@ if _IMPORT_ERROR is None:
 
         def display_document(
             self,
-            session: CadGeometrySession,
+            session: CadRuntimeShapeProvider,
             display_kinds: set[ShapeKind] | None = None,
         ) -> None:
             """Display live OCCT shapes exposed by a P03 geometry session."""
@@ -292,7 +292,7 @@ if _IMPORT_ERROR is None:
             self.clear_highlights([role])
             occ_shape = self._kernel_shapes_by_shape_id.get(shape_ref.id)
             if occ_shape is None:
-                occ_shape = self._session.kernel_shape(shape_ref)  # type: ignore[attr-defined]
+                occ_shape = self._session.runtime_shape(shape_ref)
             if occ_shape is None:
                 raise CadViewerError(f"No live OCCT shape for {shape_ref.id!r}.")
 
@@ -467,12 +467,12 @@ if _IMPORT_ERROR is None:
                     return self._selectable_shape_refs.get(shape_id)
             return None
 
-        def _index_session_shapes(self, session: CadGeometrySession) -> None:
+        def _index_session_shapes(self, session: CadRuntimeShapeProvider) -> None:
             self._selectable_shape_refs.clear()
             self._feature_refs_by_shape_id.clear()
             self._kernel_shapes_by_shape_id.clear()
             for shape_ref in session.shape_references():
-                occ_shape = session.kernel_shape(shape_ref)  # type: ignore[attr-defined]
+                occ_shape = session.runtime_shape(shape_ref)
                 if occ_shape is None:
                     continue
                 self._selectable_shape_refs[shape_ref.id] = shape_ref
@@ -633,7 +633,7 @@ def _highlight_style(role: HighlightRole) -> tuple[tuple[float, float, float], f
 
 
 def _shape_display_rgb(
-    session: CadGeometrySession,
+    session: CadRuntimeShapeProvider,
     shape_ref: ShapeReference,
     display_index: int,
     *,
@@ -653,7 +653,7 @@ def _shape_display_rgb(
 
 
 def _should_use_palette_colors(
-    session: CadGeometrySession,
+    session: CadRuntimeShapeProvider,
     shape_refs: Iterable[ShapeReference],
 ) -> bool:
     body_colors: list[tuple[int, int, int]] = []
@@ -676,7 +676,7 @@ def _is_neutral_display_color(color: tuple[int, int, int]) -> bool:
 
 
 def _assembly_display_color(
-    session: CadGeometrySession,
+    session: CadRuntimeShapeProvider,
     assembly_path: list[str],
 ) -> tuple[int, int, int] | None:
     if not assembly_path:

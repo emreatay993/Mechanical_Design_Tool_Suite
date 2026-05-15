@@ -71,9 +71,17 @@ def main(argv: list[str] | None = None) -> int:
             image = QImage(snapshot.image_path)
             if image.isNull() or image.width() <= 0 or image.height() <= 0:
                 raise RuntimeError(f"Snapshot is blank or unreadable: {snapshot.image_path}")
+            unique_colors = _sampled_unique_color_count(image)
+            nonblack_ratio = _sampled_nonblack_ratio(image)
+            if unique_colors <= 1 or nonblack_ratio <= 0.05:
+                raise RuntimeError(
+                    "Snapshot gate failed: "
+                    f"unique_colors={unique_colors}, nonblack_ratio={nonblack_ratio:.4f}"
+                )
             print(
                 f"Displayed {args.fixture} and captured {snapshot.image_path} "
-                f"({image.width()}x{image.height()})."
+                f"({image.width()}x{image.height()}, "
+                f"unique_colors={unique_colors}, nonblack_ratio={nonblack_ratio:.4f})."
             )
             app.quit()
         except Exception as exc:
@@ -88,7 +96,36 @@ def _load_fixture_without_dialog(window, fixture: Path) -> None:
     document = window.geometry_session.import_file(fixture)
     if hasattr(window.viewer, "display_document"):
         window.viewer.display_document(window.geometry_session)
+    if type(window.viewer).__name__ != "OccCadViewerWidget":
+        raise RuntimeError(
+            f"Primary OCC viewer was not initialized: {type(window.viewer).__name__}"
+        )
+    if len(getattr(window.viewer, "displayed_shape_ids", ())) <= 0:
+        raise RuntimeError("No B-Rep-backed runtime shapes were displayed.")
     window.set_imported_document(document)
+
+
+def _sampled_unique_color_count(image: QImage) -> int:
+    colors: set[int] = set()
+    step_x = max(1, image.width() // 64)
+    step_y = max(1, image.height() // 64)
+    for y in range(0, image.height(), step_y):
+        for x in range(0, image.width(), step_x):
+            colors.add(image.pixel(x, y) & 0x00FFFFFF)
+    return len(colors)
+
+
+def _sampled_nonblack_ratio(image: QImage) -> float:
+    samples = 0
+    nonblack = 0
+    step_x = max(1, image.width() // 64)
+    step_y = max(1, image.height() // 64)
+    for y in range(0, image.height(), step_y):
+        for x in range(0, image.width(), step_x):
+            samples += 1
+            if image.pixel(x, y) & 0x00FFFFFF:
+                nonblack += 1
+    return nonblack / samples if samples else 0.0
 
 
 if __name__ == "__main__":

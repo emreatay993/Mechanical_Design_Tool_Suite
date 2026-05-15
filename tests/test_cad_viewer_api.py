@@ -12,6 +12,7 @@ if "QT_QPA_PLATFORM" not in os.environ and importlib.util.find_spec("OCC") is No
 from mechanical_design_tool_suite.cad_geometry_occ import OccCadGeometrySession
 from mechanical_design_tool_suite.cad_tolerance_models import ShapeKind, ShapeReference
 from mechanical_design_tool_suite.cad_viewer_api import (
+    CadViewerError,
     CadViewerSelection,
     HighlightRole,
     SnapshotRequest,
@@ -30,6 +31,51 @@ from mechanical_design_tool_suite.cad_viewer_occ import (
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "cad_1d_tolerance"
 STEP_FIXTURE = FIXTURE_DIR / "neutral_step_two_part_loop.step"
+
+
+class _NoRuntimeShapeProvider:
+    def __init__(self, shapes: tuple[ShapeReference, ...]) -> None:
+        self._shapes = shapes
+
+    def assembly_tree(self) -> list:
+        return []
+
+    def shape_references(
+        self,
+        kinds: set[ShapeKind] | None = None,
+    ) -> list[ShapeReference]:
+        if not kinds:
+            return list(self._shapes)
+        return [shape for shape in self._shapes if shape.shape_type in kinds]
+
+    def feature_references(self, _kinds=None) -> list:
+        return []
+
+    def runtime_shape(self, _shape_ref: ShapeReference):
+        return None
+
+
+def _sampled_unique_color_count(image) -> int:
+    colors: set[int] = set()
+    step_x = max(1, image.width() // 64)
+    step_y = max(1, image.height() // 64)
+    for y in range(0, image.height(), step_y):
+        for x in range(0, image.width(), step_x):
+            colors.add(image.pixel(x, y) & 0x00FFFFFF)
+    return len(colors)
+
+
+def _sampled_nonblack_ratio(image) -> float:
+    samples = 0
+    nonblack = 0
+    step_x = max(1, image.width() // 64)
+    step_y = max(1, image.height() // 64)
+    for y in range(0, image.height(), step_y):
+        for x in range(0, image.width(), step_x):
+            samples += 1
+            if image.pixel(x, y) & 0x00FFFFFF:
+                nonblack += 1
+    return nonblack / samples if samples else 0.0
 
 
 class CadViewerApiTest(unittest.TestCase):
@@ -150,8 +196,10 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
         self.assertEqual(set(widget.displayed_shape_ids), {shape.id for shape in body_refs})
 
         first_body = body_refs[0]
+        first_body_shape = session.runtime_shape(first_body)
+        self.assertIsNotNone(first_body_shape)
         self.assertIs(
-            widget.shape_reference_for_kernel_shape(session.kernel_shape(first_body)),
+            widget.shape_reference_for_kernel_shape(first_body_shape),
             first_body,
         )
 
@@ -160,6 +208,13 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
             set(widget.active_selection_modes),
             {ViewerSelectionMode.BODY, ViewerSelectionMode.FACE},
         )
+        emitted_selections = []
+        widget.selection_changed.connect(lambda selections: emitted_selections.append(selections))
+        widget._on_occ_selection([first_body_shape], 12, 34)
+        self.assertEqual(widget.selected_shapes[0].shape_id, first_body.id)
+        self.assertEqual(widget.selected_shapes[0].screen_position, (12, 34))
+        self.assertEqual(emitted_selections[-1][0].shape_id, first_body.id)
+
         widget.highlight(face_refs[0], HighlightRole.SELECTED_START)
         widget.clear_highlights()
         widget.set_annotations(
@@ -193,7 +248,12 @@ class OccCadViewerRuntimeTest(unittest.TestCase):
             self.assertFalse(image.isNull())
             self.assertGreater(image.width(), 0)
             self.assertGreater(image.height(), 0)
+            self.assertGreater(_sampled_unique_color_count(image), 1)
+            self.assertGreater(_sampled_nonblack_ratio(image), 0.05)
             self.assertIn("_viewer_annotations", snapshot.annotation_positions)
+
+        with self.assertRaises(CadViewerError):
+            widget.display_document(_NoRuntimeShapeProvider(tuple(body_refs)))
 
 
 @unittest.skipUnless(importlib.util.find_spec("PyQt6"), "PyQt6 is not installed.")

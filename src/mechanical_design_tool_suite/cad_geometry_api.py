@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from math import sqrt
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from .cad_tolerance_models import (
     AssemblyNode,
@@ -101,6 +101,34 @@ class GeometryIndex:
         if not wanted:
             return list(self.features)
         return [feature for feature in self.features if feature.feature_type in wanted]
+
+
+@runtime_checkable
+class CadRuntimeShapeProvider(Protocol):
+    """Runtime-only live shape provider for replaceable CAD viewers.
+
+    Implementations may return CAD-kernel objects such as OCCT TopoDS shapes.
+    Those objects are transient viewer inputs only; project persistence must
+    continue to store `ShapeReference` and `FeatureReference` values instead.
+    """
+
+    def assembly_tree(self) -> list[AssemblyNode]:
+        """Return serializable assembly metadata used for display styling."""
+
+    def shape_references(
+        self,
+        kinds: set[ShapeKind] | None = None,
+    ) -> list[ShapeReference]:
+        """Return serializable references for selectable live shapes."""
+
+    def feature_references(
+        self,
+        kinds: set[FeatureKind] | None = None,
+    ) -> list[FeatureReference]:
+        """Return serializable feature references derived from live shapes."""
+
+    def runtime_shape(self, shape_ref: ShapeReference) -> Any | None:
+        """Return the transient kernel shape for a serializable reference."""
 
 
 class CadGeometrySession(ABC):
