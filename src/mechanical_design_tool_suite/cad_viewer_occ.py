@@ -43,18 +43,29 @@ try:
     from PyQt6.QtCore import pyqtSignal
     from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-    from OCC.Core.Aspect import Aspect_GFM_VER, Aspect_TOL_SOLID
+    from OCC.Core.Aspect import (
+        Aspect_GFM_VER,
+        Aspect_POM_Fill,
+        Aspect_TOHM_COLOR,
+        Aspect_TOL_SOLID,
+    )
     from OCC.Display.backend import load_backend
 
     load_backend("pyqt6")
-    from OCC.Core.AIS import AIS_Shape, AIS_TextLabel
+    from OCC.Core.AIS import AIS_Shape, AIS_Shaded, AIS_TextLabel
     from OCC.Core.gp import gp_Dir, gp_Pln, gp_Pnt
     from OCC.Core.Graphic3d import (
         Graphic3d_MaterialAspect,
         Graphic3d_NOM_SATIN,
         Graphic3d_TypeOfShadingModel_Phong,
     )
-    from OCC.Core.Prs3d import Prs3d_LineAspect
+    from OCC.Core.Prs3d import (
+        Prs3d_LineAspect,
+        Prs3d_TypeOfHighlight_Dynamic,
+        Prs3d_TypeOfHighlight_LocalDynamic,
+        Prs3d_TypeOfHighlight_LocalSelected,
+        Prs3d_TypeOfHighlight_Selected,
+    )
     from OCC.Core.PrsDim import PrsDim_LengthDimension
     from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
     from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID, TopAbs_VERTEX
@@ -65,16 +76,23 @@ except Exception as exc:  # pragma: no cover - exercised without CAD deps.
     QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
     AIS_Shape = None  # type: ignore[assignment]
+    AIS_Shaded = None  # type: ignore[assignment]
     AIS_TextLabel = None  # type: ignore[assignment]
     gp_Dir = None  # type: ignore[assignment]
     gp_Pln = None  # type: ignore[assignment]
     gp_Pnt = None  # type: ignore[assignment]
     Aspect_GFM_VER = None  # type: ignore[assignment]
+    Aspect_POM_Fill = None  # type: ignore[assignment]
+    Aspect_TOHM_COLOR = None  # type: ignore[assignment]
     Aspect_TOL_SOLID = None  # type: ignore[assignment]
     Graphic3d_MaterialAspect = None  # type: ignore[assignment]
     Graphic3d_NOM_SATIN = None  # type: ignore[assignment]
     Graphic3d_TypeOfShadingModel_Phong = None  # type: ignore[assignment]
     Prs3d_LineAspect = None  # type: ignore[assignment]
+    Prs3d_TypeOfHighlight_Dynamic = None  # type: ignore[assignment]
+    Prs3d_TypeOfHighlight_LocalDynamic = None  # type: ignore[assignment]
+    Prs3d_TypeOfHighlight_LocalSelected = None  # type: ignore[assignment]
+    Prs3d_TypeOfHighlight_Selected = None  # type: ignore[assignment]
     PrsDim_LengthDimension = None  # type: ignore[assignment]
     Quantity_Color = None  # type: ignore[assignment]
     Quantity_TOC_RGB = None  # type: ignore[assignment]
@@ -172,6 +190,7 @@ if _IMPORT_ERROR is None:
                 self._context = self._display.Context
                 self._display.SetModeShaded()
                 self._apply_view_style()
+                self._configure_interactive_styles()
                 self._display.register_select_callback(self._on_occ_selection)
                 self._initialized = True
                 self._apply_selection_modes()
@@ -227,6 +246,9 @@ if _IMPORT_ERROR is None:
                 raise CadViewerError(
                     "No live OCCT shapes were available from the geometry session."
                 )
+            # Re-activate picking on the freshly displayed shapes; the modes set
+            # before a document was loaded would otherwise not apply to them.
+            self._apply_selection_modes()
             self.fit_all()
 
         def clear(self) -> None:
@@ -299,8 +321,14 @@ if _IMPORT_ERROR is None:
             ais = AIS_Shape(occ_shape)
             color_rgb, transparency = _highlight_style(role)
             ais.SetColor(_quantity_color(color_rgb))
+            ais.SetDisplayMode(AIS_Shaded)
             if transparency > 0.0:
                 ais.SetTransparency(transparency)
+            # The highlight shares its surface with the underlying part face;
+            # pull it toward the camera so it wins the depth test instead of
+            # z-fighting into a washed-out tint (the demo highlight reads as a
+            # solid translucent color, not a flicker).
+            _try_call(ais.SetPolygonOffsets, Aspect_POM_Fill, -1.0, -2.0)
             self._context.Display(ais, False)  # type: ignore[union-attr]
             self._highlight_ais[(shape_ref.id, role)] = ais
             self._context.UpdateCurrentViewer()  # type: ignore[union-attr]
@@ -511,12 +539,70 @@ if _IMPORT_ERROR is None:
             if self._context is None:
                 return
             modes = self._selection_modes or {ViewerSelectionMode.BODY}
-            self._context.Deactivate()
+            selection_ints: list[int] = []
             for mode in modes:
                 selection_mode = _selection_mode(mode)
-                if selection_mode is not None:
-                    self._context.Activate(selection_mode, True)
+                if selection_mode is not None and selection_mode not in selection_ints:
+                    selection_ints.append(selection_mode)
+            self._context.Deactivate()
+            displayed = list(self._displayed_ais_by_shape_id.values())
+            for selection_int in selection_ints:
+                # Global activation covers objects displayed later; the per-object
+                # pass guarantees already-displayed shapes pick up the new mode so
+                # MoveTo pre-highlighting works immediately (e.g. right after the
+                # New Stackup button switches to face selection).
+                self._context.Activate(selection_int, True)
+                for ais in displayed:
+                    _try_call(self._context.Activate, ais, selection_int, True)
             self._context.UpdateSelected(True)
+
+        def _configure_interactive_styles(self) -> None:
+            """Style OCCT pre-selection/selection to match the EZtol demo.
+
+            Without this the default dynamic highlight is a faint edge tint that
+            is easy to miss on a shaded model, so hovering a face during a
+            stackup pick appears to do nothing. We render hover/pre-selection as
+            a translucent red fill and committed selection as translucent green,
+            matching the reference recording.
+            """
+
+            if self._context is None:
+                return
+            for style_type in (
+                Prs3d_TypeOfHighlight_Dynamic,
+                Prs3d_TypeOfHighlight_LocalDynamic,
+            ):
+                self._style_highlight_drawer(style_type, _HILIGHT_RED, 0.55)
+            for style_type in (
+                Prs3d_TypeOfHighlight_Selected,
+                Prs3d_TypeOfHighlight_LocalSelected,
+            ):
+                self._style_highlight_drawer(style_type, _HILIGHT_GREEN, 0.45)
+            # A slightly looser pick tolerance makes faces as easy to grab as the
+            # demo, where a hover anywhere over a face highlights it.
+            _try_call(self._context.SetPixelTolerance, 6)
+
+        def _style_highlight_drawer(
+            self,
+            style_type: Any,
+            rgb: tuple[float, float, float],
+            transparency: float,
+        ) -> None:
+            if style_type is None:
+                return
+            drawer = _try_result(self._context.HighlightStyle, style_type)
+            if drawer is None:
+                return
+            color = _quantity_color(rgb)
+            _try_call(drawer.SetMethod, Aspect_TOHM_COLOR)
+            _try_call(drawer.SetDisplayMode, AIS_Shaded)
+            _try_call(drawer.SetColor, color)
+            _try_call(drawer.SetupOwnShadingAspect)
+            shading = _try_result(drawer.ShadingAspect)
+            if shading is not None:
+                _try_call(shading.SetColor, color)
+                _try_call(shading.SetTransparency, float(transparency))
+            _try_call(drawer.SetTransparency, float(transparency))
 
         def _apply_view_style(self) -> None:
             """Apply viewport styling without making OCC version-specific calls fatal."""
@@ -658,17 +744,25 @@ def _selection_model_position(
     )
 
 
+# Demo-matched interactive colors (sampled from the EZtol reference recording):
+# confirmed stackup endpoints/loop members render bright green, while the
+# hover/pre-selection and direction/analysis-plane picks render red.
+_HILIGHT_GREEN: tuple[float, float, float] = (0.16, 0.92, 0.34)
+_HILIGHT_RED: tuple[float, float, float] = (0.87, 0.07, 0.10)
+_HILIGHT_AMBER: tuple[float, float, float] = (1.0, 0.80, 0.05)
+
+
 def _highlight_style(role: HighlightRole) -> tuple[tuple[float, float, float], float]:
     styles = {
-        HighlightRole.HOVER: ((0.12, 0.86, 0.25), 0.58),
-        HighlightRole.ELIGIBLE: ((0.12, 0.86, 0.25), 0.58),
-        HighlightRole.CROSS_HIGHLIGHT: ((0.9, 0.12, 0.12), 0.42),
-        HighlightRole.SELECTED_START: ((0.9, 0.12, 0.12), 0.42),
-        HighlightRole.SELECTED_END: ((0.9, 0.12, 0.12), 0.42),
-        HighlightRole.DIRECTION: ((0.9, 0.12, 0.12), 0.50),
-        HighlightRole.ANALYSIS_PLANE: ((0.9, 0.12, 0.12), 0.55),
-        HighlightRole.LOOP_MEMBER: ((0.12, 0.86, 0.25), 0.52),
-        HighlightRole.WARNING: ((1.0, 0.86, 0.05), 0.38),
+        HighlightRole.HOVER: (_HILIGHT_RED, 0.55),
+        HighlightRole.ELIGIBLE: (_HILIGHT_RED, 0.60),
+        HighlightRole.CROSS_HIGHLIGHT: (_HILIGHT_RED, 0.42),
+        HighlightRole.SELECTED_START: (_HILIGHT_GREEN, 0.45),
+        HighlightRole.SELECTED_END: (_HILIGHT_GREEN, 0.45),
+        HighlightRole.DIRECTION: (_HILIGHT_RED, 0.50),
+        HighlightRole.ANALYSIS_PLANE: (_HILIGHT_RED, 0.55),
+        HighlightRole.LOOP_MEMBER: (_HILIGHT_GREEN, 0.52),
+        HighlightRole.WARNING: (_HILIGHT_AMBER, 0.38),
     }
     return styles[role]
 
@@ -758,6 +852,13 @@ def _try_call(callable_obj: Any, *args: Any) -> None:
         callable_obj(*args)
     except Exception:
         pass
+
+
+def _try_result(callable_obj: Any, *args: Any) -> Any | None:
+    try:
+        return callable_obj(*args)
+    except Exception:
+        return None
 
 
 def _topods_same(a: Any, b: Any) -> bool:
