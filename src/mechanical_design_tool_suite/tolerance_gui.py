@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from .tolerance import StackupAnalysis, ToleranceDimension, calculate_stackup
+from .app_icons import app_icon
 
 try:
     from PyQt6.QtCore import QLineF, QMarginsF, QRectF, QSize, QSizeF, Qt
@@ -1174,6 +1175,7 @@ def create_tolerance_window(app: QApplication | None = None) -> ToleranceAnalysi
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setWindowIcon(app_icon("tolerance"))
     window = create_tolerance_window(app)
     window.show()
     raise SystemExit(app.exec())

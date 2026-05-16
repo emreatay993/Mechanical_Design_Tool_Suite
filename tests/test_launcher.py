@@ -12,7 +12,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 
 from mechanical_design_tool_suite import cad_tolerance_gui
-from mechanical_design_tool_suite.launcher import PROGRAMS, _program_command, _program_icon
+from mechanical_design_tool_suite.app_icons import app_pixmap
+from mechanical_design_tool_suite.launcher import PROGRAMS, _program_command
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -49,7 +50,7 @@ class LauncherProgramTest(unittest.TestCase):
             program for program in PROGRAMS if program.key == "cad-1d-tolerance"
         )
 
-        pixmap = _program_icon(cad_program.icon_kind, cad_program.accent, 48)
+        pixmap = app_pixmap(cad_program.icon_kind, 48)
 
         self.assertFalse(pixmap.isNull())
         self.assertEqual(pixmap.width(), 48)
@@ -59,6 +60,9 @@ class LauncherProgramTest(unittest.TestCase):
 class _FakeCadApp:
     def __init__(self, argv: list[str]) -> None:
         self.argv = list(argv)
+
+    def setWindowIcon(self, icon) -> None:  # noqa: N802 - Qt API name
+        self.window_icon = icon
 
     def exec(self) -> int:
         return 0

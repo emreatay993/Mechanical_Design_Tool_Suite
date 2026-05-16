@@ -77,6 +77,7 @@ from .reference_geometry import (
 )
 from .sample_data import example_scenario_table_text
 from .visualization import SCALAR_CHOICES, open_pyvista_plot, results_have_coordinates
+from .app_icons import app_icon
 
 
 CRITERIA_LABEL = "ExampleScenario / INCO718 BAR / 250 C"
@@ -1390,6 +1391,7 @@ def create_bolt_window(app: QApplication | None = None) -> BoltCalculationApp:
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setWindowIcon(app_icon("bolt"))
     window = create_bolt_window(app)
     window.show()
     raise SystemExit(app.exec())

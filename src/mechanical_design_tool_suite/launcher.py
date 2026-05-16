@@ -6,12 +6,9 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from importlib import resources
 from pathlib import Path
 
-from PyQt6.QtCore import QByteArray, QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
-from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -23,6 +20,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from mechanical_design_tool_suite.app_icons import app_icon, app_pixmap
 
 
 _DEBUG_LOG_ENV = "MDTS_PACKAGED_ERROR_LOGS"
@@ -90,7 +89,7 @@ class LauncherWindow(QWidget):
         super().__init__()
         self.setWindowTitle("Mechanical Design Tool Suite")
         self.setMinimumSize(980, 580)
-        self.setWindowIcon(QIcon(_program_icon("bolt", "#2f6f9f", 48)))
+        self.setWindowIcon(app_icon("suite"))
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -161,7 +160,7 @@ class ProgramCard(QFrame):
 
         top_row = QHBoxLayout()
         icon = QLabel()
-        icon.setPixmap(_program_icon(self.program.icon_kind, self.program.accent, 76))
+        icon.setPixmap(app_pixmap(self.program.icon_kind, 76))
         icon.setFixedSize(82, 82)
         top_row.addWidget(icon, alignment=Qt.AlignmentFlag.AlignLeft)
         top_row.addStretch(1)
@@ -221,104 +220,6 @@ def _packaged_error_logging_enabled() -> bool:
     if internal_dir:
         return (Path(internal_dir) / _DEBUG_FLAG_FILE).exists()
     return (Path(sys.executable).resolve().parent / "_internal" / _DEBUG_FLAG_FILE).exists()
-
-
-def _program_icon(kind: str, accent: str, size: int) -> QPixmap:
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-    accent_color = QColor(accent)
-    painter.setBrush(QColor("#f7fbff"))
-    painter.setPen(QPen(QColor("#d7e1ec"), max(1, size // 48)))
-    painter.drawRoundedRect(2, 2, size - 4, size - 4, size // 7, size // 7)
-
-    painter.setPen(
-        QPen(
-            accent_color,
-            max(3, size // 13),
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
-        )
-    )
-    if kind == "bolt":
-        points = [
-            (0.50, 0.16),
-            (0.74, 0.30),
-            (0.74, 0.58),
-            (0.50, 0.72),
-            (0.26, 0.58),
-            (0.26, 0.30),
-        ]
-        painter.setBrush(QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 36))
-        painter.drawPolygon(QPolygonF([QPointF(size * x, size * y) for x, y in points]))
-        painter.drawLine(int(size * 0.50), int(size * 0.25), int(size * 0.50), int(size * 0.78))
-        painter.drawLine(int(size * 0.36), int(size * 0.40), int(size * 0.64), int(size * 0.40))
-        painter.drawLine(int(size * 0.36), int(size * 0.55), int(size * 0.64), int(size * 0.55))
-    elif kind == "tolerance":
-        painter.drawLine(int(size * 0.23), int(size * 0.34), int(size * 0.77), int(size * 0.34))
-        painter.drawLine(int(size * 0.23), int(size * 0.60), int(size * 0.77), int(size * 0.60))
-        painter.drawLine(int(size * 0.34), int(size * 0.24), int(size * 0.34), int(size * 0.70))
-        painter.drawLine(int(size * 0.66), int(size * 0.24), int(size * 0.66), int(size * 0.70))
-        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "+/-")
-    elif kind == "vnext":
-        painter.drawRoundedRect(
-            int(size * 0.23),
-            int(size * 0.24),
-            int(size * 0.54),
-            int(size * 0.44),
-            int(size * 0.08),
-            int(size * 0.08),
-        )
-        painter.drawLine(int(size * 0.35), int(size * 0.78), int(size * 0.65), int(size * 0.78))
-        painter.drawLine(int(size * 0.50), int(size * 0.68), int(size * 0.50), int(size * 0.78))
-        painter.drawLine(int(size * 0.33), int(size * 0.42), int(size * 0.45), int(size * 0.52))
-        painter.drawLine(int(size * 0.45), int(size * 0.52), int(size * 0.68), int(size * 0.34))
-    else:
-        _draw_cad_icon(painter, accent_color, size)
-
-    painter.end()
-    return pixmap
-
-
-def _draw_cad_icon(painter: QPainter, accent_color: QColor, size: int) -> None:
-    if _render_svg_icon(painter, "file-axis-3d.svg", accent_color.name(), size):
-        return
-
-    painter.drawRect(
-        int(size * 0.28),
-        int(size * 0.20),
-        int(size * 0.44),
-        int(size * 0.58),
-    )
-    painter.drawLine(int(size * 0.60), int(size * 0.20), int(size * 0.72), int(size * 0.32))
-    painter.drawLine(int(size * 0.60), int(size * 0.20), int(size * 0.60), int(size * 0.32))
-    painter.drawLine(int(size * 0.33), int(size * 0.66), int(size * 0.56), int(size * 0.43))
-    painter.drawLine(int(size * 0.33), int(size * 0.44), int(size * 0.33), int(size * 0.66))
-    painter.drawLine(int(size * 0.33), int(size * 0.66), int(size * 0.67), int(size * 0.66))
-
-
-def _render_svg_icon(painter: QPainter, icon_name: str, accent: str, size: int) -> bool:
-    try:
-        icon_path = resources.files("mechanical_design_tool_suite").joinpath(
-            "qml",
-            "assets",
-            "icons",
-            icon_name,
-        )
-        svg_text = icon_path.read_text(encoding="utf-8")
-    except (FileNotFoundError, ModuleNotFoundError, OSError):
-        return False
-
-    svg_text = svg_text.replace('stroke="currentColor"', f'stroke="{accent}"')
-    renderer = QSvgRenderer(QByteArray(svg_text.encode("utf-8")))
-    if not renderer.isValid():
-        return False
-
-    margin = size * 0.22
-    renderer.render(painter, QRectF(margin, margin, size - (2 * margin), size - (2 * margin)))
-    return True
 
 
 def _apply_launcher_style(app: QApplication) -> None:

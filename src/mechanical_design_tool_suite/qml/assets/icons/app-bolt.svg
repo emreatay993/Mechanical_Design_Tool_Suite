@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <defs>
+    <linearGradient id="boltBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef5fb"/>
+      <stop offset="1" stop-color="#cadff0"/>
+    </linearGradient>
+    <linearGradient id="boltHead" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6aa8cc"/>
+      <stop offset="0.5" stop-color="#2f6f9f"/>
+      <stop offset="1" stop-color="#1c4d72"/>
+    </linearGradient>
+    <linearGradient id="boltShaft" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3f7ea8"/>
+      <stop offset="0.5" stop-color="#245982"/>
+      <stop offset="1" stop-color="#15384f"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="80" height="80" rx="20" fill="url(#boltBg)"/>
+  <rect x="9.5" y="9.5" width="77" height="77" rx="18.5" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1.5"/>
+  <rect x="41" y="50" width="14" height="33" rx="2.5" fill="url(#boltShaft)"/>
+  <g stroke-width="2" stroke="#15384f" stroke-linecap="round">
+    <line x1="41" y1="58" x2="55" y2="56"/>
+    <line x1="41" y1="65" x2="55" y2="63"/>
+    <line x1="41" y1="72" x2="55" y2="70"/>
+    <line x1="41" y1="79" x2="55" y2="77"/>
+  </g>
+  <g stroke-width="1" stroke="#7fb0ce" stroke-linecap="round" stroke-opacity="0.7">
+    <line x1="41" y1="56" x2="55" y2="54"/>
+    <line x1="41" y1="63" x2="55" y2="61"/>
+    <line x1="41" y1="70" x2="55" y2="68"/>
+  </g>
+  <polygon points="33,21 63,21 73,38 63,55 33,55 23,38" fill="url(#boltHead)"/>
+  <polygon points="33,21 63,21 59,27 37,27" fill="#a9cde2" opacity="0.85"/>
+  <polygon points="23,38 33,55 36,51 26,38" fill="#15384f" opacity="0.45"/>
+  <ellipse cx="40" cy="32" rx="4.5" ry="3" fill="#ffffff" opacity="0.4"/>
+</svg>

@@ -138,6 +138,7 @@ from .cad_viewer_api import (
     ViewerSelectionMode,
 )
 from .cad_viewer_occ import OccCadViewerWidget
+from .app_icons import app_icon
 
 
 NEUTRAL_CAD_FILTER = (
@@ -4513,6 +4514,7 @@ CadToleranceViewerWindow = CadToleranceMainWindow
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setWindowIcon(app_icon("cad-1d"))
     window = create_cad_tolerance_window(app)
     if len(sys.argv) > 1:
         path = Path(sys.argv[1])

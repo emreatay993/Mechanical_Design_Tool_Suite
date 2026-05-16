@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <defs>
+    <linearGradient id="lnBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d3a5c"/>
+      <stop offset="1" stop-color="#0c1b2e"/>
+    </linearGradient>
+    <linearGradient id="lnBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5fa0c6"/><stop offset="1" stop-color="#2f6f9f"/>
+    </linearGradient>
+    <linearGradient id="lnPurple" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9a86e6"/><stop offset="1" stop-color="#6f55d9"/>
+    </linearGradient>
+    <linearGradient id="lnGreen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6fc3a4"/><stop offset="1" stop-color="#23845f"/>
+    </linearGradient>
+    <linearGradient id="lnOrange" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0a35a"/><stop offset="1" stop-color="#c76a16"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="84" height="84" rx="20" fill="url(#lnBg)"/>
+  <rect x="6" y="6" width="84" height="42" rx="20" fill="#ffffff" opacity="0.06"/>
+  <g>
+    <rect x="19" y="19" width="27" height="27" rx="7" fill="url(#lnBlue)"/>
+    <rect x="50" y="19" width="27" height="27" rx="7" fill="url(#lnPurple)"/>
+    <rect x="19" y="50" width="27" height="27" rx="7" fill="url(#lnGreen)"/>
+    <rect x="50" y="50" width="27" height="27" rx="7" fill="url(#lnOrange)"/>
+  </g>
+  <g fill="#ffffff" opacity="0.16">
+    <rect x="19" y="19" width="27" height="7" rx="7"/>
+    <rect x="50" y="19" width="27" height="7" rx="7"/>
+    <rect x="19" y="50" width="27" height="7" rx="7"/>
+    <rect x="50" y="50" width="27" height="7" rx="7"/>
+  </g>
+  <polygon points="28,27 38,27 42,32.5 38,38 28,38 24,32.5" fill="#ffffff" opacity="0.92"/>
+  <g stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" opacity="0.92">
+    <line x1="63.5" y1="24" x2="63.5" y2="34"/>
+    <line x1="58.5" y1="29" x2="68.5" y2="29"/>
+    <line x1="58.5" y1="40" x2="68.5" y2="40"/>
+  </g>
+  <path d="M24,70 C28,69 30,57 32.5,57 C35,57 37,69 41,70" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+  <polygon points="63.5,55 71,59.5 63.5,64 56,59.5" fill="#ffffff" opacity="0.95"/>
+  <polygon points="56,59.5 63.5,64 63.5,72 56,67.5" fill="#ffffff" opacity="0.6"/>
+  <polygon points="63.5,64 71,59.5 71,67.5 63.5,72" fill="#ffffff" opacity="0.45"/>
+</svg>

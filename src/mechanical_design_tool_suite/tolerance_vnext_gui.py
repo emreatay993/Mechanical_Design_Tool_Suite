@@ -13,6 +13,7 @@ import sys
 from typing import Any
 
 from .tolerance_catalog import HardwareCatalogRecord, ToleranceCatalog
+from .app_icons import app_icon
 from .tolerance_methods import (
     StackupPathResult,
     SubJointResult,
@@ -1321,6 +1322,7 @@ def main() -> None:
     args = prepare_vnext_args(sys.argv[1:])
     app = QApplication([sys.argv[0]])
     app.setApplicationName("Tolerance Tool vNext")
+    app.setWindowIcon(app_icon("vnext"))
     session = create_vnext_session(args)
     raise SystemExit(app.exec())
 

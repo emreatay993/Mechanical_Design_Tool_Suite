@@ -175,11 +175,16 @@ entry_script_entries = {
     if Path(script_entry[1]).resolve() in entry_script_paths
 }
 
+icon_dir = project_root / "build_assets" / "icons"
+
 exes = []
 for name, script_path in entry_scripts:
     script_entry = entry_script_entries.get(script_path.resolve())
     if script_entry is None:
         raise RuntimeError(f"PyInstaller did not collect entry script: {script_path}")
+
+    icon_file = icon_dir / f"{name}.ico"
+    exe_icon = str(icon_file) if icon_file.exists() else None
 
     exes.append(
         EXE(
@@ -188,6 +193,7 @@ for name, script_path in entry_scripts:
             [],
             exclude_binaries=True,
             name=name,
+            icon=exe_icon,
             debug=debug_build,
             bootloader_ignore_signals=False,
             strip=False,
