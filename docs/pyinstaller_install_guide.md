@@ -64,7 +64,225 @@ cd Mechanical_Design_Tool_Suite
 
 All remaining commands assume the current directory is the repository root.
 
-## 3. Create The CAD-Capable Environment
+## 3. Secure Network And Nexus Setup
+
+Use this section when the build machine is inside a company intranet where
+public `repo.anaconda.com`, `conda-forge.org`, or `pypi.org` access is blocked
+or slow, and Python packages must come through an internal Nexus server such as
+`nexus.arge.net`.
+
+### 3.1. Understand What Nexus Must Provide
+
+Conda and pip do not use the same package format or the same repository layout:
+
+| Tool | Needs | Example URL Shape |
+| --- | --- | --- |
+| pip | Python wheels/source distributions from a PyPI-compatible simple index | `https://nexus.arge.net/repository/pypi-proxy/simple` |
+| Conda | Conda packages plus `repodata.json` for `win-64` and `noarch` subdirectories | `https://nexus.arge.net/repository/<conda-channel>/win-64/repodata.json` |
+
+The highlighted command from the screenshot is valid for pip:
+
+```powershell
+python -m pip install -r requirements.txt --index-url https://nexus.arge.net/repository/pypi-proxy/simple --trusted-host nexus.arge.net
+```
+
+It does not configure Conda. If `conda env create` still tries
+`https://repo.anaconda.com/...`, or fails while collecting `repodata.json`, the
+Conda channel configuration is still pointing at public channels or Nexus does
+not expose the Conda packages yet.
+
+For this project, Nexus or another internal artifact location must provide:
+
+- Conda packages from the readable environment or exact lock file:
+  `environment-cad312.yml` or `environment-cad312-win-64.lock.txt`.
+- pip packages constrained by `requirements-windows-py312.lock.txt`.
+- `pythonocc-core` and OCCT from Conda, not pip. Keep the `7.9.3` `novtk`
+  build to avoid pulling Conda Qt5 into the PyQt6 environment.
+
+If the company has only a PyPI proxy and no Conda mirror, ask IT to mirror the
+Conda packages in `environment-cad312-win-64.lock.txt`, or provide an offline
+Conda package cache. `--trusted-host` cannot make pip install Conda packages.
+
+### 3.2. Start From A Clean Conda Prompt
+
+Use a fresh Miniforge or Anaconda Prompt, not an old terminal with a mixed
+`PATH`. The screenshot showing `ImportError: Can't connect to HTTPS URL because
+the SSL module is not available` means Conda's base Python cannot import
+`ssl`; fix that before trying to create project environments.
+
+Run:
+
+```powershell
+conda --version
+where.exe conda
+where.exe python
+python -c "import sys, ssl; print(sys.executable); print(ssl.OPENSSL_VERSION)"
+conda info
+```
+
+Expected result:
+
+- `python -c "import ssl"` succeeds.
+- `where.exe python` points inside the active Conda installation or active Conda
+  environment, not another Python installation earlier on `PATH`.
+- `conda info` does not end with SSL, plugin, or DLL-load errors.
+
+If Conda itself is broken, try one diagnostic run without plugins:
+
+```powershell
+$env:CONDA_NO_PLUGINS = "true"
+conda --no-plugins info
+```
+
+If that works, keep the variable only long enough to repair or create the
+project environment. Typical permanent fixes are:
+
+- Open a real Miniforge/Anaconda Prompt so Conda's `Library\bin` is first on
+  `PATH`.
+- Remove old Python, Qt, OpenSSL, or Conda paths that appear before the selected
+  Conda installation on `PATH`.
+- Reinstall Miniforge for the current user if base is read-only or Conda's
+  `_ssl`, `truststore`, or solver plugins fail to import.
+- Prefer a user-writable installation such as `%USERPROFILE%\miniforge3` on
+  locked-down PCs.
+
+Do not continue with project setup while base Conda cannot import `ssl`; every
+HTTPS package operation will be unreliable.
+
+### 3.3. Configure pip For Nexus
+
+Use `python -m pip` so pip belongs to the active environment. Configure the
+internal PyPI index once:
+
+```powershell
+python -m pip config set global.index-url https://nexus.arge.net/repository/pypi-proxy/simple
+python -m pip config set global.trusted-host nexus.arge.net
+python -m pip config set global.timeout 120
+python -m pip config set global.retries 10
+python -m pip config list -v
+```
+
+Then test the index with a small package used by the build toolchain:
+
+```powershell
+python -m pip index versions altgraph
+```
+
+If company policy does not allow persistent pip config, pass the same settings
+per command:
+
+```powershell
+python -m pip install -e ".[build]" -c requirements-windows-py312.lock.txt --index-url https://nexus.arge.net/repository/pypi-proxy/simple --trusted-host nexus.arge.net --timeout 120 --retries 10
+```
+
+`--trusted-host nexus.arge.net` disables hostname/certificate verification for
+that host. Use it only if your company requires it. The stronger long-term fix
+is to install the company root certificate and configure pip/Conda to trust
+that certificate instead of bypassing verification.
+
+### 3.4. Configure Conda Channels For Nexus
+
+First inspect the active Conda configuration:
+
+```powershell
+conda config --show-sources
+conda config --show channels
+```
+
+Ask IT for the exact Nexus Conda channel URLs. They are usually different from
+the PyPI URL and should contain Conda `win-64` and `noarch` metadata. Example
+only:
+
+```powershell
+conda config --remove-key channels
+conda config --add channels https://nexus.arge.net/repository/conda-forge
+conda config --add channels https://nexus.arge.net/repository/conda-main
+conda config --set channel_priority strict
+conda config --set ssl_verify true
+conda config --show channels
+```
+
+Validate the channel before creating the project environment:
+
+```powershell
+conda search pythonocc-core=7.9.3
+conda search occt=7.9.3
+conda search ffmpeg
+```
+
+If SSL inspection requires a company certificate bundle, prefer:
+
+```powershell
+conda config --set ssl_verify C:\path\to\company-ca-bundle.pem
+```
+
+Use `ssl_verify false` only as a temporary IT-approved diagnostic because it
+turns off certificate validation for Conda.
+
+### 3.5. Create The Project Environment On The Intranet
+
+When Conda channels and pip are both configured, create the environment:
+
+```powershell
+conda env create -f environment-cad312.yml
+conda activate mdts-cad312
+$env:PYTHONNOUSERSITE = "1"
+python -m pip config list
+python -m pip install -e ".[build]" -c requirements-windows-py312.lock.txt
+```
+
+For a reproducible build machine, use the exact Win64 Conda lock file:
+
+```powershell
+conda create -n mdts-cad312 --file environment-cad312-win-64.lock.txt
+conda activate mdts-cad312
+$env:PYTHONNOUSERSITE = "1"
+python -m pip install -e ".[build]" -c requirements-windows-py312.lock.txt
+```
+
+If the lock-file command downloads from public URLs, the lock file was created
+against public Conda channels and the secure PC cannot reach them. In that case,
+either:
+
+- have IT mirror those exact package URLs into Nexus and provide matching
+  internal channel URLs, or
+- build the Conda package cache on an allowed machine, copy the package cache to
+  the secure PC, and create the environment from that offline cache according
+  to company policy.
+
+After creation, use the verification commands in section 5 before running
+PyInstaller.
+
+### 3.6. PyCharm Terminal Checks
+
+Most PyCharm failures come from the terminal using a different Python than the
+configured project interpreter. In the PyCharm terminal, run:
+
+```powershell
+conda activate mdts-cad312
+where.exe python
+python -c "import sys; print(sys.executable)"
+python -m pip --version
+python -m pip config list
+```
+
+Always install with:
+
+```powershell
+python -m pip install ...
+```
+
+Do not rely on bare `pip install ...`; on Windows it can resolve to another
+Python installation. If PyCharm opens PowerShell without Conda initialized,
+open a Miniforge Prompt once and run:
+
+```powershell
+conda init powershell
+```
+
+Then close and reopen PyCharm.
+
+## 4. Create The CAD-Capable Environment
 
 Preferred readable setup:
 
@@ -95,7 +313,7 @@ Do not install Conda `pyqt`, PyQt5, Qt5, or a non-`novtk` `pythonocc-core`
 build into this environment. PyQt6 is installed by pip through the project
 dependency set; OCCT/pythonocc comes from conda-forge.
 
-## 4. Verify The Environment
+## 5. Verify The Environment
 
 Run these checks before building:
 
@@ -128,7 +346,7 @@ Ran 113 tests
 OK (skipped=2)
 ```
 
-## 5. Smoke-Test The CAD Viewer
+## 6. Smoke-Test The CAD Viewer
 
 Open the caster wheel fixture directly in the CAD 1D tolerance GUI:
 
@@ -150,7 +368,7 @@ python -s -m mechanical_design_tool_suite.cad_tolerance_gui tests\fixtures\cad_1
 python -s -m mechanical_design_tool_suite.cad_tolerance_gui path\to\project_package.tolpack
 ```
 
-## 6. Build The Windows Package
+## 7. Build The Windows Package
 
 Build from the repository root:
 
@@ -183,7 +401,7 @@ To build and immediately launch the selector:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -Clean -Launch -Python "C:\ProgramData\miniforge3\envs\mdts-cad312\python.exe"
 ```
 
-## 7. Output Folder
+## 8. Output Folder
 
 The packaged suite is written to:
 
@@ -218,7 +436,7 @@ Video review tooling for clone/fidelity work uses `ffmpeg`/`ffprobe` from
 environment, but they are not treated as a native CAD SDK or as a viewer
 dependency.
 
-## 8. Run Packaged Programs
+## 9. Run Packaged Programs
 
 Normal selector launch:
 
@@ -258,7 +476,7 @@ Valid `-Program` values:
 | `ToleranceVNext` | `ToleranceAnalysisVNext.exe` |
 | `Cad1D` | `Cad1DTolerance.exe` |
 
-## 9. Debug Builds And Error Logs
+## 10. Debug Builds And Error Logs
 
 Normal builds are windowed and do not create packaged debug logs unless requested.
 To build console/debug executables that always write logs:
@@ -287,10 +505,18 @@ To run an existing bundle with debug logging enabled for one launch:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -RunOnly -DebugRun -Program Cad1D
 ```
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
+| `ImportError: Can't connect to HTTPS URL because the SSL module is not available` | Conda's base Python cannot import `ssl`. Open a clean Miniforge/Anaconda Prompt, check `where.exe python`, and verify `python -c "import ssl"`. Fix PATH or reinstall Miniforge before creating the project env. |
+| `Error while loading conda entry point ... DLL load failed` | Start with `$env:CONDA_NO_PLUGINS="true"` and `conda --no-plugins info`. If that works, repair the base Conda installation, remove conflicting PATH entries, or use a fresh user-writable Miniforge install. |
+| Conda still contacts `repo.anaconda.com` | Configure Conda channels separately from pip. `--index-url https://nexus.arge.net/repository/pypi-proxy/simple` affects pip only. Run `conda config --show-sources` and replace public channels with IT-provided Nexus Conda channels. |
+| `ReadTimeoutError` while pip reads `nexus.arge.net` | Confirm the URL opens from the secure PC, then retry with `python -m pip ... --timeout 120 --retries 10`. If only large packages time out, ask IT to check Nexus cache/proxy health and package availability. |
+| pip says package not found in Nexus | Test with `python -m pip index versions <package>`. The Nexus PyPI proxy may not have cached or whitelisted the required wheel from `requirements-windows-py312.lock.txt`. |
+| Conda cannot find `pythonocc-core=7.9.3` or `occt=7.9.3` | The Nexus Conda mirror is incomplete. Ask IT to mirror the packages in `environment-cad312-win-64.lock.txt`, including `win-64` and `noarch` metadata. |
+| PyCharm terminal says pip is installed but imports still fail | In the PyCharm terminal run `where.exe python`, `python -m pip --version`, and `python -c "import sys; print(sys.executable)"`. Install with `python -m pip`, not bare `pip`. |
+| Corporate certificate errors | Prefer installing the company root certificate and setting `conda config --set ssl_verify C:\path\to\company-ca-bundle.pem`. Use `--trusted-host` or `ssl_verify false` only when company policy explicitly allows it. |
 | `pythonocc-core` is unavailable | Use Miniforge/conda-forge, not `pip install pythonocc-core`. |
 | CAD viewport closes while interacting | Confirm `pythonocc-core 7.9.3` and `PyQt6 6.11.0`; old `7.7.2` pythonocc event handlers use stale Qt enum names. |
 | PyQt5 appears in checks | Recreate the env; do not install Conda `pyqt`, PyQt5, or Qt5. |
@@ -305,3 +531,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -R
 PyInstaller debug logging starts after the bootloader has started Python. It can
 capture application exceptions and many Python runtime failures, but not every
 early bootloader failure or native crash.
+
+### 11.1. Copy-Paste Diagnostic Block
+
+When asking IT or another developer for help, run this in the same terminal
+where the build fails and share the output:
+
+```powershell
+Write-Host "=== PATH TOOLS ==="
+where.exe conda
+where.exe python
+where.exe pip
+
+Write-Host "=== PYTHON SSL ==="
+python -c "import sys, ssl; print(sys.executable); print(sys.version); print(ssl.OPENSSL_VERSION)"
+
+Write-Host "=== CONDA ==="
+conda --version
+conda info
+conda config --show-sources
+conda config --show channels
+
+Write-Host "=== PIP ==="
+python -m pip --version
+python -m pip config list -v
+python -m pip index versions altgraph
+
+Write-Host "=== PROJECT ENV ==="
+python -s -m pip check
+python -s -c "import importlib.util, numpy; print('numpy', numpy.__version__); print('PyQt5 present', importlib.util.find_spec('PyQt5') is not None)"
+```

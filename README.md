@@ -102,6 +102,11 @@ If CAD imports fail, first confirm that `conda activate mdts-cad312` is active,
 `PYTHONNOUSERSITE=1` is set, and `python -c "import OCC"` succeeds in that same
 terminal.
 
+On intranet or secure-network PCs that must use Nexus instead of public PyPI or
+Conda channels, follow the secure-network setup and troubleshooting section in
+[`docs/pyinstaller_install_guide.md`](docs/pyinstaller_install_guide.md#3-secure-network-and-nexus-setup)
+before creating the CAD environment.
+
 Before building the CAD-capable package, the build script also checks that this
 environment still uses Python 3.12, NumPy 1.26, `pythonocc-core` 7.9.3 with the
 `novtk` OCCT build, PyQt6/Qt6, and `ffmpeg`. It fails if PyQt5, Conda `pyqt`,
@@ -259,7 +264,7 @@ dist\MechanicalDesignToolSuite\MechanicalDesignToolSuite.exe
 The same folder also contains direct launchers for the bolt calculation GUI,
 the legacy tolerance GUI, the vNext tolerance GUI, and the CAD 1D tolerance GUI. See
 [`docs/pyinstaller_install_guide.md`](docs/pyinstaller_install_guide.md) for the
-full build and troubleshooting guide.
+full build, secure-network, and troubleshooting guide.
 
 To run the CAD executable after a successful build:
 
