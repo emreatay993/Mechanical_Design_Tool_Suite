@@ -40,7 +40,7 @@ OCC_VIEWER_DEPENDENCY_MESSAGE = (
 _IMPORT_ERROR: Exception | None = None
 
 try:
-    from PyQt6.QtCore import pyqtSignal
+    from PyQt6.QtCore import Qt, pyqtSignal
     from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
     from OCC.Core.Aspect import (
@@ -123,6 +123,150 @@ def is_pyqt5_available() -> bool:
 
 if _IMPORT_ERROR is None:
 
+    class _HiDpiClickViewer3d(qtViewer3d):  # type: ignore[misc]
+        """qtViewer3d corrected for HiDPI picking and drag-vs-click selection.
+
+        Upstream pythonocc feeds Qt *logical* mouse coordinates straight into
+        OCCT, whose view is sized in *physical* pixels. On a display with a
+        device-pixel-ratio other than 1 the pre-highlight/pick lands offset
+        from the cursor (diagonally up-left of where you point). It also runs
+        a single ``Select`` on every left-button release, so finishing an
+        orbit/pan gesture silently selects whatever is under the cursor.
+
+        This subclass scales every coordinate handed to OCCT by the live
+        device-pixel-ratio and only treats a left release as a pick when the
+        gesture stayed put (a real click, not a navigation drag).
+        """
+
+        _DRAG_SLOP_PX = 4
+
+        def __init__(self, *args: Any) -> None:
+            super().__init__(*args)
+            self._press_logical: tuple[int, int] | None = None
+            self._gesture_is_drag = False
+
+        def _dpr(self) -> float:
+            try:
+                return float(self.devicePixelRatioF())
+            except Exception:
+                return 1.0
+
+        def _device_xy(self, pos: Any) -> tuple[int, int]:
+            dpr = self._dpr()
+            return int(round(pos.x() * dpr)), int(round(pos.y() * dpr))
+
+        def _draw_box_logical(self, evt: Any) -> None:
+            # Keep the rubber band in logical coords so paintEvent (which uses a
+            # logical QPainter) renders it under the cursor.
+            tolerance = 2
+            pt = evt.pos()
+            dx = pt.x() - self._logical_start[0]
+            dy = pt.y() - self._logical_start[1]
+            if abs(dx) <= tolerance and abs(dy) <= tolerance:
+                return
+            self._drawbox = [self._logical_start[0], self._logical_start[1], dx, dy]
+
+        def _device_box(self) -> list[int]:
+            dpr = self._dpr()
+            xmin, ymin, dx, dy = self._drawbox
+            return [
+                int(round(xmin * dpr)),
+                int(round(ymin * dpr)),
+                int(round((xmin + dx) * dpr)),
+                int(round((ymin + dy) * dpr)),
+            ]
+
+        def mousePressEvent(self, event: Any) -> None:
+            self.setFocus()
+            self._logical_start = (event.pos().x(), event.pos().y())
+            self._press_logical = self._logical_start
+            self._gesture_is_drag = False
+            x, y = self._device_xy(event.pos())
+            self.dragStartPosX, self.dragStartPosY = x, y
+            self._display.StartRotation(x, y)
+
+        def _mark_drag(self, evt: Any) -> None:
+            if self._press_logical is None:
+                return
+            pt = evt.pos()
+            if (
+                abs(pt.x() - self._press_logical[0])
+                + abs(pt.y() - self._press_logical[1])
+                > self._DRAG_SLOP_PX
+            ):
+                self._gesture_is_drag = True
+
+        def mouseMoveEvent(self, evt: Any) -> None:
+            x, y = self._device_xy(evt.pos())
+            buttons = evt.buttons()
+            modifiers = evt.modifiers()
+            shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+            if buttons != Qt.MouseButton.NoButton:
+                self._mark_drag(evt)
+            if buttons == Qt.MouseButton.LeftButton and not shift:
+                self.cursor = "rotate"
+                self._display.Rotation(x, y)
+                self._drawbox = False
+            elif buttons == Qt.MouseButton.RightButton and not shift:
+                self.cursor = "zoom"
+                self._display.Repaint()
+                self._display.DynamicZoom(
+                    abs(self.dragStartPosX),
+                    abs(self.dragStartPosY),
+                    abs(x),
+                    abs(y),
+                )
+                self.dragStartPosX, self.dragStartPosY = x, y
+                self._drawbox = False
+            elif buttons == Qt.MouseButton.MiddleButton:
+                dx = x - self.dragStartPosX
+                dy = y - self.dragStartPosY
+                self.dragStartPosX, self.dragStartPosY = x, y
+                self.cursor = "pan"
+                self._display.Pan(dx, -dy)
+                self._drawbox = False
+            elif buttons == Qt.MouseButton.RightButton:
+                self._zoom_area = True
+                self.cursor = "zoom-area"
+                self._draw_box_logical(evt)
+                self.update()
+            elif buttons == Qt.MouseButton.LeftButton:
+                self._select_area = True
+                self._draw_box_logical(evt)
+                self.update()
+            else:
+                self._drawbox = False
+                self._display.MoveTo(x, y)
+                self.cursor = "arrow"
+
+        def mouseReleaseEvent(self, event: Any) -> None:
+            x, y = self._device_xy(event.pos())
+            modifiers = event.modifiers()
+            shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+            if event.button() == Qt.MouseButton.LeftButton:
+                if self._select_area:
+                    xmin, ymin, xmax, ymax = self._device_box()
+                    self._display.SelectArea(xmin, ymin, xmax, ymax)
+                    self._select_area = False
+                elif self._gesture_is_drag:
+                    # An orbit/pan/zoom gesture, not a pick: do not select.
+                    pass
+                elif shift:
+                    self._display.ShiftSelect(x, y)
+                    if self._display.selected_shapes is not None:
+                        self.sig_topods_selected.emit(self._display.selected_shapes)
+                else:
+                    self._display.Select(x, y)
+                    if self._display.selected_shapes is not None:
+                        self.sig_topods_selected.emit(self._display.selected_shapes)
+            elif event.button() == Qt.MouseButton.RightButton:
+                if self._zoom_area:
+                    xmin, ymin, xmax, ymax = self._device_box()
+                    self._display.ZoomArea(xmin, ymin, xmax, ymax)
+                    self._zoom_area = False
+            self._gesture_is_drag = False
+            self.cursor = "arrow"
+
     class OccCadViewerWidget(QWidget):  # type: ignore[misc]
         """OCCT AIS/V3d viewer widget embedded in PyQt6."""
 
@@ -130,7 +274,7 @@ if _IMPORT_ERROR is None:
 
         def __init__(self, parent: QWidget | None = None) -> None:
             super().__init__(parent)
-            self._viewer = qtViewer3d(self)
+            self._viewer = _HiDpiClickViewer3d(self)
             self.uses_native_annotations = True
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
