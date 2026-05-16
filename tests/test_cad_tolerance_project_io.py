@@ -49,6 +49,7 @@ from mechanical_design_tool_suite.cad_tolerance_project_io import (
     resolve_project_asset_path,
     save_project,
 )
+from mechanical_design_tool_suite.cad_tolerance_report import generate_html_report
 
 
 FIXTURE_PATH = (
@@ -573,6 +574,97 @@ class CadToleranceProjectIoTest(unittest.TestCase):
             )
             self.assertNotIn(str(root), json.dumps(manifest))
             self.assertNotIn(str(root), json.dumps(packaged_data))
+
+    def test_tolpack_includes_generated_report_assets_and_manifest(self) -> None:
+        project = load_project(FIXTURE_PATH)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = root / "caster_study.tolproj"
+            assets_dir = project_asset_dir(project_path)
+            cad_asset = assets_dir / "cad" / "neutral_step_two_part_loop.step"
+            snapshot_asset = assets_dir / "snapshots" / "bushing_alignment.png"
+            cad_asset.parent.mkdir(parents=True)
+            snapshot_asset.parent.mkdir(parents=True)
+            cad_asset.write_bytes((FIXTURE_PATH.parent / "neutral_step_two_part_loop.step").read_bytes())
+            snapshot_asset.write_bytes(b"fake-png")
+            project.cad_documents[0].source_path = (
+                "caster_study_assets/cad/neutral_step_two_part_loop.step"
+            )
+            project.snapshots[0].image_path = (
+                "caster_study_assets/snapshots/bushing_alignment.png"
+            )
+            result = generate_html_report(
+                project,
+                assets_dir / "reports" / "report.html",
+                generated_at="2026-05-16T00:00:00Z",
+                project_path=project_path,
+            )
+            project.reports = [
+                {
+                    "id": "report_generated",
+                    "title": result.manifest["title"],
+                    "generated_at": result.manifest["generated_at"],
+                    "path": "caster_study_assets/reports/report.html",
+                    "html_path": "caster_study_assets/reports/report.html",
+                    "manifest_path": "caster_study_assets/reports/report_manifest.json",
+                    "css_path": "caster_study_assets/reports/css/report.css",
+                    "js_path": "caster_study_assets/reports/js/report.js",
+                    "asset_paths": [
+                        "caster_study_assets/reports/css/report.css",
+                        "caster_study_assets/reports/js/report.js",
+                        "caster_study_assets/reports/report_manifest.json",
+                        "caster_study_assets/reports/images/snapshot-summary-1.png",
+                    ],
+                    "snapshot_ids": list(result.manifest["snapshot_ids"]),
+                    "stackup_ids": list(result.manifest["stackup_ids"]),
+                    "report_format": result.manifest["report_format"],
+                }
+            ]
+            save_project(project, project_path)
+
+            package_path = export_project_package(project_path, root / "caster_study")
+
+            with zipfile.ZipFile(package_path, "r") as archive:
+                names = archive.namelist()
+                manifest = json.loads(archive.read(PACKAGE_MANIFEST_NAME))
+                packaged_data = json.loads(archive.read("project.tolproj"))
+
+            self.assertIn("assets/reports/report.html", names)
+            self.assertIn("assets/reports/css/report.css", names)
+            self.assertIn("assets/reports/js/report.js", names)
+            self.assertIn("assets/reports/report_manifest.json", names)
+            self.assertIn("assets/reports/images/snapshot-summary-1.png", names)
+            report_asset_paths = {
+                item["path"]
+                for item in manifest["assets"]
+                if item["kind"] == "report"
+            }
+            self.assertTrue(
+                {
+                    "assets/reports/report.html",
+                    "assets/reports/css/report.css",
+                    "assets/reports/js/report.js",
+                    "assets/reports/report_manifest.json",
+                    "assets/reports/images/snapshot-summary-1.png",
+                }.issubset(report_asset_paths)
+            )
+            self.assertEqual(
+                packaged_data["reports"][0]["html_path"],
+                "assets/reports/report.html",
+            )
+
+            unpacked_project_path = import_project_package(package_path, root / "unpacked")
+            unpacked_project = load_project(unpacked_project_path)
+            unpacked_report = unpacked_project.reports[0]
+            for key in ("html_path", "manifest_path", "css_path", "js_path"):
+                self.assertTrue(
+                    resolve_project_asset_path(unpacked_report[key], unpacked_project_path).is_file()
+                )
+            for asset_path in unpacked_report["asset_paths"]:
+                self.assertTrue(
+                    resolve_project_asset_path(asset_path, unpacked_project_path).is_file()
+                )
 
     def test_missing_optional_fields_load_with_domain_defaults(self) -> None:
         data = {

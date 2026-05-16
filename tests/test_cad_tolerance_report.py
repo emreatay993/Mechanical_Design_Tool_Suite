@@ -66,8 +66,10 @@ class CadToleranceReportTest(unittest.TestCase):
 
         self.assertEqual([row.percent for row in section.contributors], [90.0, 10.0])
         self.assertEqual(section.contributors[0].tolerance_box, "+0.150/-0.100")
-        self.assertEqual(section.contributors[1].tolerance_box, "dia 0.1")
-        self.assertEqual(section.contributors[1].datum, "A")
+        self.assertIn("Runout", section.contributors[1].tolerance_box)
+        self.assertIn("0.1", section.contributors[1].tolerance_box)
+        self.assertIn("A", section.contributors[1].tolerance_box)
+        self.assertEqual(section.contributors[1].datum, "")
 
         snapshot = projection.snapshots[0]
         self.assertEqual(snapshot.snapshot_id, "snapshot_summary_1")
@@ -87,17 +89,24 @@ class CadToleranceReportTest(unittest.TestCase):
         self.assertEqual(first.output_path.name, "report.html")
         self.assertIn('<nav class="left-nav">', first.html)
         self.assertIn('<main class="report-canvas">', first.html)
+        self.assertIn('<section class="title-page title-cover">', first.html)
+        self.assertIn('class="snapshot snapshot-cover"', first.html)
         self.assertIn("Tolerance Stackup Report", first.html)
         self.assertIn("Summary of 1D Tolerance Stackups", first.html)
         self.assertIn("Bushing ID alignment Analysis Results", first.html)
         self.assertIn("Statistical Results for Bushing ID alignment", first.html)
         self.assertIn("Bushing ID alignment Analysis Contributions", first.html)
+        self.assertIn("Runout", first.html)
         self.assertIn('class="contribution-track"', first.html)
         self.assertIn('<link rel="stylesheet" href="css/report.css">', first.html)
         self.assertIn('<script src="js/report.js" defer></script>', first.html)
         self.assertIn("images/snapshot-summary-1.svg", first.html)
         self.assertIn(NON_1D_WARNING_TEXT, first.html)
         self.assertIn("Endpoint features are laterally offset from the stack direction.", first.html)
+        self.assertLess(
+            first.html.index('class="snapshot snapshot-cover"'),
+            first.html.index('id="summary"'),
+        )
         self.assertNotIn(".pdf", first.html.lower())
 
     def test_html_report_writes_portable_deterministic_assets_and_manifest(self) -> None:

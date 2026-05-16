@@ -24,6 +24,7 @@ from .cad_tolerance_models import (
     StackupRequirement,
     StackupResult,
     ToleranceType,
+    geometric_tolerance_frame_text,
 )
 
 
@@ -269,7 +270,7 @@ def build_contribution_projection(
                 label=item.name,
                 percent=round(item.percent, 1),
                 tolerance_box=_format_tolerance(contributor) if contributor else "",
-                datum=_datum_text(contributor) if contributor else "",
+                datum=_contribution_datum_text(contributor),
                 contributor_id=item.contributor_id,
             )
         )
@@ -749,13 +750,21 @@ def _render_nav(projection: ReportProjection) -> str:
 def _render_title_page(projection: ReportProjection) -> str:
     generated = projection.generated_at or "Not recorded"
     document_name = projection.project_title
+    cover_snapshot = (
+        _render_snapshot(projection.snapshots[0], variant="cover")
+        if projection.snapshots
+        else ""
+    )
     return "\n".join(
         [
-            '<section class="title-page">',
+            '<section class="title-page title-cover">',
+            cover_snapshot,
+            '<div class="title-copy">',
             f"<h1>{_e(projection.title)}</h1>",
             f'<div class="project-name">{_e(document_name)}</div>',
             f'<div class="meta-line">Units: {_e(projection.unit_system)}</div>',
             f'<div class="meta-line">Generated: {_e(generated)}</div>',
+            "</div>",
             "</section>",
         ]
     )
@@ -763,7 +772,6 @@ def _render_title_page(projection: ReportProjection) -> str:
 
 def _render_summary(projection: ReportProjection) -> str:
     rows = "\n".join(_render_summary_row(row) for row in projection.summary_rows)
-    snapshots = "\n".join(_render_snapshot(snapshot) for snapshot in projection.snapshots)
     return "\n".join(
         [
             '<section id="summary" class="report-section">',
@@ -779,10 +787,6 @@ def _render_summary(projection: ReportProjection) -> str:
             rows,
             "</tbody>",
             "</table>",
-            "<h3>Snapshots</h3>",
-            '<div class="snapshots">',
-            snapshots or '<div class="empty">No report snapshots captured.</div>',
-            "</div>",
             "</section>",
         ]
     )
@@ -792,7 +796,9 @@ def _render_stackup_section(section: StackupReportSection) -> str:
     detail_rows = "\n".join(_render_detail_row(row) for row in section.detail_rows)
     contribution_rows = "\n".join(_render_contribution(row) for row in section.contributors)
     warnings = _render_warnings(section.warnings)
-    snapshots = "\n".join(_render_snapshot(snapshot) for snapshot in section.snapshots)
+    snapshots = "\n".join(
+        _render_snapshot(snapshot, variant="stackup") for snapshot in section.snapshots
+    )
     return "\n".join(
         [
             f'<section id="{_anchor("stackup", section.summary.stackup_id)}" class="report-section">',
@@ -960,29 +966,34 @@ def _render_warnings(warnings: tuple[WarningProjectionRow, ...]) -> str:
     return "\n".join(
         [
             '<div class="warning-box">',
+            '<span class="warning-icon" aria-hidden="true">!</span>',
+            '<div class="warning-copy">',
             f"<strong>{_e(NON_1D_WARNING_TEXT)}</strong>",
             "<ul>",
             items,
             "</ul>",
             "</div>",
+            "</div>",
         ]
     )
 
 
-def _render_snapshot(snapshot: SnapshotProjectionRow) -> str:
+def _render_snapshot(snapshot: SnapshotProjectionRow, *, variant: str = "") -> str:
     captured = f"Captured: {snapshot.captured_at}" if snapshot.captured_at else "Captured snapshot"
-    metadata = [
-        f"Snapshot: {snapshot.snapshot_id}",
-        f"Visible stackups: {', '.join(snapshot.visible_stackup_ids) or 'none'}",
-        f"Camera keys: {', '.join(sorted(snapshot.camera)) or 'none'}",
-    ]
-    metadata_html = "".join(f"<li>{_e(item)}</li>" for item in metadata)
+    classes = "snapshot"
+    if variant:
+        classes = f"{classes} snapshot-{variant}"
+    visible_stackups = ",".join(snapshot.visible_stackup_ids)
+    camera_keys = ",".join(sorted(snapshot.camera))
     return "\n".join(
         [
-            '<figure class="snapshot">',
+            (
+                f'<figure class="{classes}" data-snapshot-id="{_e(snapshot.snapshot_id)}" '
+                f'data-visible-stackups="{_e(visible_stackups)}" '
+                f'data-camera-keys="{_e(camera_keys)}">'
+            ),
             f'<img src="{_e(snapshot.image_path)}" alt="CAD snapshot {_e(snapshot.snapshot_id)}">',
-            f"<figcaption>{_e(captured)}</figcaption>",
-            f'<ul class="snapshot-meta">{metadata_html}</ul>',
+            f'<figcaption class="snapshot-caption">{_e(captured)}</figcaption>',
             "</figure>",
         ]
     )
@@ -1165,12 +1176,28 @@ def _format_tolerance(contributor: StackupContributor | None) -> str:
     if contributor is None:
         return ""
     if contributor.tolerance_type == ToleranceType.GEOMETRIC and contributor.geometric_tolerance:
-        return f"dia {contributor.geometric_tolerance.tolerance_value:.3f}".rstrip("0").rstrip(".")
+        datum_references = (
+            contributor.geometric_tolerance.datum_references
+            or contributor.datum_references
+        )
+        return geometric_tolerance_frame_text(
+            contributor.geometric_tolerance.control_type,
+            contributor.geometric_tolerance.tolerance_value,
+            datum_references,
+        )
     minus = float(contributor.tolerance_minus or 0.0)
     plus = float(contributor.tolerance_plus or 0.0)
     if abs(minus - plus) < 1.0e-9:
         return f"+/-{plus:.3f}".rstrip("0").rstrip(".")
     return f"+{plus:.3f}/-{minus:.3f}"
+
+
+def _contribution_datum_text(contributor: StackupContributor | None) -> str:
+    if contributor is None:
+        return ""
+    if contributor.tolerance_type == ToleranceType.GEOMETRIC and contributor.geometric_tolerance:
+        return ""
+    return _datum_text(contributor)
 
 
 def _format_sensitivity(value: float) -> str:
@@ -1378,6 +1405,14 @@ body {
   background: #ffffff;
   border: 0;
 }
+.title-cover {
+  max-width: 1030px;
+  margin-bottom: 50px;
+}
+.title-copy {
+  text-align: center;
+  margin-top: 20px;
+}
 .title-page h1 {
   margin: 0 0 8px;
   font-size: 34px;
@@ -1385,9 +1420,9 @@ body {
   color: #4d4d4d;
 }
 .project-name {
-  font-size: 20px;
+  font-size: 46px;
   color: #555555;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 .meta-line {
   color: #666666;
@@ -1516,6 +1551,7 @@ tr.objective td {
   gap: 18px;
 }
 .snapshot {
+  position: relative;
   margin: 0;
   border: 1px solid #cccccc;
   padding: 0;
@@ -1529,6 +1565,21 @@ tr.objective td {
   object-fit: contain;
   border: 0;
   background: #ffffff;
+}
+.snapshot-cover img,
+.stackup-snapshots .snapshot img {
+  min-height: 560px;
+  aspect-ratio: 4 / 3;
+}
+.snapshot-cover {
+  margin-bottom: 0;
+}
+.snapshot-caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
 }
 .snapshot figcaption,
 .snapshot-meta {
@@ -1609,11 +1660,32 @@ tr.objective td {
   min-width: 120px;
 }
 .warning-box {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
   margin-top: 12px;
-  padding: 12px;
+  padding: 10px 12px;
   border: 0;
   background: #ffffff;
   color: #111111;
+}
+.warning-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  background: #ffd237;
+  color: #111111;
+  font-weight: 800;
+  line-height: 1;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  padding-top: 5px;
+  box-sizing: border-box;
+}
+.warning-copy ul {
+  margin: 8px 0 0 20px;
 }
 .contribution-row {
   display: grid;

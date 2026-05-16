@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 if "QT_QPA_PLATFORM" not in os.environ and importlib.util.find_spec("OCC") is None:
@@ -28,6 +29,10 @@ from mechanical_design_tool_suite.cad_tolerance_project_io import (
     load_project,
     project_asset_dir,
     save_project,
+)
+from mechanical_design_tool_suite.cad_tolerance_report import (
+    ReportGenerationResult,
+    build_report_projection,
 )
 from mechanical_design_tool_suite.cad_tolerance_viewmodels import (
     DETAIL_COLUMNS,
@@ -630,6 +635,84 @@ class CadToleranceGuiShellTest(unittest.TestCase):
         self.assertAlmostEqual(stackup.target_quality.value, 1.5)
         self.assertAlmostEqual(stackup.contributors[0].tolerance_plus, 0.05)
         self.assertIn("Updated project tolerance defaults", self.window.statusBar().currentMessage())
+
+    def test_generate_report_uses_save_report_dialog_records_manifest_and_status(self) -> None:
+        project = load_project(FIXTURE_PATH)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = save_project(project, root / "caster_study.tolproj")
+            self.window.load_project_file(project_path)
+            self.app.processEvents()
+            self.assertTrue(self.window.generate_report_action.isEnabled())
+            output_without_suffix = project_asset_dir(project_path) / "reports" / "p25_report"
+            captured: dict[str, object] = {}
+
+            def fake_generate_report(
+                project_arg,
+                output_path,
+                *,
+                generated_at=None,
+                project_path=None,
+            ):
+                output = Path(output_path)
+                report_dir = output.parent
+                css_path = report_dir / "css" / "report.css"
+                js_path = report_dir / "js" / "report.js"
+                manifest_path = report_dir / "report_manifest.json"
+                css_path.parent.mkdir(parents=True)
+                js_path.parent.mkdir(parents=True)
+                output.write_text("<html></html>\n", encoding="utf-8")
+                css_path.write_text("body { color: #111111; }\n", encoding="utf-8")
+                js_path.write_text("/* test */\n", encoding="utf-8")
+                manifest = {
+                    "title": "Tolerance Stackup Report",
+                    "generated_at": generated_at,
+                    "report_format": "mdts-cad-1d-tolerance-report",
+                    "snapshot_ids": ["snapshot_summary_1"],
+                    "stackup_ids": ["stackup_bushing_alignment"],
+                }
+                manifest_path.write_text("{}", encoding="utf-8")
+                captured["output_path"] = output
+                captured["project_path"] = project_path
+                captured["generated_at"] = generated_at
+                return ReportGenerationResult(
+                    output,
+                    "<html></html>\n",
+                    build_report_projection(project_arg, generated_at=generated_at),
+                    (css_path, js_path, manifest_path),
+                    manifest_path,
+                    manifest,
+                )
+
+            with patch(
+                "mechanical_design_tool_suite.cad_tolerance_gui.QFileDialog.getSaveFileName",
+                return_value=(str(output_without_suffix), ""),
+            ) as dialog, patch(
+                "mechanical_design_tool_suite.cad_tolerance_gui.generate_html_report",
+                side_effect=fake_generate_report,
+            ):
+                self.window._generate_report()
+
+            dialog.assert_called_once()
+            self.assertEqual(dialog.call_args.args[1], "Save Report")
+            self.assertEqual(captured["output_path"], output_without_suffix.with_suffix(".html"))
+            self.assertEqual(captured["project_path"], project_path)
+            self.assertTrue(str(captured["generated_at"]).endswith("Z"))
+            self.assertIn("Generated report p25_report.html", self.window.statusBar().currentMessage())
+
+            saved = load_project(project_path)
+            saved_report = next(
+                report
+                for report in saved.reports
+                if report.get("html_path") == "caster_study_assets/reports/p25_report.html"
+            )
+            self.assertEqual(
+                saved_report["html_path"],
+                "caster_study_assets/reports/p25_report.html",
+            )
+            self.assertEqual(saved_report["manifest_path"], "caster_study_assets/reports/report_manifest.json")
+            self.assertIn("snapshot_summary_1", saved_report["snapshot_ids"])
 
     def test_add_geometric_tolerance_dialog_validates_and_adds_position_row(self) -> None:
         dialog = AddGeometricToleranceDialog(
